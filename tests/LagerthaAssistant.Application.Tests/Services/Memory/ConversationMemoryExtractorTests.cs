@@ -38,6 +38,16 @@ public sealed class ConversationMemoryExtractorTests
         var languageFact = Assert.Single(facts, x => x.Key == MemoryKeys.PreferredLanguage);
         Assert.Equal("en", languageFact.Value);
     }
+    [Fact]
+    public void ExtractFromUserMessage_ShouldExtractUkrainianLanguageFromCyrillicText()
+    {
+        var message = "\u0411\u0443\u0434\u044c \u043b\u0430\u0441\u043a\u0430, \u0432\u0456\u0434\u043f\u043e\u0432\u0456\u0434\u0430\u0439 \u0443\u043a\u0440\u0430\u0457\u043d\u0441\u044c\u043a\u043e\u044e";
+
+        var facts = _sut.ExtractFromUserMessage(message);
+
+        var languageFact = Assert.Single(facts, x => x.Key == MemoryKeys.PreferredLanguage);
+        Assert.Equal("uk", languageFact.Value);
+    }
 
     [Fact]
     public void ExtractFromUserMessage_ShouldNotThrowOnRandomUnicode()

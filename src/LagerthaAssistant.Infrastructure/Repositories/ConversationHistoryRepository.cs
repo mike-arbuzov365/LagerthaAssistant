@@ -54,6 +54,7 @@ public sealed class ConversationHistoryRepository : IConversationHistoryReposito
                 .AsNoTracking()
                 .Where(x => x.ConversationSessionId == sessionId)
                 .OrderByDescending(x => x.SentAtUtc)
+                .ThenByDescending(x => x.Id)
                 .Take(take)
                 .ToListAsync(cancellationToken);
 
@@ -67,4 +68,3 @@ public sealed class ConversationHistoryRepository : IConversationHistoryReposito
         }
     }
 }
-

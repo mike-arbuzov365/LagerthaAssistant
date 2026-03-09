@@ -82,7 +82,7 @@ internal static class Program
             var input = Console.ReadLine();
             if (input is null)
             {
-                continue;
+                break;
             }
 
             var command = input.Trim();
@@ -218,4 +218,3 @@ internal static class Program
         };
     }
 }
-
