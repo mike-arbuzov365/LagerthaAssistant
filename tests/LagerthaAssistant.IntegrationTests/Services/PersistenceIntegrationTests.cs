@@ -120,6 +120,42 @@ public sealed class PersistenceIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task ConversationHistoryRepository_ShouldKeepStableOrderWhenTimestampsAreEqual()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            var session = ConversationSession.Create(Guid.NewGuid(), "session");
+            context.ConversationSessions.Add(session);
+            await context.SaveChangesAsync();
+
+            var sentAt = new DateTimeOffset(2026, 3, 8, 10, 0, 0, TimeSpan.Zero);
+            context.ConversationHistoryEntries.AddRange(
+                ConversationHistoryEntry.Create(session, MessageRole.User, "u1", sentAt),
+                ConversationHistoryEntry.Create(session, MessageRole.Assistant, "a1", sentAt));
+            await context.SaveChangesAsync();
+
+            await using var actContext = CreateContext(connectionString);
+            var sut = new ConversationHistoryRepository(actContext, NullLogger<ConversationHistoryRepository>.Instance);
+
+            var history = await sut.GetRecentBySessionIdAsync(session.Id, 2);
+
+            Assert.Equal(2, history.Count);
+            Assert.Equal(MessageRole.User, history[0].Role);
+            Assert.Equal("u1", history[0].Content);
+            Assert.Equal(MessageRole.Assistant, history[1].Role);
+            Assert.Equal("a1", history[1].Content);
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
+
     private static string CreateConnectionString()
     {
         return $"Server=(localdb)\\MSSQLLocalDB;Database=LagerthaAssistant_Integration_{Guid.NewGuid():N};Trusted_Connection=True;TrustServerCertificate=True;";

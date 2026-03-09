@@ -62,14 +62,14 @@ public sealed class ConversationMemoryExtractor : IConversationMemoryExtractor
     {
         var normalized = text.Trim().ToLowerInvariant();
 
-        if (normalized.Contains("\\u0443\\u043a\\u0440\\u0430\\u0457\\u043d\\u0441\\u044c\\u043a", StringComparison.Ordinal)
+        if (normalized.Contains("\u0443\u043a\u0440\u0430\u0457\u043d\u0441\u044c\u043a", StringComparison.Ordinal)
             || normalized.Contains("ukrainian", StringComparison.Ordinal))
         {
             return "uk";
         }
 
         if (normalized.Contains("english", StringComparison.Ordinal)
-            || normalized.Contains("\\u0430\\u043d\\u0433\\u043b\\u0456\\u0439", StringComparison.Ordinal))
+            || normalized.Contains("\u0430\u043d\u0433\u043b\u0456\u0439", StringComparison.Ordinal))
         {
             return "en";
         }
@@ -77,4 +77,3 @@ public sealed class ConversationMemoryExtractor : IConversationMemoryExtractor
         return null;
     }
 }
-
