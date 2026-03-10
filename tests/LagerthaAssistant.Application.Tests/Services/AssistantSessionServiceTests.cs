@@ -63,75 +63,145 @@ public sealed class AssistantSessionServiceTests
     }
 
     [Fact]
-    public async Task AskAsync_ShouldUpsertMemoryFacts()
+    public async Task GetSystemPromptAsync_ShouldReturnActivePromptFromRepository()
     {
         var fx = new Fixture();
-        fx.MemoryExtractor.Facts = [new MemoryFactCandidate(MemoryKeys.UserName, "Mike", 0.95)];
-        var sut = fx.CreateSut();
-
-        await sut.AskAsync("my name is Mike");
-
-        var stored = await fx.MemoryRepo.GetByKeyAsync(MemoryKeys.UserName);
-        Assert.NotNull(stored);
-        Assert.Equal("Mike", stored!.Value);
-
-        fx.MemoryExtractor.Facts = [new MemoryFactCandidate(MemoryKeys.UserName, "Michael", 0.99)];
-        await sut.AskAsync("actually i am Michael");
-
-        stored = await fx.MemoryRepo.GetByKeyAsync(MemoryKeys.UserName);
-        Assert.Equal("Michael", stored!.Value);
-        Assert.Equal(0.99, stored.Confidence, 3);
-    }
-
-    [Fact]
-    public async Task GetRecentHistoryAsync_ShouldLoadFromLatestSession()
-    {
-        var fx = new Fixture();
-        fx.SessionRepo.Latest = ConversationSession.Create(Guid.NewGuid(), "latest");
-        fx.SessionRepo.Latest.Id = 10;
-        fx.HistoryRepo.Seeded[10] =
-        [
-            ConversationHistoryEntry.Create(fx.SessionRepo.Latest, MessageRole.User, "u1", fx.Clock.UtcNow.AddMinutes(-2)),
-            ConversationHistoryEntry.Create(fx.SessionRepo.Latest, MessageRole.Assistant, "a1", fx.Clock.UtcNow.AddMinutes(-1))
-        ];
-
-        var sut = fx.CreateSut();
-
-        var history = await sut.GetRecentHistoryAsync(10);
-
-        Assert.Equal(2, history.Count);
-        Assert.Equal("u1", history.First().Content);
-        Assert.Equal("a1", history.Last().Content);
-    }
-
-    [Fact]
-    public async Task GetActiveMemoryAsync_ShouldReturnActiveMemoryFacts()
-    {
-        var fx = new Fixture();
-        fx.MemoryRepo.Active.Add(new UserMemoryEntry
+        fx.SystemPromptRepo.ActivePrompt = new SystemPromptEntry
         {
-            Key = MemoryKeys.UserName,
-            Value = "Mike",
-            Confidence = 0.95,
+            PromptText = "Persisted prompt",
+            Version = 7,
             IsActive = true,
-            LastSeenAtUtc = fx.Clock.UtcNow
-        });
-        fx.MemoryRepo.Active.Add(new UserMemoryEntry
-        {
-            Key = "legacy.key",
-            Value = "legacy",
-            Confidence = 0.10,
-            IsActive = false,
-            LastSeenAtUtc = fx.Clock.UtcNow
-        });
+            Source = "manual",
+            CreatedAtUtc = fx.Clock.UtcNow
+        };
 
         var sut = fx.CreateSut();
 
-        var memory = await sut.GetActiveMemoryAsync(10);
+        var prompt = await sut.GetSystemPromptAsync();
 
-        var fact = Assert.Single(memory);
-        Assert.Equal(MemoryKeys.UserName, fact.Key);
-        Assert.Equal("Mike", fact.Value);
+        Assert.Equal("Persisted prompt", prompt);
+    }
+
+    [Fact]
+    public async Task SetSystemPromptAsync_ShouldCreateNewActiveVersion()
+    {
+        var fx = new Fixture();
+        fx.SystemPromptRepo.Entries.Clear();
+
+        var current = new SystemPromptEntry
+        {
+            Id = 1,
+            PromptText = "Old prompt",
+            Version = 1,
+            IsActive = true,
+            Source = "seed",
+            CreatedAtUtc = fx.Clock.UtcNow.AddMinutes(-10)
+        };
+        fx.SystemPromptRepo.Entries.Add(current);
+        fx.SystemPromptRepo.ActivePrompt = current;
+
+        var sut = fx.CreateSut();
+
+        var updated = await sut.SetSystemPromptAsync("New prompt text", "manual");
+
+        Assert.Equal("New prompt text", updated);
+        Assert.False(current.IsActive);
+        Assert.Equal(2, fx.SystemPromptRepo.Entries.Count);
+
+        var active = Assert.Single(fx.SystemPromptRepo.Entries, x => x.IsActive);
+        Assert.Equal(2, active.Version);
+        Assert.Equal("manual", active.Source);
+    }
+
+    [Fact]
+    public async Task AskAsync_ShouldNormalizeIrregularVerbReply_WhenModelReturnsVAndTooFewExamples()
+    {
+        var fx = new Fixture();
+        fx.AiClient.NextContent = """
+undertake - undertook - undertaken
+
+(v) ??????? ?? ????, ???????? ??????????
+
+The developer undertook the task of refactoring the legacy code.
+
+She has undertaken to deliver the project by the end of the month.
+""";
+
+        var sut = fx.CreateSut();
+
+        var result = await sut.AskAsync("undertake");
+
+        Assert.StartsWith("undertake - undertook - undertaken", result.Content, StringComparison.Ordinal);
+        Assert.Contains("(iv) ??????? ?? ????, ???????? ??????????", result.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain("(v) ??????? ?? ????", result.Content, StringComparison.Ordinal);
+
+        var nonEmptyLines = result.Content
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(line => !line.StartsWith("(", StringComparison.Ordinal))
+            .Skip(1)
+            .ToList();
+
+        Assert.Equal(3, nonEmptyLines.Count);
+    }
+        [Fact]
+    public async Task AskAsync_ShouldNormalizePhrasalVerbReply_WhenModelReturnsV()
+    {
+        var fx = new Fixture();
+        fx.AiClient.NextContent = """
+call back
+
+(v) call in return, phone someone in response
+
+Please call back the client after the meeting.
+""";
+
+        var sut = fx.CreateSut();
+
+        var result = await sut.AskAsync("call back");
+
+        Assert.StartsWith("call back", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("(pv) call in return, phone someone in response", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("(v) call in return, phone someone in response", result.Content, StringComparison.OrdinalIgnoreCase);
+    }
+    [Fact]
+    public async Task GenerateSystemPromptProposalAsync_ShouldSaveAssistantProposal()
+    {
+        var fx = new Fixture();
+        fx.AiClient.NextContent = "You are a better prompt.";
+        var sut = fx.CreateSut();
+
+        var proposal = await sut.GenerateSystemPromptProposalAsync("be stricter with safety");
+
+        Assert.Equal("assistant", proposal.Source);
+        Assert.Equal(SystemPromptProposalStatuses.Pending, proposal.Status);
+        Assert.Equal("You are a better prompt.", proposal.ProposedPrompt);
+        Assert.Contains(fx.ProposalRepo.Proposals, x => x.Id == proposal.Id);
+    }
+
+    [Fact]
+    public async Task ApplySystemPromptProposalAsync_ShouldApplyAndMarkProposal()
+    {
+        var fx = new Fixture();
+        var proposal = new SystemPromptProposal
+        {
+            Id = 12,
+            ProposedPrompt = "Applied prompt",
+            Reason = "Test",
+            Confidence = 0.9,
+            Source = "assistant",
+            Status = SystemPromptProposalStatuses.Pending,
+            CreatedAtUtc = fx.Clock.UtcNow
+        };
+        fx.ProposalRepo.Proposals.Add(proposal);
+
+        var sut = fx.CreateSut();
+
+        var applied = await sut.ApplySystemPromptProposalAsync(12);
+
+        Assert.Equal("Applied prompt", applied);
+        Assert.Equal(SystemPromptProposalStatuses.Applied, proposal.Status);
+        Assert.NotNull(proposal.ReviewedAtUtc);
+        Assert.True(proposal.AppliedSystemPromptEntryId.HasValue);
     }
 
     private sealed class Fixture
@@ -140,9 +210,26 @@ public sealed class AssistantSessionServiceTests
         public FakeConversationSessionRepository SessionRepo { get; } = new();
         public FakeConversationHistoryRepository HistoryRepo { get; } = new();
         public FakeUserMemoryRepository MemoryRepo { get; } = new();
+        public FakeSystemPromptRepository SystemPromptRepo { get; } = new();
+        public FakeSystemPromptProposalRepository ProposalRepo { get; } = new();
         public FakeConversationMemoryExtractor MemoryExtractor { get; } = new();
         public FakeUnitOfWork Uow { get; } = new();
         public FakeClock Clock { get; } = new();
+
+        public Fixture()
+        {
+            var seed = new SystemPromptEntry
+            {
+                Id = 1,
+                PromptText = "system prompt",
+                Version = 1,
+                IsActive = true,
+                Source = "seed",
+                CreatedAtUtc = Clock.UtcNow
+            };
+            SystemPromptRepo.Entries.Add(seed);
+            SystemPromptRepo.ActivePrompt = seed;
+        }
 
         public AssistantSessionService CreateSut()
         {
@@ -151,6 +238,8 @@ public sealed class AssistantSessionServiceTests
                 SessionRepo,
                 HistoryRepo,
                 MemoryRepo,
+                SystemPromptRepo,
+                ProposalRepo,
                 MemoryExtractor,
                 Uow,
                 new AssistantSessionOptions { SystemPrompt = "system prompt", MaxHistoryMessages = 20 },
@@ -166,12 +255,13 @@ public sealed class AssistantSessionServiceTests
 
     private sealed class FakeAiChatClient : IAiChatClient
     {
+        public string NextContent { get; set; } = "ok";
         public IReadOnlyCollection<ConversationMessage>? LastMessages { get; private set; }
 
         public Task<AssistantCompletionResult> CompleteAsync(IReadOnlyCollection<ConversationMessage> messages, CancellationToken cancellationToken = default)
         {
             LastMessages = messages;
-            return Task.FromResult(new AssistantCompletionResult("ok", "test-model", null));
+            return Task.FromResult(new AssistantCompletionResult(NextContent, "test-model", null));
         }
     }
 
@@ -256,6 +346,71 @@ public sealed class AssistantSessionServiceTests
         }
     }
 
+    private sealed class FakeSystemPromptRepository : ISystemPromptRepository
+    {
+        public readonly List<SystemPromptEntry> Entries = [];
+        public SystemPromptEntry? ActivePrompt { get; set; }
+
+        public Task<SystemPromptEntry?> GetActiveAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(ActivePrompt);
+        }
+
+        public Task<IReadOnlyList<SystemPromptEntry>> GetRecentAsync(int take, CancellationToken cancellationToken = default)
+        {
+            var result = Entries.OrderByDescending(x => x.Version).Take(Math.Max(0, take)).ToList();
+            return Task.FromResult<IReadOnlyList<SystemPromptEntry>>(result);
+        }
+
+        public Task<int> GetLatestVersionAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Entries.Count == 0 ? 0 : Entries.Max(x => x.Version));
+        }
+
+        public Task AddAsync(SystemPromptEntry entry, CancellationToken cancellationToken = default)
+        {
+            if (entry.Id == 0)
+            {
+                entry.Id = Entries.Count + 1;
+            }
+
+            Entries.Add(entry);
+            if (entry.IsActive)
+            {
+                ActivePrompt = entry;
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeSystemPromptProposalRepository : ISystemPromptProposalRepository
+    {
+        public readonly List<SystemPromptProposal> Proposals = [];
+
+        public Task<SystemPromptProposal?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Proposals.FirstOrDefault(x => x.Id == id));
+        }
+
+        public Task<IReadOnlyList<SystemPromptProposal>> GetRecentAsync(int take, CancellationToken cancellationToken = default)
+        {
+            var result = Proposals.OrderByDescending(x => x.CreatedAtUtc).Take(Math.Max(0, take)).ToList();
+            return Task.FromResult<IReadOnlyList<SystemPromptProposal>>(result);
+        }
+
+        public Task AddAsync(SystemPromptProposal proposal, CancellationToken cancellationToken = default)
+        {
+            if (proposal.Id == 0)
+            {
+                proposal.Id = Proposals.Count + 1;
+            }
+
+            Proposals.Add(proposal);
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class FakeConversationMemoryExtractor : IConversationMemoryExtractor
     {
         public IReadOnlyCollection<MemoryFactCandidate> Facts { get; set; } = [];
@@ -302,5 +457,7 @@ public sealed class AssistantSessionServiceTests
         }
     }
 }
+
+
 
 
