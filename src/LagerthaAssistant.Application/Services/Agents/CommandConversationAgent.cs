@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.Application.Services.Agents;
+namespace LagerthaAssistant.Application.Services.Agents;
 
 using System.Text;
 using LagerthaAssistant.Application.Constants;
@@ -44,6 +44,8 @@ public sealed class CommandConversationAgent : IConversationAgent
             ConversationCommandIntentType.Memory => await BuildMemoryResultAsync(cancellationToken),
             ConversationCommandIntentType.PromptShow => await BuildPromptResultAsync(cancellationToken),
             ConversationCommandIntentType.PromptResetDefault => await ResetPromptResultAsync(cancellationToken),
+            ConversationCommandIntentType.PromptHistory => await BuildPromptHistoryResultAsync(cancellationToken),
+            ConversationCommandIntentType.PromptProposals => await BuildPromptProposalsResultAsync(cancellationToken),
             ConversationCommandIntentType.SyncStatus => await BuildSyncStatusResultAsync(cancellationToken),
             ConversationCommandIntentType.SyncRun => await BuildSyncRunResultAsync(intent.Number ?? DefaultSyncRunTake, cancellationToken),
             ConversationCommandIntentType.ResetConversation => ResetConversationResult(),
@@ -103,6 +105,50 @@ public sealed class CommandConversationAgent : IConversationAgent
         return ConversationAgentResult.Empty(Name, "command.prompt.default", message);
     }
 
+    private async Task<ConversationAgentResult> BuildPromptHistoryResultAsync(CancellationToken cancellationToken)
+    {
+        var history = await _assistantSessionService.GetSystemPromptHistoryAsync(DefaultPreviewTake, cancellationToken);
+        if (history.Count == 0)
+        {
+            return ConversationAgentResult.Empty(Name, "command.prompt.history", "System prompt history is empty.");
+        }
+
+        var message = string.Join(
+            Environment.NewLine,
+            history.SelectMany(item =>
+            {
+                var activeFlag = item.IsActive ? " [active]" : string.Empty;
+                return new[]
+                {
+                    $"- v{item.Version}{activeFlag} source={item.Source} created={item.CreatedAtUtc:yyyy-MM-dd HH:mm:ss} UTC",
+                    $"  {item.PromptText}"
+                };
+            }));
+
+        return ConversationAgentResult.Empty(Name, "command.prompt.history", message);
+    }
+
+    private async Task<ConversationAgentResult> BuildPromptProposalsResultAsync(CancellationToken cancellationToken)
+    {
+        var proposals = await _assistantSessionService.GetSystemPromptProposalsAsync(DefaultPreviewTake, cancellationToken);
+        if (proposals.Count == 0)
+        {
+            return ConversationAgentResult.Empty(Name, "command.prompt.proposals", "System prompt proposals are empty.");
+        }
+
+        var message = string.Join(
+            Environment.NewLine,
+            proposals.SelectMany(item =>
+                new[]
+                {
+                    $"- #{item.Id} status={item.Status} source={item.Source} confidence={item.Confidence:F2} created={item.CreatedAtUtc:yyyy-MM-dd HH:mm:ss} UTC",
+                    $"  reason: {item.Reason}",
+                    $"  prompt: {item.ProposedPrompt}"
+                }));
+
+        return ConversationAgentResult.Empty(Name, "command.prompt.proposals", message);
+    }
+
     private async Task<ConversationAgentResult> BuildSyncStatusResultAsync(CancellationToken cancellationToken)
     {
         var pending = await _vocabularySyncProcessor.GetPendingCountAsync(cancellationToken);
@@ -133,6 +179,8 @@ public sealed class CommandConversationAgent : IConversationAgent
             "- show memory",
             "- show system prompt",
             "- reset prompt to default",
+            "- show prompt history",
+            "- show prompt proposals",
             "- sync status",
             "- run sync [N]",
             "- reset conversation",

@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.Application.Services.Agents;
+namespace LagerthaAssistant.Application.Services.Agents;
 
 using System.Text.RegularExpressions;
 using LagerthaAssistant.Application.Interfaces.Agents;
@@ -73,6 +73,18 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
         if (normalized.Equals("/prompt default", StringComparison.Ordinal))
         {
             intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptResetDefault, Raw: normalized);
+            return true;
+        }
+
+        if (normalized.Equals("/prompt history", StringComparison.Ordinal))
+        {
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptHistory, Raw: normalized);
+            return true;
+        }
+
+        if (normalized.Equals("/prompt proposals", StringComparison.Ordinal))
+        {
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptProposals, Raw: normalized);
             return true;
         }
 

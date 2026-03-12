@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.Application.Tests.Services.Agents;
+namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
 using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
@@ -35,7 +35,7 @@ public sealed class CommandConversationAgentTests
             History =
             [
                 ConversationMessage.Create(MessageRole.User, "void", DateTimeOffset.UtcNow),
-                ConversationMessage.Create(MessageRole.Assistant, "(n) порожнеча", DateTimeOffset.UtcNow)
+                ConversationMessage.Create(MessageRole.Assistant, "(n) emptiness", DateTimeOffset.UtcNow)
             ]
         };
 
@@ -48,7 +48,68 @@ public sealed class CommandConversationAgentTests
 
         Assert.Equal("command.history", result.Intent);
         Assert.Contains("- User: void", result.Message);
-        Assert.Contains("- Assistant: (n) порожнеча", result.Message);
+        Assert.Contains("- Assistant: (n) emptiness", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldReturnPromptHistory_ForPromptHistoryCommand()
+    {
+        var timestamp = new DateTimeOffset(2026, 03, 12, 10, 0, 0, TimeSpan.Zero);
+        var session = new FakeAssistantSessionService
+        {
+            PromptHistory =
+            [
+                new SystemPromptEntry
+                {
+                    Version = 2,
+                    IsActive = true,
+                    Source = "manual",
+                    CreatedAtUtc = timestamp,
+                    PromptText = "latest prompt"
+                }
+            ]
+        };
+
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext("/prompt history", ["/prompt history"]));
+
+        Assert.Equal("command.prompt.history", result.Intent);
+        Assert.Contains("v2 [active] source=manual created=2026-03-12 10:00:00 UTC", result.Message);
+        Assert.Contains("latest prompt", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldReturnPromptProposals_ForPromptProposalsCommand()
+    {
+        var timestamp = new DateTimeOffset(2026, 03, 12, 11, 30, 0, TimeSpan.Zero);
+        var session = new FakeAssistantSessionService
+        {
+            PromptProposals =
+            [
+                new SystemPromptProposal
+                {
+                    Id = 42,
+                    Status = "proposed",
+                    Source = "ai",
+                    Confidence = 0.95,
+                    CreatedAtUtc = timestamp,
+                    Reason = "Improve formatting consistency",
+                    ProposedPrompt = "new prompt"
+                }
+            ]
+        };
+
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext("/prompt proposals", ["/prompt proposals"]));
+
+        Assert.Equal("command.prompt.proposals", result.Intent);
+        Assert.Contains("#42 status=proposed source=ai confidence=0.95 created=2026-03-12 11:30:00 UTC", result.Message);
+        Assert.Contains("reason: Improve formatting consistency", result.Message);
+        Assert.Contains("prompt: new prompt", result.Message);
     }
 
     [Fact]
@@ -85,6 +146,10 @@ public sealed class CommandConversationAgentTests
 
         public IReadOnlyCollection<UserMemoryEntry> Memory { get; set; } = [];
 
+        public IReadOnlyCollection<SystemPromptEntry> PromptHistory { get; set; } = [];
+
+        public IReadOnlyCollection<SystemPromptProposal> PromptProposals { get; set; } = [];
+
         public string Prompt { get; set; } = "default prompt";
 
         public Task<AssistantCompletionResult> AskAsync(string userMessage, CancellationToken cancellationToken = default)
@@ -100,10 +165,10 @@ public sealed class CommandConversationAgentTests
             => Task.FromResult(Prompt);
 
         public Task<IReadOnlyCollection<SystemPromptEntry>> GetSystemPromptHistoryAsync(int take, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyCollection<SystemPromptEntry>>([]);
+            => Task.FromResult(PromptHistory);
 
         public Task<IReadOnlyCollection<SystemPromptProposal>> GetSystemPromptProposalsAsync(int take, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyCollection<SystemPromptProposal>>([]);
+            => Task.FromResult(PromptProposals);
 
         public Task<SystemPromptProposal> CreateSystemPromptProposalAsync(string prompt, string reason, double confidence, string source = "manual", CancellationToken cancellationToken = default)
             => Task.FromResult(new SystemPromptProposal());

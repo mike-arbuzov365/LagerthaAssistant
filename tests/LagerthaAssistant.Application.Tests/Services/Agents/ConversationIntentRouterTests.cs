@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.Application.Tests.Services.Agents;
+namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Services.Agents;
@@ -49,6 +49,28 @@ public sealed class ConversationIntentRouterTests
         Assert.True(handled);
         Assert.Equal(ConversationCommandIntentType.SyncRun, intent.Type);
         Assert.Equal(15, intent.Number);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseSlashPromptHistory()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("/prompt history", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.PromptHistory, intent.Type);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseSlashPromptProposals()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("/prompt proposals", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.PromptProposals, intent.Type);
     }
 
     [Fact]

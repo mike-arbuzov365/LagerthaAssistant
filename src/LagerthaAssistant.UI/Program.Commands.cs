@@ -194,20 +194,6 @@ internal static partial class Program
             return CommandHandlingResult.Exit(saveMode);
         }
 
-        if (command.Equals(ConsoleCommands.PromptHistory, StringComparison.OrdinalIgnoreCase))
-        {
-            var history = await assistantSession.GetSystemPromptHistoryAsync(ConsoleCommands.PromptHistoryTake);
-            PrintPromptHistory(history);
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
-        if (command.Equals(ConsoleCommands.PromptProposals, StringComparison.OrdinalIgnoreCase))
-        {
-            var proposals = await assistantSession.GetSystemPromptProposalsAsync(ConsoleCommands.PromptProposalsTake);
-            PrintPromptProposals(proposals);
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
         var setPrefix = $"{ConsoleCommands.Prompt} set";
         if (command.Equals(setPrefix, StringComparison.OrdinalIgnoreCase))
         {
