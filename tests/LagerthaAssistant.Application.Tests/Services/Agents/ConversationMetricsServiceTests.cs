@@ -42,6 +42,33 @@ public sealed class ConversationMetricsServiceTests
     }
 
     [Fact]
+    public async Task TrackAsync_ShouldNormalizeAndTrimValuesToStorageLimits()
+    {
+        var repository = new FakeConversationIntentMetricRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var clock = new FakeClock { UtcNowValue = new DateTimeOffset(2026, 03, 12, 10, 00, 00, TimeSpan.Zero) };
+
+        var sut = new ConversationMetricsService(
+            repository,
+            unitOfWork,
+            clock,
+            NullLogger<ConversationMetricsService>.Instance);
+
+        var result = new ConversationAgentResult(
+            new string('B', 150),
+            new string('C', 140),
+            false,
+            []);
+
+        await sut.TrackAsync(new string('A', 80), result);
+
+        var tracked = Assert.Single(repository.Rows);
+        Assert.Equal(new string('a', 64), tracked.Channel);
+        Assert.Equal(new string('b', 128), tracked.AgentName);
+        Assert.Equal(new string('c', 128), tracked.Intent);
+    }
+
+    [Fact]
     public async Task GetTopIntentsAsync_ShouldClampDaysAndTake()
     {
         var repository = new FakeConversationIntentMetricRepository();

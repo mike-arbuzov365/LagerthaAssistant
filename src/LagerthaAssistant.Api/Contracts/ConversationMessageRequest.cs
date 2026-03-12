@@ -1,3 +1,5 @@
 namespace LagerthaAssistant.Api.Contracts;
 
-public sealed record ConversationMessageRequest(string Input);
+public sealed record ConversationMessageRequest(
+    string Input,
+    string? Channel = null);

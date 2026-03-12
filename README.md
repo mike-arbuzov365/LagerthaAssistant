@@ -177,6 +177,9 @@ On startup both UI and API apply EF migrations automatically.
 
 For `POST /api/conversation/messages`, you can send natural language command-like requests (no slash required), for example:
 
+- Optional request field `channel` can be used for multi-channel clients (`api` by default).
+- Example request body: `{"input":"void","channel":"telegram"}`
+
 - `show conversation history`
 - `show active memory`
 - `show system prompt`

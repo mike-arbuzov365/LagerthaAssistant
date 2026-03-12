@@ -9,6 +9,10 @@ using Microsoft.Extensions.Logging;
 
 public sealed class ConversationMetricsService : IConversationMetricsService
 {
+    private const int ChannelMaxLength = 64;
+    private const int AgentMaxLength = 128;
+    private const int IntentMaxLength = 128;
+
     private readonly IConversationIntentMetricRepository _metricsRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IClock _clock;
@@ -32,8 +36,8 @@ public sealed class ConversationMetricsService : IConversationMetricsService
         CancellationToken cancellationToken = default)
     {
         var normalizedChannel = NormalizeChannel(channel);
-        var normalizedAgent = NormalizeText(result.AgentName, "unknown-agent");
-        var normalizedIntent = NormalizeText(result.Intent, "unknown-intent");
+        var normalizedAgent = NormalizeText(result.AgentName, "unknown-agent", AgentMaxLength);
+        var normalizedIntent = NormalizeText(result.Intent, "unknown-intent", IntentMaxLength);
         var now = _clock.UtcNow;
 
         await _metricsRepository.IncrementAsync(
@@ -75,14 +79,19 @@ public sealed class ConversationMetricsService : IConversationMetricsService
 
     private static string NormalizeChannel(string? channel)
     {
-        return NormalizeText(channel, "unknown");
+        return NormalizeText(channel, "unknown", ChannelMaxLength);
     }
 
-    private static string NormalizeText(string? value, string fallback)
+    private static string NormalizeText(string? value, string fallback, int maxLength)
     {
         var normalized = value?.Trim().ToLowerInvariant();
-        return string.IsNullOrWhiteSpace(normalized)
-            ? fallback
-            : normalized;
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return fallback;
+        }
+
+        return normalized.Length <= maxLength
+            ? normalized
+            : normalized[..maxLength];
     }
 }

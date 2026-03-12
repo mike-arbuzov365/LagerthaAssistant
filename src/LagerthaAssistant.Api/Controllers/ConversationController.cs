@@ -10,6 +10,8 @@ namespace LagerthaAssistant.Api.Controllers;
 [Route("api/conversation")]
 public sealed class ConversationController : ControllerBase
 {
+    private const string DefaultChannel = "api";
+
     private readonly IConversationOrchestrator _orchestrator;
 
     public ConversationController(IConversationOrchestrator orchestrator)
@@ -29,7 +31,8 @@ public sealed class ConversationController : ControllerBase
             return BadRequest("Input is required.");
         }
 
-        var result = await _orchestrator.ProcessAsync(request.Input, "api", cancellationToken);
+        var channel = NormalizeChannel(request.Channel);
+        var result = await _orchestrator.ProcessAsync(request.Input, channel, cancellationToken);
         return Ok(Map(result));
     }
 
@@ -91,5 +94,12 @@ public sealed class ConversationController : ControllerBase
 
         return string.Join(" | ", lines);
     }
-}
 
+    private static string NormalizeChannel(string? channel)
+    {
+        var normalized = channel?.Trim().ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(normalized)
+            ? DefaultChannel
+            : normalized;
+    }
+}
