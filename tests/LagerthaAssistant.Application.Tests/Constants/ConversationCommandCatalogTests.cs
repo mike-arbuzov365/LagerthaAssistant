@@ -5,6 +5,28 @@ using Xunit;
 
 public sealed class ConversationCommandCatalogTests
 {
+    public static TheoryData<string, string> ExpectedCommandCategories =>
+        new()
+        {
+            { ConversationSlashCommands.Help, ConversationCommandCategories.General },
+            { ConversationSlashCommands.History, ConversationCommandCategories.Conversation },
+            { ConversationSlashCommands.Memory, ConversationCommandCategories.Conversation },
+            { ConversationSlashCommands.Prompt, ConversationCommandCategories.SystemPrompt },
+            { ConversationSlashCommands.PromptDefault, ConversationCommandCategories.SystemPrompt },
+            { ConversationSlashCommands.PromptHistory, ConversationCommandCategories.SystemPrompt },
+            { $"{ConversationSlashCommands.PromptSet} <text>", ConversationCommandCategories.SystemPrompt },
+            { ConversationSlashCommands.PromptProposals, ConversationCommandCategories.PromptProposals },
+            { $"{ConversationSlashCommands.PromptPropose} <reason> || <text>", ConversationCommandCategories.PromptProposals },
+            { $"{ConversationSlashCommands.PromptImprove} <goal>", ConversationCommandCategories.PromptProposals },
+            { $"{ConversationSlashCommands.PromptApply} <id>", ConversationCommandCategories.PromptProposals },
+            { $"{ConversationSlashCommands.PromptReject} <id>", ConversationCommandCategories.PromptProposals },
+            { ConversationSlashCommands.Sync, ConversationCommandCategories.SyncQueue },
+            { ConversationSlashCommands.SyncStatus, ConversationCommandCategories.SyncQueue },
+            { ConversationSlashCommands.SyncRun, ConversationCommandCategories.SyncQueue },
+            { $"{ConversationSlashCommands.SyncRun} <n>", ConversationCommandCategories.SyncQueue },
+            { ConversationSlashCommands.Reset, ConversationCommandCategories.Session }
+        };
+
     [Fact]
     public void SlashCommands_ShouldUseUniqueCommandKeys()
     {
@@ -61,5 +83,16 @@ public sealed class ConversationCommandCatalogTests
         {
             Assert.True(commands.Contains(command), $"Expected catalog command '{command}' was not found.");
         }
+    }
+
+    [Theory]
+    [MemberData(nameof(ExpectedCommandCategories))]
+    public void SlashCommands_ShouldAssignExpectedCategories(string command, string expectedCategory)
+    {
+        var item = Assert.Single(
+            ConversationCommandCatalog.SlashCommands,
+            candidate => candidate.Command.Equals(command, StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(expectedCategory, item.Category);
     }
 }
