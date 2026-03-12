@@ -226,58 +226,17 @@ internal static partial class Program
         IVocabularyPersistenceService vocabularyPersistenceService,
         SaveMode saveMode)
     {
-        var pendingSaves = new List<PendingVocabularySave>();
+        var workflowItems = await vocabularyWorkflowService.ProcessBatchAsync(batchItems);
+        var mappedItems = workflowItems
+            .Select(item => new ConversationAgentItemResult(
+                item.Input,
+                item.Lookup,
+                item.AssistantCompletion,
+                item.AppendPreview))
+            .ToList();
 
-        foreach (var item in batchItems)
-        {
-            Console.WriteLine();
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine($"Processing: {item}");
-            Console.ResetColor();
-
-            var workflowResult = await vocabularyWorkflowService.ProcessAsync(item);
-
-            if (workflowResult.FoundInDeck)
-            {
-                PrintVocabularyFromDeck(workflowResult.Lookup);
-                continue;
-            }
-
-            if (workflowResult.AssistantCompletion is null || workflowResult.AppendPreview is null)
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("warning: Could not process vocabulary input.");
-                Console.ResetColor();
-                continue;
-            }
-
-            var completion = workflowResult.AssistantCompletion;
-            var preview = workflowResult.AppendPreview;
-
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"Assistant ({completion.Model}) > {completion.Content}");
-            Console.ResetColor();
-
-            if (preview.Status == VocabularyAppendPreviewStatus.ReadyToAppend
-                && !string.IsNullOrWhiteSpace(preview.TargetDeckFileName)
-                && !string.IsNullOrWhiteSpace(preview.TargetDeckPath))
-            {
-                pendingSaves.Add(new PendingVocabularySave(item, completion.Content, preview));
-            }
-            else
-            {
-                PrintVocabularyAppendPreviewResult(preview);
-            }
-
-            if (completion.Usage is not null)
-            {
-                Console.WriteLine(
-                    $"Tokens: prompt={completion.Usage.PromptTokens}, completion={completion.Usage.CompletionTokens}, total={completion.Usage.TotalTokens}");
-            }
-        }
-
-        return await FinalizePendingBatchSavesAsync(
-            pendingSaves,
+        return await HandleVocabularyBatchAgentItemsAsync(
+            mappedItems,
             vocabularyDeckService,
             vocabularyPersistenceService,
             saveMode);
@@ -610,3 +569,4 @@ internal static partial class Program
     }
 
 }
+
