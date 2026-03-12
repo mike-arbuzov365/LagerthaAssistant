@@ -200,7 +200,7 @@ Slash command forms are also supported through the same command-agent path, incl
 - `/prompt reject <id>`
 
 Command catalog endpoint (for external clients):
-- `GET /api/conversation/commands`
+- `GET /api/conversation/commands` (returns `category`, `command`, `description`)
 
 Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
 
