@@ -8,6 +8,11 @@ public interface IConversationSessionRepository
 
     Task<ConversationSession?> GetLatestAsync(CancellationToken cancellationToken = default);
 
+    Task<ConversationSession?> GetLatestAsync(
+        string channel,
+        string userId,
+        string conversationId,
+        CancellationToken cancellationToken = default);
+
     Task AddAsync(ConversationSession session, CancellationToken cancellationToken = default);
 }
-

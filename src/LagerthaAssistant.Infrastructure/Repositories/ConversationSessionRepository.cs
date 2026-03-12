@@ -10,6 +10,10 @@ using LagerthaAssistant.Infrastructure.Exceptions;
 
 public sealed class ConversationSessionRepository : IConversationSessionRepository
 {
+    private const string DefaultChannel = "unknown";
+    private const string DefaultUserId = "anonymous";
+    private const string DefaultConversationId = "default";
+
     private readonly AppDbContext _context;
     private readonly ILogger<ConversationSessionRepository> _logger;
 
@@ -35,19 +39,38 @@ public sealed class ConversationSessionRepository : IConversationSessionReposito
         }
     }
 
-    public async Task<ConversationSession?> GetLatestAsync(CancellationToken cancellationToken = default)
+    public Task<ConversationSession?> GetLatestAsync(CancellationToken cancellationToken = default)
+        => GetLatestAsync(DefaultChannel, DefaultUserId, DefaultConversationId, cancellationToken);
+
+    public async Task<ConversationSession?> GetLatestAsync(
+        string channel,
+        string userId,
+        string conversationId,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            _logger.LogDebug("Executing {Operation} for latest session", RepositoryOperations.GetLatest);
+            _logger.LogDebug(
+                "Executing {Operation} for latest session by scope Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}",
+                RepositoryOperations.GetLatest,
+                channel,
+                userId,
+                conversationId);
 
             return await _context.ConversationSessions
+                .Where(x => x.Channel == channel && x.UserId == userId && x.ConversationId == conversationId)
                 .OrderByDescending(x => x.UpdatedAt)
                 .FirstOrDefaultAsync(cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in {Operation}", RepositoryOperations.GetLatest);
+            _logger.LogError(
+                ex,
+                "Error in {Operation} for scope Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}",
+                RepositoryOperations.GetLatest,
+                channel,
+                userId,
+                conversationId);
             throw new RepositoryException(nameof(ConversationSessionRepository), RepositoryOperations.GetLatest, "Failed to load latest session", ex);
         }
     }
@@ -69,4 +92,3 @@ public sealed class ConversationSessionRepository : IConversationSessionReposito
         }
     }
 }
-

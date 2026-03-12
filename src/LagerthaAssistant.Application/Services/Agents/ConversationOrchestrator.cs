@@ -1,6 +1,7 @@
 namespace LagerthaAssistant.Application.Services.Agents;
 
 using LagerthaAssistant.Application.Interfaces.Agents;
+using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Services.Vocabulary;
 using Microsoft.Extensions.Logging;
@@ -12,25 +13,36 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
     private readonly IReadOnlyList<IConversationAgent> _agents;
     private readonly ILogger<ConversationOrchestrator> _logger;
     private readonly IConversationMetricsService _metricsService;
+    private readonly IConversationScopeAccessor _scopeAccessor;
 
     public ConversationOrchestrator(
         IEnumerable<IConversationAgent> agents,
         ILogger<ConversationOrchestrator> logger,
+        IConversationScopeAccessor scopeAccessor,
         IConversationMetricsService? metricsService = null)
     {
         _agents = agents
             .OrderBy(agent => agent.Order)
             .ToList();
         _logger = logger;
+        _scopeAccessor = scopeAccessor;
         _metricsService = metricsService ?? NoopMetricsService;
     }
 
     public Task<ConversationAgentResult> ProcessAsync(string input, CancellationToken cancellationToken = default)
-        => ProcessAsync(input, "unknown", cancellationToken);
+        => ProcessAsync(input, ConversationScope.DefaultChannel, null, null, cancellationToken);
+
+    public Task<ConversationAgentResult> ProcessAsync(
+        string input,
+        string channel,
+        CancellationToken cancellationToken = default)
+        => ProcessAsync(input, channel, null, null, cancellationToken);
 
     public async Task<ConversationAgentResult> ProcessAsync(
         string input,
         string channel,
+        string? userId,
+        string? conversationId,
         CancellationToken cancellationToken = default)
     {
         var normalizedInput = input?.Trim() ?? string.Empty;
@@ -39,13 +51,16 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
             throw new ArgumentException("Input cannot be empty.", nameof(input));
         }
 
+        var scope = ConversationScope.Create(channel, userId, conversationId);
+        _scopeAccessor.Set(scope);
+
         var parsedItems = VocabularyBatchInputParser.Parse(normalizedInput);
         if (parsedItems.Count == 0)
         {
             parsedItems = [normalizedInput];
         }
 
-        var context = new ConversationAgentContext(normalizedInput, parsedItems);
+        var context = new ConversationAgentContext(normalizedInput, parsedItems, scope);
 
         foreach (var agent in _agents)
         {
@@ -57,20 +72,24 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
             var result = await agent.HandleAsync(context, cancellationToken);
 
             _logger.LogInformation(
-                "Conversation routed. Channel={Channel}; Agent={Agent}; Intent={Intent}; IsBatch={IsBatch}; Items={ItemsCount}",
-                channel,
+                "Conversation routed. Channel={Channel}; UserId={UserId}; ConversationId={ConversationId}; Agent={Agent}; Intent={Intent}; IsBatch={IsBatch}; Items={ItemsCount}",
+                scope.Channel,
+                scope.UserId,
+                scope.ConversationId,
                 result.AgentName,
                 result.Intent,
                 result.IsBatch,
                 result.Items.Count);
 
-            await TrackMetricsSafelyAsync(channel, result, cancellationToken);
+            await TrackMetricsSafelyAsync(scope.Channel, result, cancellationToken);
             return result;
         }
 
         _logger.LogWarning(
-            "No conversation agent is available for input on channel {Channel}: {Input}",
-            channel,
+            "No conversation agent is available for input on channel {Channel}, user {UserId}, conversation {ConversationId}: {Input}",
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
             normalizedInput);
 
         throw new InvalidOperationException("No conversation agent is available for current input.");

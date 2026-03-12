@@ -2,8 +2,10 @@ namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
 using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
+using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.AI;
+using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Agents;
 using LagerthaAssistant.Domain.AI;
@@ -30,7 +32,10 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             new VocabularyConversationAgent(workflow)
         ];
 
-        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor());
 
         var result = await sut.ProcessAsync("show conversation history");
 
@@ -53,7 +58,10 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             new VocabularyConversationAgent(workflow)
         ];
 
-        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor());
 
         var result = await sut.ProcessAsync("/prompt set Keep replies concise");
 
@@ -77,7 +85,10 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             new VocabularyConversationAgent(workflow)
         ];
 
-        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor());
         var prompt = $"line one{Environment.NewLine}line two";
 
         var result = await sut.ProcessAsync($"/prompt set {prompt}");
@@ -102,7 +113,10 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             new VocabularyConversationAgent(workflow)
         ];
 
-        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor());
 
         var result = await sut.ProcessAsync("/prompt propose Too verbose || Keep replies concise");
 
@@ -127,7 +141,10 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             new VocabularyConversationAgent(workflow)
         ];
 
-        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor());
 
         var result = await sut.ProcessAsync("/prompt apply 17");
 
@@ -151,7 +168,10 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             new VocabularyConversationAgent(workflow)
         ];
 
-        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor());
 
         var result = await sut.ProcessAsync("/prompt reject 19");
 
@@ -175,7 +195,10 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             new VocabularyConversationAgent(workflow)
         ];
 
-        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor());
 
         var result = await sut.ProcessAsync("history");
 
@@ -303,6 +326,16 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         public void Reset()
         {
+        }
+    }
+
+    private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
+    {
+        public ConversationScope Current { get; private set; } = ConversationScope.Default;
+
+        public void Set(ConversationScope scope)
+        {
+            Current = scope;
         }
     }
 }

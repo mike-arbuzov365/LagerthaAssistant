@@ -4,7 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.AI;
+using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Models.AI;
+using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Services;
 using LagerthaAssistant.Application.Services.Memory;
 using LagerthaAssistant.Domain.AI;
@@ -98,6 +100,7 @@ public sealed class PersistenceIntegrationTests
                 new UnitOfWork(context, NullLogger<UnitOfWork>.Instance),
                 new AssistantSessionOptions { SystemPrompt = "system prompt", MaxHistoryMessages = 20 },
                 new FakeClock(),
+                new FakeConversationScopeAccessor(),
                 NullLogger<AssistantSessionService>.Instance);
 
             await sut.AskAsync("my name is Lagertha and i prefer english");
@@ -183,6 +186,16 @@ public sealed class PersistenceIntegrationTests
         public DateTimeOffset UtcNow { get; } = new(2026, 3, 8, 12, 0, 0, TimeSpan.Zero);
     }
 
+    private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
+    {
+        public ConversationScope Current { get; private set; } = ConversationScope.Default;
+
+        public void Set(ConversationScope scope)
+        {
+            Current = scope;
+        }
+    }
+
     private sealed class FakeAiChatClient : IAiChatClient
     {
         public IReadOnlyCollection<ConversationMessage>? LastMessages { get; private set; }
@@ -194,6 +207,10 @@ public sealed class PersistenceIntegrationTests
         }
     }
 }
+
+
+
+
 
 
 

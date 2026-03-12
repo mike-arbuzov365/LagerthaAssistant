@@ -63,7 +63,6 @@ public sealed class ConversationControllerTests
         Assert.Equal("vocabulary.single", payload.Intent);
     }
 
-
     [Fact]
     public async Task PostMessage_ShouldNormalizeProvidedChannel()
     {
@@ -76,6 +75,20 @@ public sealed class ConversationControllerTests
         Assert.Equal("telegram", orchestrator.LastChannel);
     }
 
+    [Fact]
+    public async Task PostMessage_ShouldForwardUserAndConversationIds()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sut = new ConversationController(orchestrator);
+
+        var response = await sut.PostMessage(
+            new ConversationMessageRequest("void", "api", "Mike", "chat-42"),
+            CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(response.Result);
+        Assert.Equal("Mike", orchestrator.LastUserId);
+        Assert.Equal("chat-42", orchestrator.LastConversationId);
+    }
 
     [Fact]
     public async Task PostMessage_ShouldMapCommandResultPayload()
@@ -99,7 +112,6 @@ public sealed class ConversationControllerTests
         Assert.Equal("System prompt updated and saved.", payload.Message);
     }
 
-
     [Fact]
     public async Task PostMessage_ShouldReturnBadRequest_WhenInputIsEmpty()
     {
@@ -118,6 +130,10 @@ public sealed class ConversationControllerTests
 
         public string LastChannel { get; private set; } = string.Empty;
 
+        public string? LastUserId { get; private set; }
+
+        public string? LastConversationId { get; private set; }
+
         public ConversationAgentResult NextResult { get; set; } = new(
             "vocabulary-agent",
             "vocabulary.single",
@@ -125,15 +141,25 @@ public sealed class ConversationControllerTests
             []);
 
         public Task<ConversationAgentResult> ProcessAsync(string input, CancellationToken cancellationToken = default)
-            => ProcessAsync(input, "unknown", cancellationToken);
+            => ProcessAsync(input, "unknown", null, null, cancellationToken);
 
         public Task<ConversationAgentResult> ProcessAsync(
             string input,
             string channel,
             CancellationToken cancellationToken = default)
+            => ProcessAsync(input, channel, null, null, cancellationToken);
+
+        public Task<ConversationAgentResult> ProcessAsync(
+            string input,
+            string channel,
+            string? userId,
+            string? conversationId,
+            CancellationToken cancellationToken = default)
         {
             Calls++;
             LastChannel = channel;
+            LastUserId = userId;
+            LastConversationId = conversationId;
             return Task.FromResult(NextResult);
         }
     }

@@ -47,7 +47,12 @@ public sealed class ConversationController : ControllerBase
         }
 
         var channel = NormalizeChannel(request.Channel);
-        var result = await _orchestrator.ProcessAsync(request.Input, channel, cancellationToken);
+        var result = await _orchestrator.ProcessAsync(
+            request.Input,
+            channel,
+            request.UserId,
+            request.ConversationId,
+            cancellationToken);
         return Ok(Map(result));
     }
 
