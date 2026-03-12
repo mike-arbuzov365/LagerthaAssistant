@@ -9,4 +9,8 @@ public sealed class VocabularySyncWorkerOptions
     public int BatchSize { get; set; } = 25;
 
     public bool RunOnStartup { get; set; } = true;
+
+    public int MaxBackoffSeconds { get; set; } = 300;
+
+    public int BackoffFactor { get; set; } = 2;
 }

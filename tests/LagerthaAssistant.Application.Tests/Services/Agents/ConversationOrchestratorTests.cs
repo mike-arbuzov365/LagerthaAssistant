@@ -6,6 +6,7 @@ using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Agents;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 public sealed class ConversationOrchestratorTests
@@ -20,7 +21,7 @@ public sealed class ConversationOrchestratorTests
             new VocabularyConversationAgent(workflow)
         };
 
-        var sut = new ConversationOrchestrator(agents);
+        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
 
         var result = await sut.ProcessAsync("/help");
 
@@ -45,7 +46,7 @@ public sealed class ConversationOrchestratorTests
             new VocabularyConversationAgent(workflow)
         };
 
-        var sut = new ConversationOrchestrator(agents);
+        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
 
         var result = await sut.ProcessAsync("void");
 
@@ -114,3 +115,5 @@ public sealed class ConversationOrchestratorTests
         }
     }
 }
+
+

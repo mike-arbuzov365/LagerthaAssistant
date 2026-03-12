@@ -125,6 +125,23 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
 
         var pendingAfterRun = await _syncJobRepository.CountPendingAsync(cancellationToken);
 
+        if (processed > 0 || failed > 0 || requeued > 0)
+        {
+            _logger.LogInformation(
+                "Vocabulary sync processor run summary. Requested={Requested}, Processed={Processed}, Completed={Completed}, Requeued={Requeued}, Failed={Failed}, PendingAfterRun={PendingAfterRun}",
+                requested,
+                processed,
+                completed,
+                requeued,
+                failed,
+                pendingAfterRun);
+        }
+        else
+        {
+            _logger.LogDebug("Vocabulary sync processor found no pending jobs.");
+        }
+
+
         return new VocabularySyncRunSummary(
             Requested: requested,
             Processed: processed,
@@ -148,6 +165,7 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
             || message.Contains("version conflict", StringComparison.OrdinalIgnoreCase);
     }
 }
+
 
 
 

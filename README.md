@@ -106,14 +106,18 @@ Notes:
   "Enabled": false,
   "IntervalSeconds": 60,
   "BatchSize": 25,
-  "RunOnStartup": true
+  "RunOnStartup": true,
+  "MaxBackoffSeconds": 300,
+  "BackoffFactor": 2
 }
 ```
 
 Notes:
 - Worker runs only in API host (`LagerthaAssistant.Api`), not in console UI.
 - Keep `Enabled=false` by default; turn on when you want automatic retry of pending sync jobs.
+- Worker applies exponential backoff on runtime failures up to `MaxBackoffSeconds` (`BackoffFactor` controls growth).
 - Manual processing is available from UI commands (`/sync`, `/sync run`) and API endpoints.
+
 ### Microsoft Entra quick setup
 
 1. Open [Microsoft Entra admin center](https://entra.microsoft.com/) -> `Identity` -> `Applications` -> `App registrations` -> `New registration`.
@@ -223,6 +227,8 @@ Use `/help` to see full command reference in the console.
 dotnet build LagerthaAssistant.slnx
 dotnet test LagerthaAssistant.slnx -v minimal
 ```
+
+
 
 
 

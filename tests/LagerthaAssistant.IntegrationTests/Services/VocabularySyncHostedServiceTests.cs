@@ -11,6 +11,29 @@ using Xunit;
 
 public sealed class VocabularySyncHostedServiceTests
 {
+    [Theory]
+    [InlineData(60, 300, 2, 0, 60)]
+    [InlineData(60, 300, 2, 1, 120)]
+    [InlineData(60, 300, 2, 2, 240)]
+    [InlineData(60, 300, 2, 3, 300)]
+    [InlineData(10, 120, 3, 2, 90)]
+    [InlineData(10, 120, 3, 3, 120)]
+    public void CalculateDelay_ShouldApplyExponentialBackoff_WithCap(
+        int intervalSeconds,
+        int maxBackoffSeconds,
+        int backoffFactor,
+        int failureStreak,
+        int expectedSeconds)
+    {
+        var delay = VocabularySyncHostedService.CalculateDelay(
+            intervalSeconds,
+            maxBackoffSeconds,
+            backoffFactor,
+            failureStreak);
+
+        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), delay);
+    }
+
     [Fact]
     public async Task StartAsync_ShouldRunSyncOnStartup_WhenEnabled()
     {

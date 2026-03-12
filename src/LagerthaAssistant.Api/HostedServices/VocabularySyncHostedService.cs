@@ -1,4 +1,5 @@
-﻿using LagerthaAssistant.Api.Options;
+﻿using System.Diagnostics;
+using LagerthaAssistant.Api.Options;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using Microsoft.Extensions.Options;
 
@@ -28,41 +29,88 @@ public sealed class VocabularySyncHostedService : BackgroundService
             return;
         }
 
-        var intervalSeconds = Math.Clamp(_options.IntervalSeconds, 5, 3600);
+        var intervalSeconds = Math.Clamp(_options.IntervalSeconds, 1, 3600);
         var batchSize = Math.Clamp(_options.BatchSize, 1, 500);
+        var backoffFactor = Math.Clamp(_options.BackoffFactor, 2, 4);
+        var maxBackoffSeconds = Math.Clamp(_options.MaxBackoffSeconds, intervalSeconds, 86400);
 
         _logger.LogInformation(
-            "Vocabulary sync worker started. Interval={IntervalSeconds}s, BatchSize={BatchSize}, RunOnStartup={RunOnStartup}",
+            "Vocabulary sync worker started. Interval={IntervalSeconds}s, BatchSize={BatchSize}, RunOnStartup={RunOnStartup}, MaxBackoff={MaxBackoffSeconds}s, BackoffFactor={BackoffFactor}",
             intervalSeconds,
             batchSize,
-            _options.RunOnStartup);
+            _options.RunOnStartup,
+            maxBackoffSeconds,
+            backoffFactor);
 
-        if (_options.RunOnStartup)
+        var failureStreak = 0;
+        var isFirstRun = true;
+
+        while (!stoppingToken.IsCancellationRequested)
         {
-            await RunOnceAsync(batchSize, stoppingToken);
-        }
+            if (!isFirstRun || !_options.RunOnStartup)
+            {
+                var delay = CalculateDelay(intervalSeconds, maxBackoffSeconds, backoffFactor, failureStreak);
+                _logger.LogDebug(
+                    "Next vocabulary sync run in {DelaySeconds}s (FailureStreak={FailureStreak}).",
+                    delay.TotalSeconds,
+                    failureStreak);
 
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
+                await Task.Delay(delay, stoppingToken);
+            }
 
-        while (await timer.WaitForNextTickAsync(stoppingToken))
-        {
-            await RunOnceAsync(batchSize, stoppingToken);
+            isFirstRun = false;
+
+            var runSucceeded = await RunOnceAsync(batchSize, stoppingToken);
+            failureStreak = runSucceeded
+                ? 0
+                : Math.Min(failureStreak + 1, 10);
         }
     }
 
-    private async Task RunOnceAsync(int batchSize, CancellationToken cancellationToken)
+    public static TimeSpan CalculateDelay(
+        int intervalSeconds,
+        int maxBackoffSeconds,
+        int backoffFactor,
+        int failureStreak)
     {
+        var safeInterval = Math.Clamp(intervalSeconds, 1, 3600);
+        var safeMaxBackoff = Math.Clamp(maxBackoffSeconds, safeInterval, 86400);
+        var safeBackoffFactor = Math.Clamp(backoffFactor, 2, 4);
+        var safeFailures = Math.Max(0, failureStreak);
+
+        var multiplier = 1.0;
+        for (var i = 0; i < safeFailures; i++)
+        {
+            multiplier *= safeBackoffFactor;
+            if (safeInterval * multiplier >= safeMaxBackoff)
+            {
+                return TimeSpan.FromSeconds(safeMaxBackoff);
+            }
+        }
+
+        var delaySeconds = Math.Min(safeMaxBackoff, (int)Math.Round(safeInterval * multiplier));
+        return TimeSpan.FromSeconds(delaySeconds);
+    }
+
+    private async Task<bool> RunOnceAsync(int batchSize, CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var syncProcessor = scope.ServiceProvider.GetRequiredService<IVocabularySyncProcessor>();
 
+            var pendingBefore = await syncProcessor.GetPendingCountAsync(cancellationToken);
             var summary = await syncProcessor.ProcessPendingAsync(batchSize, cancellationToken);
+            stopwatch.Stop();
 
-            if (summary.Processed > 0 || summary.PendingAfterRun > 0)
+            if (summary.Processed > 0 || summary.PendingAfterRun > 0 || pendingBefore > 0 || summary.Failed > 0)
             {
                 _logger.LogInformation(
-                    "Vocabulary sync run completed. Requested={Requested}, Processed={Processed}, Completed={Completed}, Requeued={Requeued}, Failed={Failed}, Pending={Pending}",
+                    "Vocabulary sync run completed in {ElapsedMs} ms. PendingBefore={PendingBefore}, Requested={Requested}, Processed={Processed}, Completed={Completed}, Requeued={Requeued}, Failed={Failed}, PendingAfter={PendingAfter}",
+                    stopwatch.ElapsedMilliseconds,
+                    pendingBefore,
                     summary.Requested,
                     summary.Processed,
                     summary.Completed,
@@ -70,14 +118,28 @@ public sealed class VocabularySyncHostedService : BackgroundService
                     summary.Failed,
                     summary.PendingAfterRun);
             }
+            else
+            {
+                _logger.LogDebug(
+                    "Vocabulary sync run completed in {ElapsedMs} ms with no pending jobs.",
+                    stopwatch.ElapsedMilliseconds);
+            }
+
+            return true;
         }
         catch (OperationCanceledException)
         {
             // Graceful shutdown.
+            return true;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Vocabulary sync run failed.");
+            stopwatch.Stop();
+            _logger.LogWarning(
+                ex,
+                "Vocabulary sync run failed after {ElapsedMs} ms. Backoff will be applied.",
+                stopwatch.ElapsedMilliseconds);
+            return false;
         }
     }
 }

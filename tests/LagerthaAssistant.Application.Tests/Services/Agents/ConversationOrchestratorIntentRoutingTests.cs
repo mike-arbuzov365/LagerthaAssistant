@@ -8,6 +8,7 @@ using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Agents;
 using LagerthaAssistant.Domain.AI;
 using LagerthaAssistant.Domain.Entities;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 public sealed class ConversationOrchestratorIntentRoutingTests
@@ -29,7 +30,7 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             new VocabularyConversationAgent(workflow)
         ];
 
-        var sut = new ConversationOrchestrator(agents);
+        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
 
         var result = await sut.ProcessAsync("show conversation history");
 
@@ -52,7 +53,7 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             new VocabularyConversationAgent(workflow)
         ];
 
-        var sut = new ConversationOrchestrator(agents);
+        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
 
         var result = await sut.ProcessAsync("history");
 
@@ -153,3 +154,5 @@ public sealed class ConversationOrchestratorIntentRoutingTests
         }
     }
 }
+
+
