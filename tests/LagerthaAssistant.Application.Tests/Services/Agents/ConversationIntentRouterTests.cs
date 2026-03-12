@@ -74,6 +74,43 @@ public sealed class ConversationIntentRouterTests
     }
 
     [Fact]
+    public void TryResolve_ShouldParseSlashPromptSetWithArgument()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("/prompt set Keep examples short", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.PromptSet, intent.Type);
+        Assert.Equal("Keep examples short", intent.Argument);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseSlashPromptProposeWithReasonAndPrompt()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("/prompt propose Too verbose || Keep replies concise", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.PromptPropose, intent.Type);
+        Assert.Equal("Too verbose", intent.Argument);
+        Assert.Equal("Keep replies concise", intent.Argument2);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseSlashPromptApplyWithId()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("/prompt apply 42", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.PromptApply, intent.Type);
+        Assert.Equal(42, intent.Number);
+    }
+
+    [Fact]
     public void TryResolve_ShouldMarkUnknownSlashAsUnsupportedCommandIntent()
     {
         var sut = new ConversationIntentRouter();

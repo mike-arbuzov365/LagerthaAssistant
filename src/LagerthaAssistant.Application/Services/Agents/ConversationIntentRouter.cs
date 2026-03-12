@@ -1,4 +1,4 @@
-namespace LagerthaAssistant.Application.Services.Agents;
+﻿namespace LagerthaAssistant.Application.Services.Agents;
 
 using System.Text.RegularExpressions;
 using LagerthaAssistant.Application.Interfaces.Agents;
@@ -11,13 +11,14 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
     public bool TryResolve(string input, out ConversationCommandIntent intent)
     {
         var normalized = Normalize(input);
+        var raw = input?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(normalized))
         {
             intent = new ConversationCommandIntent(ConversationCommandIntentType.Unsupported);
             return false;
         }
 
-        if (TryResolveSlash(normalized, out intent))
+        if (TryResolveSlash(normalized, raw, out intent))
         {
             return true;
         }
@@ -25,7 +26,7 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
         // Avoid hijacking single-word vocabulary lookups.
         if (normalized.IndexOf(' ') < 0)
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.Unsupported, Raw: input);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.Unsupported, Raw: raw);
             return false;
         }
 
@@ -34,13 +35,13 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
             return true;
         }
 
-        intent = new ConversationCommandIntent(ConversationCommandIntentType.Unsupported, Raw: input);
+        intent = new ConversationCommandIntent(ConversationCommandIntentType.Unsupported, Raw: raw);
         return false;
     }
 
-    private static bool TryResolveSlash(string normalized, out ConversationCommandIntent intent)
+    private static bool TryResolveSlash(string normalized, string raw, out ConversationCommandIntent intent)
     {
-        if (!normalized.StartsWith("/", StringComparison.Ordinal))
+        if (!raw.StartsWith("/", StringComparison.Ordinal))
         {
             intent = new ConversationCommandIntent(ConversationCommandIntentType.Unsupported);
             return false;
@@ -48,56 +49,135 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
 
         if (normalized.Equals("/help", StringComparison.Ordinal))
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.Help, Raw: normalized);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.Help, Raw: raw);
             return true;
         }
 
         if (normalized.Equals("/history", StringComparison.Ordinal))
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.History, Raw: normalized);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.History, Raw: raw);
             return true;
         }
 
         if (normalized.Equals("/memory", StringComparison.Ordinal))
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.Memory, Raw: normalized);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.Memory, Raw: raw);
             return true;
         }
 
         if (normalized.Equals("/prompt", StringComparison.Ordinal))
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptShow, Raw: normalized);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptShow, Raw: raw);
             return true;
         }
 
         if (normalized.Equals("/prompt default", StringComparison.Ordinal))
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptResetDefault, Raw: normalized);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptResetDefault, Raw: raw);
             return true;
         }
 
         if (normalized.Equals("/prompt history", StringComparison.Ordinal))
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptHistory, Raw: normalized);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptHistory, Raw: raw);
             return true;
         }
 
         if (normalized.Equals("/prompt proposals", StringComparison.Ordinal))
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptProposals, Raw: normalized);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptProposals, Raw: raw);
+            return true;
+        }
+
+        const string promptSetPrefix = "/prompt set";
+        if (raw.Equals(promptSetPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptSet, Raw: raw);
+            return true;
+        }
+
+        if (raw.StartsWith(promptSetPrefix + " ", StringComparison.OrdinalIgnoreCase))
+        {
+            var promptText = raw[promptSetPrefix.Length..].TrimStart();
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptSet, Raw: raw, Argument: promptText);
+            return true;
+        }
+
+        const string promptProposePrefix = "/prompt propose";
+        if (raw.Equals(promptProposePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptPropose, Raw: raw);
+            return true;
+        }
+
+        if (raw.StartsWith(promptProposePrefix + " ", StringComparison.OrdinalIgnoreCase))
+        {
+            var payload = raw[promptProposePrefix.Length..].TrimStart();
+            var split = payload.Split("||", 2, StringSplitOptions.TrimEntries);
+            var reason = split.Length > 0 ? split[0] : string.Empty;
+            var proposedPrompt = split.Length > 1 ? split[1] : string.Empty;
+            intent = new ConversationCommandIntent(
+                ConversationCommandIntentType.PromptPropose,
+                Raw: raw,
+                Argument: reason,
+                Argument2: proposedPrompt);
+            return true;
+        }
+
+        const string promptImprovePrefix = "/prompt improve";
+        if (raw.Equals(promptImprovePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptImprove, Raw: raw);
+            return true;
+        }
+
+        if (raw.StartsWith(promptImprovePrefix + " ", StringComparison.OrdinalIgnoreCase))
+        {
+            var goal = raw[promptImprovePrefix.Length..].TrimStart();
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptImprove, Raw: raw, Argument: goal);
+            return true;
+        }
+
+        const string promptApplyPrefix = "/prompt apply";
+        if (raw.Equals(promptApplyPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptApply, Raw: raw);
+            return true;
+        }
+
+        if (raw.StartsWith(promptApplyPrefix + " ", StringComparison.OrdinalIgnoreCase))
+        {
+            var idText = raw[promptApplyPrefix.Length..].TrimStart();
+            var parsed = int.TryParse(idText, out var proposalId) && proposalId > 0 ? proposalId : (int?)null;
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptApply, Number: parsed, Raw: raw);
+            return true;
+        }
+
+        const string promptRejectPrefix = "/prompt reject";
+        if (raw.Equals(promptRejectPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptReject, Raw: raw);
+            return true;
+        }
+
+        if (raw.StartsWith(promptRejectPrefix + " ", StringComparison.OrdinalIgnoreCase))
+        {
+            var idText = raw[promptRejectPrefix.Length..].TrimStart();
+            var parsed = int.TryParse(idText, out var proposalId) && proposalId > 0 ? proposalId : (int?)null;
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptReject, Number: parsed, Raw: raw);
             return true;
         }
 
         if (normalized.Equals("/sync", StringComparison.Ordinal)
             || normalized.Equals("/sync status", StringComparison.Ordinal))
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.SyncStatus, Raw: normalized);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.SyncStatus, Raw: raw);
             return true;
         }
 
         if (normalized.Equals("/sync run", StringComparison.Ordinal))
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.SyncRun, Number: 25, Raw: normalized);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.SyncRun, Number: 25, Raw: raw);
             return true;
         }
 
@@ -105,17 +185,17 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
             && int.TryParse(normalized[10..].Trim(), out var take)
             && take > 0)
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.SyncRun, Number: take, Raw: normalized);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.SyncRun, Number: take, Raw: raw);
             return true;
         }
 
         if (normalized.Equals("/reset", StringComparison.Ordinal))
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.ResetConversation, Raw: normalized);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.ResetConversation, Raw: raw);
             return true;
         }
 
-        intent = new ConversationCommandIntent(ConversationCommandIntentType.Unsupported, Raw: normalized);
+        intent = new ConversationCommandIntent(ConversationCommandIntentType.Unsupported, Raw: raw);
         return true;
     }
 
@@ -309,4 +389,3 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
         return Regex.Replace(input?.Trim().ToLowerInvariant() ?? string.Empty, "\\s+", " ");
     }
 }
-

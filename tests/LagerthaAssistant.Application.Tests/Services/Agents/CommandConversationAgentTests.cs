@@ -113,6 +113,80 @@ public sealed class CommandConversationAgentTests
     }
 
     [Fact]
+    public async Task HandleAsync_ShouldSetPrompt_ForPromptSetCommand()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext("/prompt set Keep replies concise", ["/prompt set Keep replies concise"]));
+
+        Assert.Equal("command.prompt.set", result.Intent);
+        Assert.Equal("Keep replies concise", session.Prompt);
+        Assert.Equal("manual", session.LastSetPromptSource);
+        Assert.Contains("System prompt updated and saved.", result.Message);
+        Assert.Contains("Keep replies concise", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldCreateProposal_ForPromptProposeCommand()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext("/prompt propose Too verbose || Keep replies concise", ["/prompt propose Too verbose || Keep replies concise"]));
+
+        Assert.Equal("command.prompt.propose", result.Intent);
+        Assert.Equal("Too verbose", session.LastProposalReason);
+        Assert.Equal("Keep replies concise", session.LastProposalPrompt);
+        Assert.Contains("Proposal #101", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldGenerateProposal_ForPromptImproveCommand()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext("/prompt improve improve vocabulary examples", ["/prompt improve improve vocabulary examples"]));
+
+        Assert.Equal("command.prompt.improve", result.Intent);
+        Assert.Equal("improve vocabulary examples", session.LastGeneratedGoal);
+        Assert.Contains("AI proposal #202 generated", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldApplyProposal_ForPromptApplyCommand()
+    {
+        var session = new FakeAssistantSessionService { Prompt = "applied prompt" };
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext("/prompt apply 12", ["/prompt apply 12"]));
+
+        Assert.Equal("command.prompt.apply", result.Intent);
+        Assert.Equal(12, session.LastAppliedProposalId);
+        Assert.Contains("Proposal #12 applied.", result.Message);
+        Assert.Contains("applied prompt", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldRejectProposal_ForPromptRejectCommand()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext("/prompt reject 6", ["/prompt reject 6"]));
+
+        Assert.Equal("command.prompt.reject", result.Intent);
+        Assert.Equal(6, session.LastRejectedProposalId);
+        Assert.Equal("Proposal #6 rejected.", result.Message);
+    }
+
+    [Fact]
     public async Task HandleAsync_ShouldReturnUnsupported_ForUnknownSlashCommand()
     {
         var session = new FakeAssistantSessionService();
@@ -152,6 +226,18 @@ public sealed class CommandConversationAgentTests
 
         public string Prompt { get; set; } = "default prompt";
 
+        public string? LastSetPromptSource { get; private set; }
+
+        public string? LastProposalPrompt { get; private set; }
+
+        public string? LastProposalReason { get; private set; }
+
+        public string? LastGeneratedGoal { get; private set; }
+
+        public int? LastAppliedProposalId { get; private set; }
+
+        public int? LastRejectedProposalId { get; private set; }
+
         public Task<AssistantCompletionResult> AskAsync(string userMessage, CancellationToken cancellationToken = default)
             => Task.FromResult(new AssistantCompletionResult("reply", "test-model", null));
 
@@ -171,20 +257,42 @@ public sealed class CommandConversationAgentTests
             => Task.FromResult(PromptProposals);
 
         public Task<SystemPromptProposal> CreateSystemPromptProposalAsync(string prompt, string reason, double confidence, string source = "manual", CancellationToken cancellationToken = default)
-            => Task.FromResult(new SystemPromptProposal());
+        {
+            LastProposalPrompt = prompt;
+            LastProposalReason = reason;
+            return Task.FromResult(new SystemPromptProposal
+            {
+                Id = 101,
+                Status = "proposed"
+            });
+        }
 
         public Task<SystemPromptProposal> GenerateSystemPromptProposalAsync(string goal, CancellationToken cancellationToken = default)
-            => Task.FromResult(new SystemPromptProposal());
+        {
+            LastGeneratedGoal = goal;
+            return Task.FromResult(new SystemPromptProposal
+            {
+                Id = 202,
+                Status = "proposed"
+            });
+        }
 
         public Task<string> ApplySystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
-            => Task.FromResult(Prompt);
+        {
+            LastAppliedProposalId = proposalId;
+            return Task.FromResult(Prompt);
+        }
 
         public Task RejectSystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+        {
+            LastRejectedProposalId = proposalId;
+            return Task.CompletedTask;
+        }
 
         public Task<string> SetSystemPromptAsync(string prompt, string source = "manual", CancellationToken cancellationToken = default)
         {
             Prompt = prompt;
+            LastSetPromptSource = source;
             return Task.FromResult(prompt);
         }
 

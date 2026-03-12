@@ -46,6 +46,11 @@ public sealed class CommandConversationAgent : IConversationAgent
             ConversationCommandIntentType.PromptResetDefault => await ResetPromptResultAsync(cancellationToken),
             ConversationCommandIntentType.PromptHistory => await BuildPromptHistoryResultAsync(cancellationToken),
             ConversationCommandIntentType.PromptProposals => await BuildPromptProposalsResultAsync(cancellationToken),
+            ConversationCommandIntentType.PromptSet => await SetPromptResultAsync(intent, cancellationToken),
+            ConversationCommandIntentType.PromptPropose => await ProposePromptResultAsync(intent, cancellationToken),
+            ConversationCommandIntentType.PromptImprove => await ImprovePromptResultAsync(intent, cancellationToken),
+            ConversationCommandIntentType.PromptApply => await ApplyPromptResultAsync(intent, cancellationToken),
+            ConversationCommandIntentType.PromptReject => await RejectPromptResultAsync(intent, cancellationToken),
             ConversationCommandIntentType.SyncStatus => await BuildSyncStatusResultAsync(cancellationToken),
             ConversationCommandIntentType.SyncRun => await BuildSyncRunResultAsync(intent.Number ?? DefaultSyncRunTake, cancellationToken),
             ConversationCommandIntentType.ResetConversation => ResetConversationResult(),
@@ -149,6 +154,87 @@ public sealed class CommandConversationAgent : IConversationAgent
         return ConversationAgentResult.Empty(Name, "command.prompt.proposals", message);
     }
 
+
+    private async Task<ConversationAgentResult> SetPromptResultAsync(ConversationCommandIntent intent, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(intent.Argument))
+        {
+            return ConversationAgentResult.Empty(Name, "command.prompt.set", "Usage: /prompt set <new prompt text>");
+        }
+
+        var updatedPrompt = await _assistantSessionService.SetSystemPromptAsync(intent.Argument, "manual", cancellationToken);
+        var message = new StringBuilder()
+            .AppendLine("System prompt updated and saved.")
+            .AppendLine()
+            .Append(updatedPrompt)
+            .ToString();
+
+        return ConversationAgentResult.Empty(Name, "command.prompt.set", message);
+    }
+
+    private async Task<ConversationAgentResult> ProposePromptResultAsync(ConversationCommandIntent intent, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(intent.Argument) || string.IsNullOrWhiteSpace(intent.Argument2))
+        {
+            return ConversationAgentResult.Empty(Name, "command.prompt.propose", "Usage: /prompt propose <reason> || <new prompt text>");
+        }
+
+        var proposal = await _assistantSessionService.CreateSystemPromptProposalAsync(
+            intent.Argument2,
+            intent.Argument,
+            0.8,
+            "manual",
+            cancellationToken);
+
+        return ConversationAgentResult.Empty(
+            Name,
+            "command.prompt.propose",
+            $"Proposal #{proposal.Id} has been saved with status '{proposal.Status}'.");
+    }
+
+    private async Task<ConversationAgentResult> ImprovePromptResultAsync(ConversationCommandIntent intent, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(intent.Argument))
+        {
+            return ConversationAgentResult.Empty(Name, "command.prompt.improve", "Usage: /prompt improve <goal>");
+        }
+
+        var proposal = await _assistantSessionService.GenerateSystemPromptProposalAsync(intent.Argument, cancellationToken);
+
+        return ConversationAgentResult.Empty(
+            Name,
+            "command.prompt.improve",
+            $"AI proposal #{proposal.Id} generated. Review via /prompt proposals and apply with /prompt apply <id>.");
+    }
+
+    private async Task<ConversationAgentResult> ApplyPromptResultAsync(ConversationCommandIntent intent, CancellationToken cancellationToken)
+    {
+        if (!intent.Number.HasValue || intent.Number.Value <= 0)
+        {
+            return ConversationAgentResult.Empty(Name, "command.prompt.apply", "Usage: /prompt apply <proposalId>");
+        }
+
+        var updatedPrompt = await _assistantSessionService.ApplySystemPromptProposalAsync(intent.Number.Value, cancellationToken);
+        var message = new StringBuilder()
+            .AppendLine($"Proposal #{intent.Number.Value} applied.")
+            .AppendLine()
+            .Append(updatedPrompt)
+            .ToString();
+
+        return ConversationAgentResult.Empty(Name, "command.prompt.apply", message);
+    }
+
+    private async Task<ConversationAgentResult> RejectPromptResultAsync(ConversationCommandIntent intent, CancellationToken cancellationToken)
+    {
+        if (!intent.Number.HasValue || intent.Number.Value <= 0)
+        {
+            return ConversationAgentResult.Empty(Name, "command.prompt.reject", "Usage: /prompt reject <proposalId>");
+        }
+
+        await _assistantSessionService.RejectSystemPromptProposalAsync(intent.Number.Value, cancellationToken);
+        return ConversationAgentResult.Empty(Name, "command.prompt.reject", $"Proposal #{intent.Number.Value} rejected.");
+    }
+
     private async Task<ConversationAgentResult> BuildSyncStatusResultAsync(CancellationToken cancellationToken)
     {
         var pending = await _vocabularySyncProcessor.GetPendingCountAsync(cancellationToken);
@@ -181,10 +267,15 @@ public sealed class CommandConversationAgent : IConversationAgent
             "- reset prompt to default",
             "- show prompt history",
             "- show prompt proposals",
+            "- set system prompt",
+            "- propose prompt update",
+            "- generate prompt proposal",
+            "- apply prompt proposal",
+            "- reject prompt proposal",
             "- sync status",
             "- run sync [N]",
             "- reset conversation",
-            "You can also use slash forms like /history, /prompt, /sync run 25."
+            "You can also use slash forms like /history, /prompt, /prompt set <text>, /prompt apply <id>, /sync run 25."
         });
     }
 }

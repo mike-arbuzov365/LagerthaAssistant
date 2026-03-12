@@ -1,4 +1,3 @@
-using System.Globalization;
 using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
@@ -207,95 +206,6 @@ internal static partial class Program
             var updated = await assistantSession.SetSystemPromptAsync(capturedPrompt, "manual");
             Console.WriteLine("System prompt updated and saved.");
             PrintSystemPrompt(updated);
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
-        if (command.StartsWith(setPrefix + " ", StringComparison.OrdinalIgnoreCase))
-        {
-            var promptText = command[setPrefix.Length..].TrimStart();
-            if (string.IsNullOrWhiteSpace(promptText))
-            {
-                Console.WriteLine("Usage: /prompt set <new prompt text>");
-                return CommandHandlingResult.Continue(saveMode);
-            }
-
-            var updated = await assistantSession.SetSystemPromptAsync(promptText, "manual");
-            Console.WriteLine("System prompt updated and saved.");
-            PrintSystemPrompt(updated);
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
-        var proposePrefix = $"{ConsoleCommands.Prompt} propose";
-        if (command.StartsWith(proposePrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            var payload = command.Length > proposePrefix.Length
-                ? command[proposePrefix.Length..].TrimStart()
-                : string.Empty;
-
-            var split = payload.Split("||", 2, StringSplitOptions.TrimEntries);
-            if (split.Length < 2 || string.IsNullOrWhiteSpace(split[0]) || string.IsNullOrWhiteSpace(split[1]))
-            {
-                Console.WriteLine("Usage: /prompt propose <reason> || <new prompt text>");
-                return CommandHandlingResult.Continue(saveMode);
-            }
-
-            var proposal = await assistantSession.CreateSystemPromptProposalAsync(split[1], split[0], 0.8, "manual");
-            Console.WriteLine($"Proposal #{proposal.Id} has been saved with status '{proposal.Status}'.");
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
-        var improvePrefix = $"{ConsoleCommands.Prompt} improve";
-        if (command.StartsWith(improvePrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            var goal = command.Length > improvePrefix.Length
-                ? command[improvePrefix.Length..].TrimStart()
-                : string.Empty;
-
-            if (string.IsNullOrWhiteSpace(goal))
-            {
-                Console.WriteLine("Usage: /prompt improve <goal>");
-                return CommandHandlingResult.Continue(saveMode);
-            }
-
-            var proposal = await assistantSession.GenerateSystemPromptProposalAsync(goal);
-            Console.WriteLine($"AI proposal #{proposal.Id} generated. Review via /prompt proposals and apply with /prompt apply <id>.");
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
-        var applyPrefix = $"{ConsoleCommands.Prompt} apply";
-        if (command.StartsWith(applyPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            var idText = command.Length > applyPrefix.Length
-                ? command[applyPrefix.Length..].TrimStart()
-                : string.Empty;
-
-            if (!int.TryParse(idText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var proposalId) || proposalId <= 0)
-            {
-                Console.WriteLine("Usage: /prompt apply <proposalId>");
-                return CommandHandlingResult.Continue(saveMode);
-            }
-
-            var updated = await assistantSession.ApplySystemPromptProposalAsync(proposalId);
-            Console.WriteLine($"Proposal #{proposalId} applied.");
-            PrintSystemPrompt(updated);
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
-        var rejectPrefix = $"{ConsoleCommands.Prompt} reject";
-        if (command.StartsWith(rejectPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            var idText = command.Length > rejectPrefix.Length
-                ? command[rejectPrefix.Length..].TrimStart()
-                : string.Empty;
-
-            if (!int.TryParse(idText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var proposalId) || proposalId <= 0)
-            {
-                Console.WriteLine("Usage: /prompt reject <proposalId>");
-                return CommandHandlingResult.Continue(saveMode);
-            }
-
-            await assistantSession.RejectSystemPromptProposalAsync(proposalId);
-            Console.WriteLine($"Proposal #{proposalId} rejected.");
             return CommandHandlingResult.Continue(saveMode);
         }
 
