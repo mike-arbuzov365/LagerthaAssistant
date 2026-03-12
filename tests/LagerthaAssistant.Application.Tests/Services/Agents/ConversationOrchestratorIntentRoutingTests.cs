@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.Application.Tests.Services.Agents;
+namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
 using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
@@ -36,6 +36,55 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         Assert.Equal("command-agent", result.AgentName);
         Assert.Equal("command.history", result.Intent);
+        Assert.Equal(0, workflow.SingleCalls);
+        Assert.Equal(0, workflow.BatchCalls);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ShouldRouteSlashPromptSet_ToCommandAgent()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+
+        IConversationAgent[] agents =
+        [
+            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            new VocabularyConversationAgent(workflow)
+        ];
+
+        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+
+        var result = await sut.ProcessAsync("/prompt set Keep replies concise");
+
+        Assert.Equal("command-agent", result.AgentName);
+        Assert.Equal("command.prompt.set", result.Intent);
+        Assert.Equal("Keep replies concise", session.LastSetPrompt);
+        Assert.Equal(0, workflow.SingleCalls);
+        Assert.Equal(0, workflow.BatchCalls);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ShouldRouteMultilinePromptSet_ToCommandAgent()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+
+        IConversationAgent[] agents =
+        [
+            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            new VocabularyConversationAgent(workflow)
+        ];
+
+        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+        var prompt = $"line one{Environment.NewLine}line two";
+
+        var result = await sut.ProcessAsync($"/prompt set {prompt}");
+
+        Assert.Equal("command-agent", result.AgentName);
+        Assert.Equal("command.prompt.set", result.Intent);
+        Assert.Equal(prompt, session.LastSetPrompt);
         Assert.Equal(0, workflow.SingleCalls);
         Assert.Equal(0, workflow.BatchCalls);
     }
@@ -116,6 +165,10 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         public IReadOnlyCollection<ConversationMessage> History { get; set; } = [];
 
+        public string Prompt { get; private set; } = "prompt";
+
+        public string? LastSetPrompt { get; private set; }
+
         public Task<AssistantCompletionResult> AskAsync(string userMessage, CancellationToken cancellationToken = default)
             => Task.FromResult(new AssistantCompletionResult("reply", "test-model", null));
 
@@ -126,7 +179,7 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             => Task.FromResult<IReadOnlyCollection<UserMemoryEntry>>([]);
 
         public Task<string> GetSystemPromptAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult("prompt");
+            => Task.FromResult(Prompt);
 
         public Task<IReadOnlyCollection<SystemPromptEntry>> GetSystemPromptHistoryAsync(int take, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyCollection<SystemPromptEntry>>([]);
@@ -141,18 +194,20 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             => Task.FromResult(new SystemPromptProposal());
 
         public Task<string> ApplySystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
-            => Task.FromResult("prompt");
+            => Task.FromResult(Prompt);
 
         public Task RejectSystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
         public Task<string> SetSystemPromptAsync(string prompt, string source = "manual", CancellationToken cancellationToken = default)
-            => Task.FromResult(prompt);
+        {
+            Prompt = prompt;
+            LastSetPrompt = prompt;
+            return Task.FromResult(prompt);
+        }
 
         public void Reset()
         {
         }
     }
 }
-
-
