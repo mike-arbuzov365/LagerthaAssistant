@@ -2,6 +2,7 @@ using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
+using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Vocabulary;
 using LagerthaAssistant.Infrastructure.Constants;
@@ -23,6 +24,7 @@ internal static partial class Program
     private static async Task<CommandHandlingResult> TryHandleCommandAsync(
         string command,
         SaveMode saveMode,
+        ConversationScope uiScope,
         IConversationOrchestrator conversationOrchestrator,
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyDeckService vocabularyDeckService,
@@ -106,7 +108,7 @@ internal static partial class Program
             }
 
             saveMode = updatedSaveMode;
-            await PersistSaveModeAsync(userMemoryRepository, unitOfWork, saveMode);
+            await PersistSaveModeAsync(userMemoryRepository, unitOfWork, saveMode, uiScope);
             PrintCurrentSaveMode(saveMode);
             return CommandHandlingResult.Continue(saveMode);
         }
@@ -134,7 +136,7 @@ internal static partial class Program
             }
 
             vocabularyStorageModeProvider.SetMode(updatedStorageMode);
-            await PersistStorageModeAsync(userMemoryRepository, unitOfWork, updatedStorageMode, vocabularyStorageModeProvider);
+            await PersistStorageModeAsync(userMemoryRepository, unitOfWork, updatedStorageMode, vocabularyStorageModeProvider, uiScope);
             PrintCurrentStorageMode(vocabularyStorageModeProvider, updatedStorageMode);
 
             if (updatedStorageMode == VocabularyStorageMode.Graph)
@@ -168,7 +170,8 @@ internal static partial class Program
                         userMemoryRepository,
                         unitOfWork,
                         VocabularyStorageMode.Graph,
-                        vocabularyStorageModeProvider);
+                        vocabularyStorageModeProvider,
+                        uiScope);
                     PrintCurrentStorageMode(vocabularyStorageModeProvider, VocabularyStorageMode.Graph);
                 }
 
@@ -203,7 +206,11 @@ internal static partial class Program
                 return CommandHandlingResult.Continue(saveMode);
             }
 
-            var commandResult = await conversationOrchestrator.ProcessAsync($"{setPrefix} {capturedPrompt}", "ui");
+            var commandResult = await conversationOrchestrator.ProcessAsync(
+                $"{setPrefix} {capturedPrompt}",
+                uiScope.Channel,
+                uiScope.UserId,
+                uiScope.ConversationId);
             if (IsCommandResult(commandResult))
             {
                 PrintCommandResult(commandResult);

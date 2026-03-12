@@ -29,6 +29,10 @@ internal static partial class Program
 {
     private const string SaveModeMemoryKey = "ui.save.mode";
     private const string StorageModeMemoryKey = "ui.storage.mode";
+    private const string UiChannel = "ui";
+    private const string UiConversationId = "main";
+    private const string UiUserIdEnvironmentVariable = "LAGERTHA_USER_ID";
+    private const string UiConversationIdEnvironmentVariable = "LAGERTHA_CONVERSATION_ID";
 
     private enum SaveMode
     {
@@ -171,10 +175,12 @@ internal static partial class Program
     {
         PrintBanner(model);
 
-        var saveMode = await LoadSaveModeAsync(userMemoryRepository);
+        var uiScope = BuildUiScope();
+
+        var saveMode = await LoadSaveModeAsync(userMemoryRepository, uiScope);
         PrintCurrentSaveMode(saveMode);
 
-        var storageMode = await LoadStorageModeAsync(userMemoryRepository, vocabularyStorageModeProvider);
+        var storageMode = await LoadStorageModeAsync(userMemoryRepository, vocabularyStorageModeProvider, uiScope);
         vocabularyStorageModeProvider.SetMode(storageMode);
         PrintCurrentStorageMode(vocabularyStorageModeProvider, storageMode);
 
@@ -195,6 +201,7 @@ internal static partial class Program
             var commandHandling = await TryHandleCommandAsync(
                 command,
                 saveMode,
+                uiScope,
                 conversationOrchestrator,
                 vocabularyWorkflowService,
                 vocabularyDeckService,
@@ -222,7 +229,11 @@ internal static partial class Program
 
             try
             {
-                var orchestrationResult = await conversationOrchestrator.ProcessAsync(command, "ui");
+                var orchestrationResult = await conversationOrchestrator.ProcessAsync(
+                    command,
+                    uiScope.Channel,
+                    uiScope.UserId,
+                    uiScope.ConversationId);
 
                 if (IsCommandResult(orchestrationResult))
                 {
@@ -247,6 +258,28 @@ internal static partial class Program
         }
 
         Console.WriteLine("Assistant session ended.");
+    }
+
+    private static ConversationScope BuildUiScope()
+    {
+        var userId = Environment.GetEnvironmentVariable(UiUserIdEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            userId = Environment.UserName;
+        }
+
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            userId = "local-user";
+        }
+
+        var conversationId = Environment.GetEnvironmentVariable(UiConversationIdEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(conversationId))
+        {
+            conversationId = UiConversationId;
+        }
+
+        return ConversationScope.Create(UiChannel, userId, conversationId);
     }
 
     private static AssistantSessionOptions BuildSessionOptions(IConfiguration configuration)

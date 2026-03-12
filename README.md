@@ -100,6 +100,11 @@ Notes:
 - Run `/graph login` again only if `/graph status` says `Not authenticated` (or after `/graph logout`).
 - Open the exact sign-in URL printed by the app (in some tenants it is `https://www.microsoft.com/link`).
 
+UI scope overrides (optional):
+
+- `LAGERTHA_USER_ID` - override default UI user identity (otherwise OS username is used).
+- `LAGERTHA_CONVERSATION_ID` - override default UI conversation id (`main`).
+
 ### Background sync worker (API only)
 
 ```json
@@ -179,8 +184,9 @@ On startup both UI and API apply EF migrations automatically.
 
 For `POST /api/conversation/messages`, you can send natural language command-like requests (no slash required), for example:
 
-- Optional request field `channel` can be used for multi-channel clients (`api` by default).
-- Example request body: `{"input":"void","channel":"telegram"}`
+- Optional request fields: `channel`, `userId`, `conversationId`.
+- Defaults when omitted: `channel=api`, `userId=anonymous`, `conversationId=default`.
+- Example request body: `{"input":"void","channel":"telegram","userId":"mike","conversationId":"chat-42"}`
 
 - `show conversation history`
 - `show active memory`
