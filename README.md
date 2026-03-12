@@ -170,6 +170,7 @@ curl http://localhost:5000/api/vocabulary-sync/status
 curl -X POST "http://localhost:5000/api/vocabulary-sync/run?take=25"
 curl "http://localhost:5000/api/telemetry/intents?days=7&top=20&channel=api"
 curl http://localhost:5000/api/conversation/commands
+curl http://localhost:5000/api/conversation/commands/grouped
 ```
 
 On startup both UI and API apply EF migrations automatically.
@@ -199,8 +200,9 @@ Slash command forms are also supported through the same command-agent path, incl
 - `/prompt apply <id>`
 - `/prompt reject <id>`
 
-Command catalog endpoint (for external clients):
-- `GET /api/conversation/commands` (returns `category`, `command`, `description`)
+Command catalog endpoints (for external clients):
+- `GET /api/conversation/commands` (flat list: `category`, `command`, `description`)
+- `GET /api/conversation/commands/grouped` (grouped by category)
 
 Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
 

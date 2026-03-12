@@ -20,16 +20,18 @@ public sealed class ConversationController : ControllerBase
         _orchestrator = orchestrator;
     }
 
-
     [HttpGet("commands")]
     [ProducesResponseType(typeof(IReadOnlyList<ConversationCommandItemResponse>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<ConversationCommandItemResponse>> GetCommands()
     {
-        var commands = ConversationCommandCatalog.SlashCommands
-            .Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description))
-            .ToList();
+        return Ok(BuildCommandItems());
+    }
 
-        return Ok(commands);
+    [HttpGet("commands/grouped")]
+    [ProducesResponseType(typeof(IReadOnlyList<ConversationCommandGroupResponse>), StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<ConversationCommandGroupResponse>> GetGroupedCommands()
+    {
+        return Ok(BuildCommandGroups());
     }
 
     [HttpPost("messages")]
@@ -47,6 +49,24 @@ public sealed class ConversationController : ControllerBase
         var channel = NormalizeChannel(request.Channel);
         var result = await _orchestrator.ProcessAsync(request.Input, channel, cancellationToken);
         return Ok(Map(result));
+    }
+
+    private static IReadOnlyList<ConversationCommandItemResponse> BuildCommandItems()
+    {
+        return ConversationCommandCatalog.SlashCommands
+            .Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description))
+            .ToList();
+    }
+
+    private static IReadOnlyList<ConversationCommandGroupResponse> BuildCommandGroups()
+    {
+        return ConversationCommandCatalog.SlashCommands
+            .GroupBy(item => item.Category)
+            .Select(group =>
+                new ConversationCommandGroupResponse(
+                    group.Key,
+                    group.Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description)).ToList()))
+            .ToList();
     }
 
     private static ConversationMessageResponse Map(ConversationAgentResult result)

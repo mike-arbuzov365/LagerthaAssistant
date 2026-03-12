@@ -29,6 +29,26 @@ public sealed class ConversationControllerTests
     }
 
     [Fact]
+    public void GetGroupedCommands_ShouldReturnGroupedCatalog()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sut = new ConversationController(orchestrator);
+
+        var response = sut.GetGroupedCommands();
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsAssignableFrom<IReadOnlyList<ConversationCommandGroupResponse>>(ok.Value);
+
+        Assert.NotEmpty(payload);
+
+        var generalGroup = Assert.Single(payload, group => group.Category == ConversationCommandCategories.General);
+        Assert.Contains(generalGroup.Commands, item => item.Command == ConversationSlashCommands.Help);
+
+        var syncGroup = Assert.Single(payload, group => group.Category == ConversationCommandCategories.SyncQueue);
+        Assert.Contains(syncGroup.Commands, item => item.Command == ConversationSlashCommands.SyncRun);
+    }
+
+    [Fact]
     public async Task PostMessage_ShouldUseDefaultChannel_WhenNotProvided()
     {
         var orchestrator = new FakeConversationOrchestrator();
