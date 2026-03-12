@@ -1,13 +1,15 @@
 namespace LagerthaAssistant.Application.Models.Agents;
 
+using LagerthaAssistant.Domain.Constants;
+
 public sealed record ConversationScope(
     string Channel,
     string UserId,
     string ConversationId)
 {
-    public const string DefaultChannel = "unknown";
-    public const string DefaultUserId = "anonymous";
-    public const string DefaultConversationId = "default";
+    public const string DefaultChannel = ConversationScopeDefaults.Channel;
+    public const string DefaultUserId = ConversationScopeDefaults.UserId;
+    public const string DefaultConversationId = ConversationScopeDefaults.ConversationId;
 
     public static ConversationScope Default { get; } = new(DefaultChannel, DefaultUserId, DefaultConversationId);
 

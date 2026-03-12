@@ -161,6 +161,166 @@ public sealed class PersistenceIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task ConversationSessionRepository_GetLatestAsync_ShouldFilterByScope()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            context.ConversationSessions.Add(ConversationSession.Create(Guid.NewGuid(), "other-scope", "api", "user-b", "chat-1"));
+            await context.SaveChangesAsync();
+
+            var first = ConversationSession.Create(Guid.NewGuid(), "scope-a-first", "api", "user-a", "chat-1");
+            context.ConversationSessions.Add(first);
+            await context.SaveChangesAsync();
+
+            await Task.Delay(20);
+
+            var second = ConversationSession.Create(Guid.NewGuid(), "scope-a-second", "api", "user-a", "chat-1");
+            context.ConversationSessions.Add(second);
+            await context.SaveChangesAsync();
+
+            await using var actContext = CreateContext(connectionString);
+            var repository = new ConversationSessionRepository(actContext, NullLogger<ConversationSessionRepository>.Instance);
+
+            var latest = await repository.GetLatestAsync("api", "user-a", "chat-1");
+
+            Assert.NotNull(latest);
+            Assert.Equal(second.SessionKey, latest!.SessionKey);
+            Assert.Equal("api", latest.Channel);
+            Assert.Equal("user-a", latest.UserId);
+            Assert.Equal("chat-1", latest.ConversationId);
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
+
+    [Fact]
+    public async Task UserMemoryRepository_ShouldFilterByScope()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            context.UserMemoryEntries.AddRange(
+                new UserMemoryEntry
+                {
+                    Channel = "api",
+                    UserId = "user-a",
+                    Key = "ui.save.mode",
+                    Value = "ask",
+                    Confidence = 1.0,
+                    IsActive = false,
+                    LastSeenAtUtc = DateTimeOffset.UtcNow
+                },
+                new UserMemoryEntry
+                {
+                    Channel = "api",
+                    UserId = "user-b",
+                    Key = "ui.save.mode",
+                    Value = "auto",
+                    Confidence = 1.0,
+                    IsActive = false,
+                    LastSeenAtUtc = DateTimeOffset.UtcNow
+                },
+                new UserMemoryEntry
+                {
+                    Channel = "api",
+                    UserId = "user-a",
+                    Key = MemoryKeys.UserName,
+                    Value = "Alice",
+                    Confidence = 1.0,
+                    IsActive = true,
+                    LastSeenAtUtc = DateTimeOffset.UtcNow
+                },
+                new UserMemoryEntry
+                {
+                    Channel = "api",
+                    UserId = "user-b",
+                    Key = MemoryKeys.UserName,
+                    Value = "Bob",
+                    Confidence = 1.0,
+                    IsActive = true,
+                    LastSeenAtUtc = DateTimeOffset.UtcNow
+                });
+
+            await context.SaveChangesAsync();
+
+            await using var actContext = CreateContext(connectionString);
+            var repository = new UserMemoryRepository(actContext, NullLogger<UserMemoryRepository>.Instance);
+
+            var saveMode = await repository.GetByKeyAsync("ui.save.mode", "api", "user-a");
+            var active = await repository.GetActiveAsync(10, "api", "user-a");
+
+            Assert.NotNull(saveMode);
+            Assert.Equal("ask", saveMode!.Value);
+
+            var userName = Assert.Single(active, x => x.Key == MemoryKeys.UserName);
+            Assert.Equal("Alice", userName.Value);
+            Assert.DoesNotContain(active, x => x.UserId == "user-b");
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
+
+    [Fact]
+    public async Task AssistantSessionService_ShouldIsolateSessionsAndMemoryByScopeInDatabase()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            var ai = new FakeAiChatClient();
+            var scopeAccessor = new FakeConversationScopeAccessor();
+            var sut = new AssistantSessionService(
+                ai,
+                new ConversationSessionRepository(context, NullLogger<ConversationSessionRepository>.Instance),
+                new ConversationHistoryRepository(context, NullLogger<ConversationHistoryRepository>.Instance),
+                new UserMemoryRepository(context, NullLogger<UserMemoryRepository>.Instance),
+                new SystemPromptRepository(context, NullLogger<SystemPromptRepository>.Instance),
+                new SystemPromptProposalRepository(context, NullLogger<SystemPromptProposalRepository>.Instance),
+                new ConversationMemoryExtractor(),
+                new UnitOfWork(context, NullLogger<UnitOfWork>.Instance),
+                new AssistantSessionOptions { SystemPrompt = "system prompt", MaxHistoryMessages = 20 },
+                new FakeClock(),
+                scopeAccessor,
+                NullLogger<AssistantSessionService>.Instance);
+
+            scopeAccessor.Set(ConversationScope.Create("api", "user-a", "chat-a"));
+            await sut.AskAsync("my name is Lagertha");
+
+            scopeAccessor.Set(ConversationScope.Create("api", "user-b", "chat-b"));
+            await sut.AskAsync("my name is Mike");
+
+            await using var verifyContext = CreateContext(connectionString);
+            var sessions = await verifyContext.ConversationSessions.AsNoTracking().ToListAsync();
+            var memories = await verifyContext.UserMemoryEntries
+                .AsNoTracking()
+                .Where(x => x.Key == MemoryKeys.UserName)
+                .ToListAsync();
+
+            Assert.Contains(sessions, x => x.Channel == "api" && x.UserId == "user-a" && x.ConversationId == "chat-a");
+            Assert.Contains(sessions, x => x.Channel == "api" && x.UserId == "user-b" && x.ConversationId == "chat-b");
+
+            Assert.Contains(memories, x => x.Channel == "api" && x.UserId == "user-a" && x.Value == "Lagertha");
+            Assert.Contains(memories, x => x.Channel == "api" && x.UserId == "user-b" && x.Value == "Mike");
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
     private static string CreateConnectionString()
     {
         return $"Server=(localdb)\\MSSQLLocalDB;Database=LagerthaAssistant_Integration_{Guid.NewGuid():N};Trusted_Connection=True;TrustServerCertificate=True;";
@@ -207,6 +367,8 @@ public sealed class PersistenceIntegrationTests
         }
     }
 }
+
+
 
 
 

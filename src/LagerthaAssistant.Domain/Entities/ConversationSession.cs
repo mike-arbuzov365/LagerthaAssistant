@@ -1,16 +1,17 @@
 namespace LagerthaAssistant.Domain.Entities;
 
 using LagerthaAssistant.Domain.Common.Base;
+using LagerthaAssistant.Domain.Constants;
 
 public sealed class ConversationSession : AuditableEntity
 {
     public Guid SessionKey { get; set; }
 
-    public string Channel { get; set; } = "unknown";
+    public string Channel { get; set; } = ConversationScopeDefaults.Channel;
 
-    public string UserId { get; set; } = "anonymous";
+    public string UserId { get; set; } = ConversationScopeDefaults.UserId;
 
-    public string ConversationId { get; set; } = "default";
+    public string ConversationId { get; set; } = ConversationScopeDefaults.ConversationId;
 
     public string? Title { get; set; }
 
@@ -19,9 +20,9 @@ public sealed class ConversationSession : AuditableEntity
     public static ConversationSession Create(
         Guid sessionKey,
         string? title = null,
-        string channel = "unknown",
-        string userId = "anonymous",
-        string conversationId = "default")
+        string channel = ConversationScopeDefaults.Channel,
+        string userId = ConversationScopeDefaults.UserId,
+        string conversationId = ConversationScopeDefaults.ConversationId)
     {
         return new ConversationSession
         {

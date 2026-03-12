@@ -3,6 +3,7 @@ namespace LagerthaAssistant.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using LagerthaAssistant.Application.Interfaces.Repositories;
+using LagerthaAssistant.Domain.Constants;
 using LagerthaAssistant.Domain.Entities;
 using LagerthaAssistant.Infrastructure.Constants;
 using LagerthaAssistant.Infrastructure.Data;
@@ -10,9 +11,6 @@ using LagerthaAssistant.Infrastructure.Exceptions;
 
 public sealed class UserMemoryRepository : IUserMemoryRepository
 {
-    private const string DefaultChannel = "unknown";
-    private const string DefaultUserId = "anonymous";
-
     private readonly AppDbContext _context;
     private readonly ILogger<UserMemoryRepository> _logger;
 
@@ -23,7 +21,7 @@ public sealed class UserMemoryRepository : IUserMemoryRepository
     }
 
     public Task<UserMemoryEntry?> GetByKeyAsync(string key, CancellationToken cancellationToken = default)
-        => GetByKeyAsync(key, DefaultChannel, DefaultUserId, cancellationToken);
+        => GetByKeyAsync(key, ConversationScopeDefaults.Channel, ConversationScopeDefaults.UserId, cancellationToken);
 
     public async Task<UserMemoryEntry?> GetByKeyAsync(
         string key,
@@ -57,7 +55,7 @@ public sealed class UserMemoryRepository : IUserMemoryRepository
     }
 
     public Task<IReadOnlyList<UserMemoryEntry>> GetActiveAsync(int take, CancellationToken cancellationToken = default)
-        => GetActiveAsync(take, DefaultChannel, DefaultUserId, cancellationToken);
+        => GetActiveAsync(take, ConversationScopeDefaults.Channel, ConversationScopeDefaults.UserId, cancellationToken);
 
     public async Task<IReadOnlyList<UserMemoryEntry>> GetActiveAsync(
         int take,

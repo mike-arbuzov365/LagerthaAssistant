@@ -3,6 +3,7 @@ namespace LagerthaAssistant.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using LagerthaAssistant.Application.Interfaces.Repositories;
+using LagerthaAssistant.Domain.Constants;
 using LagerthaAssistant.Domain.Entities;
 using LagerthaAssistant.Infrastructure.Constants;
 using LagerthaAssistant.Infrastructure.Data;
@@ -10,10 +11,6 @@ using LagerthaAssistant.Infrastructure.Exceptions;
 
 public sealed class ConversationSessionRepository : IConversationSessionRepository
 {
-    private const string DefaultChannel = "unknown";
-    private const string DefaultUserId = "anonymous";
-    private const string DefaultConversationId = "default";
-
     private readonly AppDbContext _context;
     private readonly ILogger<ConversationSessionRepository> _logger;
 
@@ -40,7 +37,11 @@ public sealed class ConversationSessionRepository : IConversationSessionReposito
     }
 
     public Task<ConversationSession?> GetLatestAsync(CancellationToken cancellationToken = default)
-        => GetLatestAsync(DefaultChannel, DefaultUserId, DefaultConversationId, cancellationToken);
+        => GetLatestAsync(
+            ConversationScopeDefaults.Channel,
+            ConversationScopeDefaults.UserId,
+            ConversationScopeDefaults.ConversationId,
+            cancellationToken);
 
     public async Task<ConversationSession?> GetLatestAsync(
         string channel,
