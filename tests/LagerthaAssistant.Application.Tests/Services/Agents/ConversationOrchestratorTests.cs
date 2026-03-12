@@ -1,4 +1,4 @@
-namespace LagerthaAssistant.Application.Tests.Services.Agents;
+﻿namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
@@ -16,7 +16,7 @@ public sealed class ConversationOrchestratorTests
         var workflow = new FakeVocabularyWorkflowService();
         var agents = new IConversationAgent[]
         {
-            new CommandConversationAgent(),
+            new FakeSlashCommandAgent(),
             new VocabularyConversationAgent(workflow)
         };
 
@@ -41,7 +41,7 @@ public sealed class ConversationOrchestratorTests
 
         var agents = new IConversationAgent[]
         {
-            new CommandConversationAgent(),
+            new FakeSlashCommandAgent(),
             new VocabularyConversationAgent(workflow)
         };
 
@@ -67,6 +67,19 @@ public sealed class ConversationOrchestratorTests
             "C:/deck/wm-nouns-ua-en.xlsx");
 
         return new VocabularyWorkflowItemResult(input, lookup, completion, preview);
+    }
+
+    private sealed class FakeSlashCommandAgent : IConversationAgent
+    {
+        public string Name => "command-agent";
+
+        public int Order => 10;
+
+        public bool CanHandle(ConversationAgentContext context)
+            => context.IsSlashCommand;
+
+        public Task<ConversationAgentResult> HandleAsync(ConversationAgentContext context, CancellationToken cancellationToken = default)
+            => Task.FromResult(ConversationAgentResult.Empty(Name, "command", "Slash command"));
     }
 
     private sealed class FakeVocabularyWorkflowService : IVocabularyWorkflowService

@@ -167,6 +167,19 @@ curl -X POST "http://localhost:5000/api/vocabulary-sync/run?take=25"
 
 On startup both UI and API apply EF migrations automatically.
 
+## API natural intents
+
+For `POST /api/conversation/messages`, you can send natural language command-like requests (no slash required), for example:
+
+- `show conversation history`
+- `show active memory`
+- `show system prompt`
+- `reset prompt to default`
+- `sync status`
+- `run sync 25`
+- `reset conversation`
+
+Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
 ## Commands
 
 Use `/help` to see full command reference in the console.
@@ -210,6 +223,8 @@ Use `/help` to see full command reference in the console.
 dotnet build LagerthaAssistant.slnx
 dotnet test LagerthaAssistant.slnx -v minimal
 ```
+
+
 
 
 

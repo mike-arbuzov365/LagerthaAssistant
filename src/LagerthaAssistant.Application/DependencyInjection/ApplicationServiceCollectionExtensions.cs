@@ -1,4 +1,4 @@
-namespace LagerthaAssistant.Application.DependencyInjection;
+﻿namespace LagerthaAssistant.Application.DependencyInjection;
 
 using Microsoft.Extensions.DependencyInjection;
 using LagerthaAssistant.Application.Interfaces.AI;
@@ -24,6 +24,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IVocabularyPersistenceService, VocabularyPersistenceService>();
         services.AddScoped<IVocabularySyncProcessor, VocabularySyncProcessor>();
 
+        services.AddSingleton<IConversationIntentRouter, ConversationIntentRouter>();
         services.AddScoped<IConversationOrchestrator, ConversationOrchestrator>();
         services.AddScoped<IConversationAgent, CommandConversationAgent>();
         services.AddScoped<IConversationAgent, VocabularyConversationAgent>();
