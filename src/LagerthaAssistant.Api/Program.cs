@@ -1,10 +1,12 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.DependencyInjection;
 using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Infrastructure;
 using LagerthaAssistant.Infrastructure.Data;
+using LagerthaAssistant.Api.Options;
+using LagerthaAssistant.Api.HostedServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +24,8 @@ builder.Services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.Configure<VocabularySyncWorkerOptions>(builder.Configuration.GetSection("VocabularySyncWorker"));
+builder.Services.AddHostedService<VocabularySyncHostedService>();
 
 var app = builder.Build();
 
@@ -74,3 +78,5 @@ static AssistantSessionOptions BuildSessionOptions(IConfiguration configuration)
         MaxHistoryMessages = maxHistory
     };
 }
+
+

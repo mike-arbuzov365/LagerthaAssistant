@@ -1,4 +1,4 @@
-# LagerthaAssistant
+﻿# LagerthaAssistant
 
 Console AI assistant prototype built with Clean Architecture and SQL Server persistence.
 
@@ -99,6 +99,21 @@ Notes:
 - Run `/graph login` again only if `/graph status` says `Not authenticated` (or after `/graph logout`).
 - Open the exact sign-in URL printed by the app (in some tenants it is `https://www.microsoft.com/link`).
 
+### Background sync worker (API only)
+
+```json
+"VocabularySyncWorker": {
+  "Enabled": false,
+  "IntervalSeconds": 60,
+  "BatchSize": 25,
+  "RunOnStartup": true
+}
+```
+
+Notes:
+- Worker runs only in API host (`LagerthaAssistant.Api`), not in console UI.
+- Keep `Enabled=false` by default; turn on when you want automatic retry of pending sync jobs.
+- Manual processing is available from UI commands (`/sync`, `/sync run`) and API endpoints.
 ### Microsoft Entra quick setup
 
 1. Open [Microsoft Entra admin center](https://entra.microsoft.com/) -> `Identity` -> `Applications` -> `App registrations` -> `New registration`.
@@ -146,6 +161,8 @@ Quick checks:
 ```powershell
 curl http://localhost:5000/health
 curl -X POST http://localhost:5000/api/conversation/messages -H "Content-Type: application/json" -d "{\"input\":\"void\"}"
+curl http://localhost:5000/api/vocabulary-sync/status
+curl -X POST "http://localhost:5000/api/vocabulary-sync/run?take=25"
 ```
 
 On startup both UI and API apply EF migrations automatically.
@@ -165,6 +182,10 @@ Use `/help` to see full command reference in the console.
 - `/graph status`
 - `/graph login`
 - `/graph logout`
+- `/sync`
+- `/sync status`
+- `/sync run`
+- `/sync run <n>`
 - `/prompt`
 - `/prompt default`
 - `/prompt history`
@@ -189,6 +210,10 @@ Use `/help` to see full command reference in the console.
 dotnet build LagerthaAssistant.slnx
 dotnet test LagerthaAssistant.slnx -v minimal
 ```
+
+
+
+
 
 
 
