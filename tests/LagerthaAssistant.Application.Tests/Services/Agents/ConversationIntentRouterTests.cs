@@ -1,5 +1,6 @@
 namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
+using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Services.Agents;
 using Xunit;
@@ -15,6 +16,39 @@ public sealed class ConversationIntentRouterTests
 
         Assert.True(handled);
         Assert.Equal(ConversationCommandIntentType.History, intent.Type);
+    }
+
+    public static TheoryData<string, ConversationCommandIntentType> CanonicalSlashCommands =>
+        new()
+        {
+            { ConversationSlashCommands.Help, ConversationCommandIntentType.Help },
+            { ConversationSlashCommands.History, ConversationCommandIntentType.History },
+            { ConversationSlashCommands.Memory, ConversationCommandIntentType.Memory },
+            { ConversationSlashCommands.Prompt, ConversationCommandIntentType.PromptShow },
+            { ConversationSlashCommands.PromptDefault, ConversationCommandIntentType.PromptResetDefault },
+            { ConversationSlashCommands.PromptHistory, ConversationCommandIntentType.PromptHistory },
+            { ConversationSlashCommands.PromptProposals, ConversationCommandIntentType.PromptProposals },
+            { ConversationSlashCommands.Sync, ConversationCommandIntentType.SyncStatus },
+            { ConversationSlashCommands.SyncStatus, ConversationCommandIntentType.SyncStatus },
+            { ConversationSlashCommands.SyncRun, ConversationCommandIntentType.SyncRun },
+            { ConversationSlashCommands.Reset, ConversationCommandIntentType.ResetConversation }
+        };
+
+    [Theory]
+    [MemberData(nameof(CanonicalSlashCommands))]
+    public void TryResolve_ShouldParseCanonicalSlashCommands(string command, ConversationCommandIntentType expectedType)
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve(command, out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(expectedType, intent.Type);
+
+        if (expectedType == ConversationCommandIntentType.SyncRun)
+        {
+            Assert.Equal(25, intent.Number);
+        }
     }
 
     [Fact]
