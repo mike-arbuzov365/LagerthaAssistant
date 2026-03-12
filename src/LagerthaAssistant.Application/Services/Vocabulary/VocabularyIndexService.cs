@@ -1,0 +1,397 @@
+namespace LagerthaAssistant.Application.Services.Vocabulary;
+
+using System.Text.RegularExpressions;
+using LagerthaAssistant.Application.Interfaces.Common;
+using LagerthaAssistant.Application.Interfaces.Repositories;
+using LagerthaAssistant.Application.Interfaces.Vocabulary;
+using LagerthaAssistant.Application.Models.Vocabulary;
+using LagerthaAssistant.Domain.Entities;
+using LagerthaAssistant.Domain.Enums;
+using Microsoft.Extensions.Logging;
+
+public sealed class VocabularyIndexService : IVocabularyIndexService
+{
+    private static readonly char[] WordFormSeparators = ['-', ',', '/', '='];
+    private static readonly char[] TokenTrimChars = ['"', '\'', '`', '.', '!', '?', ';', ':', '(', ')', '[', ']'];
+    private static readonly Regex PosFromMeaningRegex = new("^\\((?<pos>[a-z]+)\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private readonly IVocabularyCardRepository _cardRepository;
+    private readonly IVocabularySyncJobRepository _syncJobRepository;
+    private readonly IVocabularyReplyParser _replyParser;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly ILogger<VocabularyIndexService> _logger;
+
+    public VocabularyIndexService(
+        IVocabularyCardRepository cardRepository,
+        IVocabularySyncJobRepository syncJobRepository,
+        IVocabularyReplyParser replyParser,
+        IUnitOfWork unitOfWork,
+        ILogger<VocabularyIndexService> logger)
+    {
+        _cardRepository = cardRepository;
+        _syncJobRepository = syncJobRepository;
+        _replyParser = replyParser;
+        _unitOfWork = unitOfWork;
+        _logger = logger;
+    }
+
+    public async Task<VocabularyLookupResult> FindByInputAsync(string input, CancellationToken cancellationToken = default)
+    {
+        var tokens = BuildTokens(input);
+        if (tokens.Count == 0)
+        {
+            return new VocabularyLookupResult(input, []);
+        }
+
+        var cards = await _cardRepository.FindByAnyTokenAsync(tokens, cancellationToken);
+        var matches = cards
+            .OrderByDescending(card => card.LastSeenAtUtc)
+            .ThenBy(card => card.DeckFileName, StringComparer.OrdinalIgnoreCase)
+            .Select(MapToEntry)
+            .ToList();
+
+        return new VocabularyLookupResult(input, matches);
+    }
+
+    public async Task IndexLookupResultAsync(
+        VocabularyLookupResult lookup,
+        VocabularyStorageMode storageMode,
+        CancellationToken cancellationToken = default)
+    {
+        if (!lookup.Found)
+        {
+            return;
+        }
+
+        var storageModeText = storageMode.ToString().ToLowerInvariant();
+        var now = DateTimeOffset.UtcNow;
+
+        foreach (var entry in lookup.Matches)
+        {
+            await UpsertCardAsync(
+                query: lookup.Query,
+                entry.Word,
+                entry.Meaning,
+                entry.Examples,
+                entry.DeckFileName,
+                entry.DeckPath,
+                entry.RowNumber,
+                storageModeText,
+                ExtractPartOfSpeechFromMeaning(entry.Meaning),
+                VocabularySyncStatus.Synced,
+                errorMessage: null,
+                syncedAtUtc: now,
+                now,
+                cancellationToken);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task HandleAppendResultAsync(
+        string requestedWord,
+        string assistantReply,
+        string? targetDeckFileName,
+        string? overridePartOfSpeech,
+        VocabularyAppendResult appendResult,
+        VocabularyStorageMode storageMode,
+        CancellationToken cancellationToken = default)
+    {
+        var storageModeText = storageMode.ToString().ToLowerInvariant();
+        var now = DateTimeOffset.UtcNow;
+
+        if (appendResult.Status == VocabularyAppendStatus.Added && appendResult.Entry is not null)
+        {
+            var partOfSpeech = ResolvePartOfSpeech(assistantReply, overridePartOfSpeech, appendResult.Entry.Meaning);
+
+            await UpsertCardAsync(
+                query: requestedWord,
+                appendResult.Entry.Word,
+                appendResult.Entry.Meaning,
+                appendResult.Entry.Examples,
+                appendResult.Entry.DeckFileName,
+                appendResult.Entry.DeckPath,
+                appendResult.Entry.RowNumber,
+                storageModeText,
+                partOfSpeech,
+                VocabularySyncStatus.Synced,
+                errorMessage: null,
+                syncedAtUtc: now,
+                now,
+                cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (appendResult.Status == VocabularyAppendStatus.Error && IsRecoverableWriteFailure(appendResult.Message))
+        {
+            var targetDeck = !string.IsNullOrWhiteSpace(targetDeckFileName)
+                ? targetDeckFileName.Trim()
+                : appendResult.Entry?.DeckFileName;
+
+            if (!string.IsNullOrWhiteSpace(targetDeck))
+            {
+                await _syncJobRepository.AddAsync(new VocabularySyncJob
+                {
+                    RequestedWord = requestedWord.Trim(),
+                    AssistantReply = assistantReply,
+                    TargetDeckFileName = targetDeck,
+                    TargetDeckPath = appendResult.Entry?.DeckPath,
+                    OverridePartOfSpeech = overridePartOfSpeech,
+                    StorageMode = storageModeText,
+                    Status = VocabularySyncJobStatus.Pending,
+                    AttemptCount = 0,
+                    LastError = appendResult.Message,
+                    CreatedAtUtc = now,
+                    LastAttemptAtUtc = null,
+                    CompletedAtUtc = null
+                }, cancellationToken);
+
+                if (_replyParser.TryParse(assistantReply, out var parsed) && parsed is not null)
+                {
+                    var pendingMeaning = string.Join(Environment.NewLine + Environment.NewLine, parsed.Meanings);
+                    var pendingExamples = string.Join(Environment.NewLine + Environment.NewLine, parsed.Examples);
+                    var pendingPos = ResolvePartOfSpeech(assistantReply, overridePartOfSpeech, pendingMeaning);
+
+                    await UpsertCardAsync(
+                        query: requestedWord,
+                        parsed.Word,
+                        pendingMeaning,
+                        pendingExamples,
+                        targetDeck,
+                        appendResult.Entry?.DeckPath ?? string.Empty,
+                        appendResult.Entry?.RowNumber ?? 0,
+                        storageModeText,
+                        pendingPos,
+                        VocabularySyncStatus.Pending,
+                        appendResult.Message,
+                        syncedAtUtc: null,
+                        now,
+                        cancellationToken);
+                }
+
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+
+            return;
+        }
+
+        if (appendResult.Status == VocabularyAppendStatus.Error)
+        {
+            _logger.LogWarning(
+                "Vocabulary append failed and will not be queued because error is not recoverable. Message: {Message}",
+                appendResult.Message);
+        }
+    }
+
+    private async Task UpsertCardAsync(
+        string query,
+        string word,
+        string meaning,
+        string examples,
+        string deckFileName,
+        string deckPath,
+        int rowNumber,
+        string storageMode,
+        string? partOfSpeech,
+        VocabularySyncStatus syncStatus,
+        string? errorMessage,
+        DateTimeOffset? syncedAtUtc,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var normalizedWord = NormalizeToken(word);
+        if (string.IsNullOrWhiteSpace(normalizedWord))
+        {
+            return;
+        }
+
+        var card = await _cardRepository.GetByIdentityAsync(normalizedWord, deckFileName, storageMode, cancellationToken);
+        if (card is null)
+        {
+            card = new VocabularyCard
+            {
+                Word = word.Trim(),
+                NormalizedWord = normalizedWord,
+                Meaning = meaning,
+                Examples = examples,
+                PartOfSpeechMarker = partOfSpeech,
+                DeckFileName = deckFileName,
+                DeckPath = deckPath,
+                LastKnownRowNumber = rowNumber,
+                StorageMode = storageMode,
+                SyncStatus = syncStatus,
+                LastSyncError = errorMessage,
+                FirstSeenAtUtc = now,
+                LastSeenAtUtc = now,
+                SyncedAtUtc = syncedAtUtc
+            };
+
+            AddTokens(card, BuildTokens(word, query));
+            await _cardRepository.AddAsync(card, cancellationToken);
+            return;
+        }
+
+        card.Word = word.Trim();
+        card.Meaning = meaning;
+        card.Examples = examples;
+        card.PartOfSpeechMarker = partOfSpeech;
+        card.DeckPath = deckPath;
+        card.LastKnownRowNumber = rowNumber;
+        card.SyncStatus = syncStatus;
+        card.LastSyncError = errorMessage;
+        card.LastSeenAtUtc = now;
+
+        if (syncedAtUtc.HasValue)
+        {
+            card.SyncedAtUtc = syncedAtUtc;
+        }
+
+        AddTokens(card, BuildTokens(word, query));
+    }
+
+    private static VocabularyDeckEntry MapToEntry(VocabularyCard card)
+    {
+        return new VocabularyDeckEntry(
+            card.DeckFileName,
+            card.DeckPath,
+            card.LastKnownRowNumber,
+            card.Word,
+            card.Meaning,
+            card.Examples);
+    }
+
+    private string? ResolvePartOfSpeech(string assistantReply, string? overridePartOfSpeech, string meaning)
+    {
+        if (!string.IsNullOrWhiteSpace(overridePartOfSpeech))
+        {
+            return NormalizeToken(overridePartOfSpeech);
+        }
+
+        if (_replyParser.TryParse(assistantReply, out var parsed) && parsed is not null)
+        {
+            var marker = parsed.PartsOfSpeech.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(marker))
+            {
+                return NormalizeToken(marker);
+            }
+        }
+
+        return ExtractPartOfSpeechFromMeaning(meaning);
+    }
+
+    private static string? ExtractPartOfSpeechFromMeaning(string meaning)
+    {
+        if (string.IsNullOrWhiteSpace(meaning))
+        {
+            return null;
+        }
+
+        var lines = meaning
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var line in lines)
+        {
+            var match = PosFromMeaningRegex.Match(line);
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            var pos = match.Groups["pos"].Value.Trim();
+            return string.IsNullOrWhiteSpace(pos)
+                ? null
+                : NormalizeToken(pos);
+        }
+
+        return null;
+    }
+
+    private static bool IsRecoverableWriteFailure(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        return message.Contains("open in another app", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("currently in use", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("file is locked", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("locked right now", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("version conflict", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<string> BuildTokens(params string?[] values)
+    {
+        var tokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var value in values)
+        {
+            var normalized = NormalizeToken(value);
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                tokens.Add(normalized);
+            }
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            var parts = value
+                .Replace('–', '-')
+                .Replace('—', '-')
+                .Split(WordFormSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            foreach (var part in parts)
+            {
+                var partNormalized = NormalizeToken(part);
+                if (!string.IsNullOrWhiteSpace(partNormalized))
+                {
+                    tokens.Add(partNormalized);
+                }
+            }
+        }
+
+        return tokens.ToList();
+    }
+
+    private static void AddTokens(VocabularyCard card, IReadOnlyList<string> tokens)
+    {
+        var existing = card.Tokens
+            .Select(token => token.TokenNormalized)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var token in tokens)
+        {
+            if (!existing.Add(token))
+            {
+                continue;
+            }
+
+            card.Tokens.Add(new VocabularyCardToken
+            {
+                TokenNormalized = token
+            });
+        }
+    }
+
+    private static string NormalizeToken(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var normalized = value
+            .Replace('–', '-')
+            .Replace('—', '-')
+            .Trim()
+            .Trim(TokenTrimChars);
+
+        normalized = Regex.Replace(normalized, "\\s+", " ");
+        return normalized.ToLowerInvariant();
+    }
+}

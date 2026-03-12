@@ -17,6 +17,9 @@ public sealed class AppDbContext : DbContext
     public DbSet<UserMemoryEntry> UserMemoryEntries => Set<UserMemoryEntry>();
     public DbSet<SystemPromptEntry> SystemPromptEntries => Set<SystemPromptEntry>();
     public DbSet<SystemPromptProposal> SystemPromptProposals => Set<SystemPromptProposal>();
+    public DbSet<VocabularyCard> VocabularyCards => Set<VocabularyCard>();
+    public DbSet<VocabularyCardToken> VocabularyCardTokens => Set<VocabularyCardToken>();
+    public DbSet<VocabularySyncJob> VocabularySyncJobs => Set<VocabularySyncJob>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -27,6 +30,9 @@ public sealed class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new UserMemoryEntryConfiguration());
         modelBuilder.ApplyConfiguration(new SystemPromptEntryConfiguration());
         modelBuilder.ApplyConfiguration(new SystemPromptProposalConfiguration());
+        modelBuilder.ApplyConfiguration(new VocabularyCardConfiguration());
+        modelBuilder.ApplyConfiguration(new VocabularyCardTokenConfiguration());
+        modelBuilder.ApplyConfiguration(new VocabularySyncJobConfiguration());
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

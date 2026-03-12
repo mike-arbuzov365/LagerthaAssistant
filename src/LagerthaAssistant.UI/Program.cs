@@ -132,6 +132,7 @@ internal static class Program
         var assistantSession = services.GetRequiredService<IAssistantSessionService>();
         var vocabularyWorkflowService = services.GetRequiredService<IVocabularyWorkflowService>();
         var vocabularyDeckService = services.GetRequiredService<IVocabularyDeckService>();
+        var vocabularyPersistenceService = services.GetRequiredService<IVocabularyPersistenceService>();
         var vocabularyStorageModeProvider = services.GetRequiredService<IVocabularyStorageModeProvider>();
         var graphAuthService = services.GetRequiredService<IGraphAuthService>();
         var userMemoryRepository = services.GetRequiredService<IUserMemoryRepository>();
@@ -148,6 +149,7 @@ internal static class Program
             assistantSession,
             vocabularyWorkflowService,
             vocabularyDeckService,
+            vocabularyPersistenceService,
             vocabularyStorageModeProvider,
             graphAuthService,
             userMemoryRepository,
@@ -159,6 +161,7 @@ internal static class Program
         IAssistantSessionService assistantSession,
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyDeckService vocabularyDeckService,
+        IVocabularyPersistenceService vocabularyPersistenceService,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
         IGraphAuthService graphAuthService,
         IUserMemoryRepository userMemoryRepository,
@@ -232,6 +235,7 @@ internal static class Program
                     parsedItems,
                     vocabularyWorkflowService,
                     vocabularyDeckService,
+                    vocabularyPersistenceService,
                     saveMode);
                 continue;
             }
@@ -568,7 +572,7 @@ internal static class Program
 
                     if (shouldSave && !string.IsNullOrWhiteSpace(targetDeckFileName))
                     {
-                        var appendResult = await vocabularyDeckService.AppendFromAssistantReplyAsync(
+                        var appendResult = await vocabularyPersistenceService.AppendFromAssistantReplyAsync(
                             command,
                             result.Content,
                             targetDeckFileName,
@@ -577,7 +581,7 @@ internal static class Program
 
                         while (IsFileLockedSaveError(appendResult) && AskRetrySaveConfirmation(retryPreview))
                         {
-                            appendResult = await vocabularyDeckService.AppendFromAssistantReplyAsync(
+                            appendResult = await vocabularyPersistenceService.AppendFromAssistantReplyAsync(
                                 command,
                                 result.Content,
                                 targetDeckFileName,
@@ -621,6 +625,7 @@ internal static class Program
         IReadOnlyList<string> batchItems,
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyDeckService vocabularyDeckService,
+        IVocabularyPersistenceService vocabularyPersistenceService,
         SaveMode saveMode)
     {
         var pendingSaves = new List<PendingVocabularySave>();
@@ -726,7 +731,7 @@ internal static class Program
             return saveMode;
         }
 
-        await SavePendingBatchItemsAsync(saveQueue, vocabularyDeckService);
+        await SavePendingBatchItemsAsync(saveQueue, vocabularyPersistenceService);
         Console.WriteLine();
 
         return saveMode;
@@ -734,7 +739,7 @@ internal static class Program
 
     private static async Task SavePendingBatchItemsAsync(
         IReadOnlyList<PendingVocabularySave> pendingSaves,
-        IVocabularyDeckService vocabularyDeckService)
+        IVocabularyPersistenceService vocabularyPersistenceService)
     {
         foreach (var pending in pendingSaves)
         {
@@ -746,7 +751,7 @@ internal static class Program
                 continue;
             }
 
-            var appendResult = await vocabularyDeckService.AppendFromAssistantReplyAsync(
+            var appendResult = await vocabularyPersistenceService.AppendFromAssistantReplyAsync(
                 pending.RequestedWord,
                 pending.AssistantReply,
                 pending.TargetDeckFileName,
@@ -762,7 +767,7 @@ internal static class Program
 
             while (IsFileLockedSaveError(appendResult) && AskRetrySaveConfirmation(retryPreview))
             {
-                appendResult = await vocabularyDeckService.AppendFromAssistantReplyAsync(
+                appendResult = await vocabularyPersistenceService.AppendFromAssistantReplyAsync(
                     pending.RequestedWord,
                     pending.AssistantReply,
                     pending.TargetDeckFileName,

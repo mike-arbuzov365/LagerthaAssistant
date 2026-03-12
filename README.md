@@ -48,6 +48,12 @@ Excel columns used:
 
 Read-only (composite) decks are configured via `VocabularyDecks.ReadOnlyFileNames` and are never written.
 
+SQL index + sync queue:
+
+- App stores indexed vocabulary records in SQL Server (`VocabularyCards`, `VocabularyCardTokens`) for fast duplicate lookup before Excel scan.
+- Excel/OneDrive remains the final export source for your mobile app workflow.
+- If write to Excel fails due lock/conflict, app stores a pending sync job in SQL (`VocabularySyncJobs`) so data is not lost and can be retried by worker flow.
+
 ## Configuration
 
 Set OpenAI API key (required):
@@ -59,6 +65,7 @@ $env:OPENAI_API_KEY = "your_api_key"
 Connection string and deck settings are configured in:
 
 - `src/LagerthaAssistant.UI/appsettings.json`
+- `src/LagerthaAssistant.Api/appsettings.json`
 
 ### Storage mode
 
@@ -122,11 +129,26 @@ Notes:
 
 ## Run
 
+Console UI:
+
 ```powershell
 dotnet run --project src/LagerthaAssistant.UI/LagerthaAssistant.UI.csproj
 ```
 
-On startup the app applies EF migrations automatically.
+API service (Phase A foundation for multi-channel clients and agents):
+
+```powershell
+dotnet run --project src/LagerthaAssistant.Api/LagerthaAssistant.Api.csproj
+```
+
+Quick checks:
+
+```powershell
+curl http://localhost:5000/health
+curl -X POST http://localhost:5000/api/conversation/messages -H "Content-Type: application/json" -d "{\"input\":\"void\"}"
+```
+
+On startup both UI and API apply EF migrations automatically.
 
 ## Commands
 
@@ -167,3 +189,7 @@ Use `/help` to see full command reference in the console.
 dotnet build LagerthaAssistant.slnx
 dotnet test LagerthaAssistant.slnx -v minimal
 ```
+
+
+
+

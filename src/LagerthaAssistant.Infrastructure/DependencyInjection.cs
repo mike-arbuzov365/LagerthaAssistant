@@ -105,6 +105,8 @@ public static class DependencyInjection
         services.AddScoped<IUserMemoryRepository, UserMemoryRepository>();
         services.AddScoped<ISystemPromptRepository, SystemPromptRepository>();
         services.AddScoped<ISystemPromptProposalRepository, SystemPromptProposalRepository>();
+        services.AddScoped<IVocabularyCardRepository, VocabularyCardRepository>();
+        services.AddScoped<IVocabularySyncJobRepository, VocabularySyncJobRepository>();
 
         services.AddScoped<VocabularyDeckService>();
         services.AddScoped<GraphVocabularyDeckService>();
