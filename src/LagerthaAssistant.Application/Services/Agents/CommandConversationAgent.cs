@@ -159,7 +159,7 @@ public sealed class CommandConversationAgent : IConversationAgent
     {
         if (string.IsNullOrWhiteSpace(intent.Argument))
         {
-            return ConversationAgentResult.Empty(Name, "command.prompt.set", "Usage: /prompt set <new prompt text>");
+            return ConversationAgentResult.Empty(Name, "command.prompt.set", $"Usage: {ConversationSlashCommands.PromptSet} <new prompt text>");
         }
 
         var updatedPrompt = await _assistantSessionService.SetSystemPromptAsync(intent.Argument, "manual", cancellationToken);
@@ -176,7 +176,7 @@ public sealed class CommandConversationAgent : IConversationAgent
     {
         if (string.IsNullOrWhiteSpace(intent.Argument) || string.IsNullOrWhiteSpace(intent.Argument2))
         {
-            return ConversationAgentResult.Empty(Name, "command.prompt.propose", "Usage: /prompt propose <reason> || <new prompt text>");
+            return ConversationAgentResult.Empty(Name, "command.prompt.propose", $"Usage: {ConversationSlashCommands.PromptPropose} <reason> || <new prompt text>");
         }
 
         var proposal = await _assistantSessionService.CreateSystemPromptProposalAsync(
@@ -196,7 +196,7 @@ public sealed class CommandConversationAgent : IConversationAgent
     {
         if (string.IsNullOrWhiteSpace(intent.Argument))
         {
-            return ConversationAgentResult.Empty(Name, "command.prompt.improve", "Usage: /prompt improve <goal>");
+            return ConversationAgentResult.Empty(Name, "command.prompt.improve", $"Usage: {ConversationSlashCommands.PromptImprove} <goal>");
         }
 
         var proposal = await _assistantSessionService.GenerateSystemPromptProposalAsync(intent.Argument, cancellationToken);
@@ -204,14 +204,14 @@ public sealed class CommandConversationAgent : IConversationAgent
         return ConversationAgentResult.Empty(
             Name,
             "command.prompt.improve",
-            $"AI proposal #{proposal.Id} generated. Review via /prompt proposals and apply with /prompt apply <id>.");
+            $"AI proposal #{proposal.Id} generated. Review via {ConversationSlashCommands.PromptProposals} and apply with {ConversationSlashCommands.PromptApply} <id>.");
     }
 
     private async Task<ConversationAgentResult> ApplyPromptResultAsync(ConversationCommandIntent intent, CancellationToken cancellationToken)
     {
         if (!intent.Number.HasValue || intent.Number.Value <= 0)
         {
-            return ConversationAgentResult.Empty(Name, "command.prompt.apply", "Usage: /prompt apply <proposalId>");
+            return ConversationAgentResult.Empty(Name, "command.prompt.apply", $"Usage: {ConversationSlashCommands.PromptApply} <proposalId>");
         }
 
         var updatedPrompt = await _assistantSessionService.ApplySystemPromptProposalAsync(intent.Number.Value, cancellationToken);
@@ -228,7 +228,7 @@ public sealed class CommandConversationAgent : IConversationAgent
     {
         if (!intent.Number.HasValue || intent.Number.Value <= 0)
         {
-            return ConversationAgentResult.Empty(Name, "command.prompt.reject", "Usage: /prompt reject <proposalId>");
+            return ConversationAgentResult.Empty(Name, "command.prompt.reject", $"Usage: {ConversationSlashCommands.PromptReject} <proposalId>");
         }
 
         await _assistantSessionService.RejectSystemPromptProposalAsync(intent.Number.Value, cancellationToken);
@@ -275,7 +275,7 @@ public sealed class CommandConversationAgent : IConversationAgent
             "- sync status",
             "- run sync [N]",
             "- reset conversation",
-            "You can also use slash forms like /history, /prompt, /prompt set <text>, /prompt apply <id>, /sync run 25."
+            $"You can also use slash forms like {ConversationSlashCommands.History}, {ConversationSlashCommands.Prompt}, {ConversationSlashCommands.PromptSet} <text>, {ConversationSlashCommands.PromptApply} <id>, {ConversationSlashCommands.SyncRun} 25."
         });
     }
 }
