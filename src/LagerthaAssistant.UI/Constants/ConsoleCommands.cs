@@ -31,6 +31,11 @@ public static class ConsoleCommands
     public const string PromptDefault = ConversationSlashCommands.PromptDefault;
     public const string PromptHistory = ConversationSlashCommands.PromptHistory;
     public const string PromptProposals = ConversationSlashCommands.PromptProposals;
+    public const string PromptSet = ConversationSlashCommands.PromptSet;
+    public const string PromptPropose = ConversationSlashCommands.PromptPropose;
+    public const string PromptImprove = ConversationSlashCommands.PromptImprove;
+    public const string PromptApply = ConversationSlashCommands.PromptApply;
+    public const string PromptReject = ConversationSlashCommands.PromptReject;
 
     public const int HistoryPreviewTake = 20;
     public const int MemoryPreviewTake = 20;

@@ -193,7 +193,7 @@ internal static partial class Program
             return CommandHandlingResult.Exit(saveMode);
         }
 
-        var setPrefix = $"{ConsoleCommands.Prompt} set";
+        var setPrefix = ConsoleCommands.PromptSet;
         if (command.Equals(setPrefix, StringComparison.OrdinalIgnoreCase))
         {
             var capturedPrompt = ReadMultilinePrompt();

@@ -34,16 +34,16 @@ internal static partial class Program
         WriteCommandHelp(ConsoleCommands.Prompt, "Show the active system prompt.");
         WriteCommandHelp(ConsoleCommands.PromptDefault, "Reset active system prompt to default and save it.");
         WriteCommandHelp(ConsoleCommands.PromptHistory, "Show saved system prompt versions.");
-        WriteCommandHelp("/prompt set", "Start multiline prompt editor (finish with /end, cancel with /cancel).");
-        WriteCommandHelp("/prompt set <text>", "Set system prompt from a single line.");
+        WriteCommandHelp(ConsoleCommands.PromptSet, "Start multiline prompt editor (finish with /end, cancel with /cancel).");
+        WriteCommandHelp($"{ConsoleCommands.PromptSet} <text>", "Set system prompt from a single line.");
 
         Console.WriteLine();
         Console.WriteLine("Prompt proposals");
         WriteCommandHelp(ConsoleCommands.PromptProposals, "Show recent prompt proposals.");
-        WriteCommandHelp("/prompt propose <reason> || <text>", "Create a manual proposal for a new prompt.");
-        WriteCommandHelp("/prompt improve <goal>", "Ask AI to generate a prompt proposal for your goal.");
-        WriteCommandHelp("/prompt apply <id>", "Apply a pending proposal and make it active.");
-        WriteCommandHelp("/prompt reject <id>", "Reject a pending proposal.");
+        WriteCommandHelp($"{ConsoleCommands.PromptPropose} <reason> || <text>", "Create a manual proposal for a new prompt.");
+        WriteCommandHelp($"{ConsoleCommands.PromptImprove} <goal>", "Ask AI to generate a prompt proposal for your goal.");
+        WriteCommandHelp($"{ConsoleCommands.PromptApply} <id>", "Apply a pending proposal and make it active.");
+        WriteCommandHelp($"{ConsoleCommands.PromptReject} <id>", "Reject a pending proposal.");
 
         Console.WriteLine();
         Console.WriteLine("Saving");
@@ -72,7 +72,7 @@ internal static partial class Program
         WriteCommandHelp(ConsoleCommands.Sync, "Show pending vocabulary sync jobs.");
         WriteCommandHelp(ConsoleCommands.SyncStatus, "Alias for /sync.");
         WriteCommandHelp(ConsoleCommands.SyncRun, "Run pending sync jobs (default batch size: 25).");
-        WriteCommandHelp("/sync run <n>", "Run up to <n> pending sync jobs now.");
+        WriteCommandHelp($"{ConsoleCommands.SyncRun} <n>", "Run up to <n> pending sync jobs now.");
 
         Console.WriteLine();
         Console.WriteLine("Session");
