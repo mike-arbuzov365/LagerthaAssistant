@@ -9,6 +9,14 @@ internal static partial class Program
         ConversationCommandCatalog.SlashCommands
             .ToDictionary(item => item.Command, item => item.Description, StringComparer.OrdinalIgnoreCase);
 
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> CommandCatalogCommandsByCategory =
+        ConversationCommandCatalog.SlashCommands
+            .GroupBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<string>)group.Select(item => item.Command).ToList(),
+                StringComparer.OrdinalIgnoreCase);
+
     private static void PrintBanner(string model)
     {
         Console.WriteLine(new string('=', 72));
@@ -21,41 +29,35 @@ internal static partial class Program
 
     private static void PrintHelp()
     {
+        var promptSetWithText = $"{ConsoleCommands.PromptSet} <text>";
+        var systemPromptExcludedCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            promptSetWithText
+        };
+
         Console.WriteLine();
         Console.WriteLine("Available commands:");
         Console.WriteLine();
 
-        var promptSetText = $"{ConsoleCommands.PromptSet} <text>";
-        var promptProposeText = $"{ConsoleCommands.PromptPropose} <reason> || <text>";
-        var promptImproveText = $"{ConsoleCommands.PromptImprove} <goal>";
-        var promptApplyText = $"{ConsoleCommands.PromptApply} <id>";
-        var promptRejectText = $"{ConsoleCommands.PromptReject} <id>";
-        var syncRunWithCountText = $"{ConsoleCommands.SyncRun} <n>";
-
-        Console.WriteLine("General");
-        WriteCatalogCommandHelp(ConsoleCommands.Help, "Show this help message.");
+        Console.WriteLine(ConversationCommandCategories.General);
+        WriteCatalogCommandsForCategory(ConversationCommandCategories.General);
         WriteCommandHelp(ConsoleCommands.Batch, "Start smart-paste batch mode for multiple words/phrases/sentences.");
 
         Console.WriteLine();
-        Console.WriteLine("Conversation");
-        WriteCatalogCommandHelp(ConsoleCommands.History, "Show recent conversation history.");
-        WriteCatalogCommandHelp(ConsoleCommands.Memory, "Show active memory facts.");
+        Console.WriteLine(ConversationCommandCategories.Conversation);
+        WriteCatalogCommandsForCategory(ConversationCommandCategories.Conversation);
 
         Console.WriteLine();
-        Console.WriteLine("System prompt");
-        WriteCatalogCommandHelp(ConsoleCommands.Prompt, "Show the active system prompt.");
-        WriteCatalogCommandHelp(ConsoleCommands.PromptDefault, "Reset active system prompt to default and save it.");
-        WriteCatalogCommandHelp(ConsoleCommands.PromptHistory, "Show saved system prompt versions.");
+        Console.WriteLine(ConversationCommandCategories.SystemPrompt);
+        WriteCatalogCommandsForCategory(
+            ConversationCommandCategories.SystemPrompt,
+            systemPromptExcludedCommands);
         WriteCommandHelp(ConsoleCommands.PromptSet, "Start multiline prompt editor (finish with /end, cancel with /cancel).");
-        WriteCatalogCommandHelp(promptSetText, "Set system prompt from a single line.");
+        WriteCatalogCommandHelp(promptSetWithText, "Set system prompt from a single line.");
 
         Console.WriteLine();
-        Console.WriteLine("Prompt proposals");
-        WriteCatalogCommandHelp(ConsoleCommands.PromptProposals, "Show recent prompt proposals.");
-        WriteCatalogCommandHelp(promptProposeText, "Create a manual proposal for a new prompt.");
-        WriteCatalogCommandHelp(promptImproveText, "Ask AI to generate a prompt proposal for your goal.");
-        WriteCatalogCommandHelp(promptApplyText, "Apply a pending proposal and make it active.");
-        WriteCatalogCommandHelp(promptRejectText, "Reject a pending proposal.");
+        Console.WriteLine(ConversationCommandCategories.PromptProposals);
+        WriteCatalogCommandsForCategory(ConversationCommandCategories.PromptProposals);
 
         Console.WriteLine();
         Console.WriteLine("Saving");
@@ -80,15 +82,12 @@ internal static partial class Program
         WriteCommandHelp(ConsoleCommands.GraphLogout, "Sign out and clear cached Graph tokens.");
 
         Console.WriteLine();
-        Console.WriteLine("Sync queue");
-        WriteCatalogCommandHelp(ConsoleCommands.Sync, "Show pending vocabulary sync jobs.");
-        WriteCatalogCommandHelp(ConsoleCommands.SyncStatus, "Alias for /sync.");
-        WriteCatalogCommandHelp(ConsoleCommands.SyncRun, "Run pending sync jobs (default batch size: 25).");
-        WriteCatalogCommandHelp(syncRunWithCountText, "Run up to <n> pending sync jobs now.");
+        Console.WriteLine(ConversationCommandCategories.SyncQueue);
+        WriteCatalogCommandsForCategory(ConversationCommandCategories.SyncQueue);
 
         Console.WriteLine();
-        Console.WriteLine("Session");
-        WriteCatalogCommandHelp(ConsoleCommands.Reset, "Reset in-memory conversation context.");
+        Console.WriteLine(ConversationCommandCategories.Session);
+        WriteCatalogCommandsForCategory(ConversationCommandCategories.Session);
         WriteCommandHelp(ConsoleCommands.Exit, "Exit the application.");
 
         Console.WriteLine();
@@ -100,6 +99,24 @@ internal static partial class Program
         Console.WriteLine("What it does: detects phrasal verbs as (pv), keeps persistent expressions as (pe), normalizes irregular verbs to 3 forms as (iv),");
         Console.WriteLine("checks duplicates in writable decks, applies deck-specific save rules, and saves card data to the best deck or your custom target.");
         Console.WriteLine();
+    }
+
+    private static void WriteCatalogCommandsForCategory(string category, IReadOnlySet<string>? excludedCommands = null)
+    {
+        if (!CommandCatalogCommandsByCategory.TryGetValue(category, out var commands))
+        {
+            return;
+        }
+
+        foreach (var command in commands)
+        {
+            if (excludedCommands is not null && excludedCommands.Contains(command))
+            {
+                continue;
+            }
+
+            WriteCatalogCommandHelp(command, "No description provided.");
+        }
     }
 
     private static void WriteCatalogCommandHelp(string commandText, string fallbackDescription)
