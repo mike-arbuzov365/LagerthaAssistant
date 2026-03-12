@@ -93,7 +93,10 @@ internal static partial class Program
         while (true)
         {
             Console.Write("Select [1/2]: ");
-            var answer = Console.ReadLine()?.Trim().ToLowerInvariant() ?? string.Empty;
+            if (!TryReadTrimmedLowerInput(out var answer))
+            {
+                return false;
+            }
 
             if (answer is "1" or "keep" or "k")
             {
@@ -209,7 +212,10 @@ internal static partial class Program
         while (true)
         {
             Console.Write("Select [1/2/3/4]: ");
-            var answer = Console.ReadLine()?.Trim().ToLowerInvariant() ?? string.Empty;
+            if (!TryReadTrimmedLowerInput(out var answer))
+            {
+                return SaveConfirmationChoice.No;
+            }
 
             if (answer is "1" or "y" or "yes")
             {
@@ -293,7 +299,10 @@ internal static partial class Program
         while (true)
         {
             Console.Write($"Select [1-{writableDecks.Count}] or 0 to cancel: ");
-            var answer = Console.ReadLine()?.Trim() ?? string.Empty;
+            if (!TryReadTrimmedInput(out var answer))
+            {
+                return null;
+            }
 
             if (answer is "0"
                 || answer.Equals("no", StringComparison.OrdinalIgnoreCase)
@@ -333,7 +342,10 @@ internal static partial class Program
         while (true)
         {
             Console.Write("Select [1/2/3/4/5/6/7/8/9/10/0] or type marker: ");
-            var answer = Console.ReadLine()?.Trim() ?? string.Empty;
+            if (!TryReadTrimmedInput(out var answer))
+            {
+                return null;
+            }
 
             if (answer is "0"
                 || answer.Equals("no", StringComparison.OrdinalIgnoreCase)
@@ -445,7 +457,10 @@ internal static partial class Program
         while (true)
         {
             Console.Write("Select [1/2]: ");
-            var answer = Console.ReadLine()?.Trim().ToLowerInvariant() ?? string.Empty;
+            if (!TryReadTrimmedLowerInput(out var answer))
+            {
+                return false;
+            }
 
             if (answer is "1" or "y" or "yes")
             {

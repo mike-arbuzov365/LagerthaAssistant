@@ -402,7 +402,10 @@ internal static partial class Program
         while (true)
         {
             Console.Write("Select [1/2/3/4]: ");
-            var answer = Console.ReadLine()?.Trim().ToLowerInvariant() ?? string.Empty;
+            if (!TryReadTrimmedLowerInput(out var answer))
+            {
+                return BatchSaveConfirmationChoice.SkipAll;
+            }
 
             if (answer is "1" or "yes" or "y")
             {
@@ -547,7 +550,10 @@ internal static partial class Program
         while (true)
         {
             Console.Write("Select [1/2/3]: ");
-            var answer = Console.ReadLine()?.Trim().ToLowerInvariant() ?? string.Empty;
+            if (!TryReadTrimmedLowerInput(out var answer))
+            {
+                return BatchItemSaveChoice.Skip;
+            }
 
             if (answer is "1" or "yes" or "y")
             {
@@ -569,4 +575,3 @@ internal static partial class Program
     }
 
 }
-
