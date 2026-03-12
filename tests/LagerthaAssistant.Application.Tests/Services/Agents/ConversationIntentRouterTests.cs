@@ -202,6 +202,43 @@ public sealed class ConversationIntentRouterTests
     }
 
     [Fact]
+    public void TryResolve_ShouldParseSlashPromptApplyWithInvalidIdAsNull()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("/prompt apply xyz", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.PromptApply, intent.Type);
+        Assert.Null(intent.Number);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseSlashPromptRejectWithoutIdAsNull()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("/prompt reject", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.PromptReject, intent.Type);
+        Assert.Null(intent.Number);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseSlashPromptProposeWithoutSeparator()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("/prompt propose only reason", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.PromptPropose, intent.Type);
+        Assert.Equal("only reason", intent.Argument);
+        Assert.Equal(string.Empty, intent.Argument2);
+    }
+
+    [Fact]
     public void TryResolve_ShouldMarkUnknownSlashAsUnsupportedCommandIntent()
     {
         var sut = new ConversationIntentRouter();
