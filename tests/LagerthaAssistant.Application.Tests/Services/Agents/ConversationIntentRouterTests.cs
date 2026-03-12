@@ -29,6 +29,50 @@ public sealed class ConversationIntentRouterTests
     }
 
     [Fact]
+    public void TryResolve_ShouldParseUkrainianHelpIntent()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("які команди доступні", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.Help, intent.Type);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseUkrainianMemoryIntent()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("покажи пам'ять", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.Memory, intent.Type);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseUkrainianPromptIntent()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("покажи промпт", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.PromptShow, intent.Type);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseUkrainianResetConversationIntent()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("скинь контекст розмови", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.ResetConversation, intent.Type);
+    }
+
+    [Fact]
     public void TryResolve_ShouldNotHijackSingleWordVocabularyInput()
     {
         var sut = new ConversationIntentRouter();
