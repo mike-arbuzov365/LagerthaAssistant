@@ -177,8 +177,7 @@ internal static partial class Program
 
         while (true)
         {
-            var line = Console.ReadLine();
-            if (line is null)
+            if (!TryReadInputLine(out var line))
             {
                 return null;
             }
