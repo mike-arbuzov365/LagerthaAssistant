@@ -29,7 +29,7 @@ public sealed class ConversationController : ControllerBase
             return BadRequest("Input is required.");
         }
 
-        var result = await _orchestrator.ProcessAsync(request.Input, cancellationToken);
+        var result = await _orchestrator.ProcessAsync(request.Input, "api", cancellationToken);
         return Ok(Map(result));
     }
 
@@ -92,3 +92,4 @@ public sealed class ConversationController : ControllerBase
         return string.Join(" | ", lines);
     }
 }
+

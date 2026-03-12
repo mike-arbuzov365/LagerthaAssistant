@@ -107,6 +107,7 @@ public static class DependencyInjection
         services.AddScoped<ISystemPromptProposalRepository, SystemPromptProposalRepository>();
         services.AddScoped<IVocabularyCardRepository, VocabularyCardRepository>();
         services.AddScoped<IVocabularySyncJobRepository, VocabularySyncJobRepository>();
+        services.AddScoped<IConversationIntentMetricRepository, ConversationIntentMetricRepository>();
 
         services.AddScoped<VocabularyDeckService>();
         services.AddScoped<GraphVocabularyDeckService>();
@@ -140,3 +141,4 @@ public static class DependencyInjection
             : fallback;
     }
 }
+

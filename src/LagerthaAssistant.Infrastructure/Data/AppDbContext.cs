@@ -20,6 +20,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<VocabularyCard> VocabularyCards => Set<VocabularyCard>();
     public DbSet<VocabularyCardToken> VocabularyCardTokens => Set<VocabularyCardToken>();
     public DbSet<VocabularySyncJob> VocabularySyncJobs => Set<VocabularySyncJob>();
+    public DbSet<ConversationIntentMetric> ConversationIntentMetrics => Set<ConversationIntentMetric>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +34,7 @@ public sealed class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new VocabularyCardConfiguration());
         modelBuilder.ApplyConfiguration(new VocabularyCardTokenConfiguration());
         modelBuilder.ApplyConfiguration(new VocabularySyncJobConfiguration());
+        modelBuilder.ApplyConfiguration(new ConversationIntentMetricConfiguration());
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

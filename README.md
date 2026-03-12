@@ -1,4 +1,4 @@
-﻿# LagerthaAssistant
+# LagerthaAssistant
 
 Console AI assistant prototype built with Clean Architecture and SQL Server persistence.
 
@@ -16,6 +16,7 @@ Console AI assistant prototype built with Clean Architecture and SQL Server pers
 - Persistent user memory (`UserMemoryEntries`) injected into next requests.
 - Persistent versioned system prompts (`SystemPromptEntries`).
 - Prompt proposal workflow (`SystemPromptProposals`) with apply/reject flow.
+- Conversation telemetry metrics (`ConversationIntentMetrics`) for channel/agent/intent analysis.
 - Vocabulary workflow with Excel (`.xlsx`) decks in two storage modes:
   - `local` (direct filesystem access)
   - `graph` (OneDrive via Microsoft Graph)
@@ -167,6 +168,7 @@ curl http://localhost:5000/health
 curl -X POST http://localhost:5000/api/conversation/messages -H "Content-Type: application/json" -d "{\"input\":\"void\"}"
 curl http://localhost:5000/api/vocabulary-sync/status
 curl -X POST "http://localhost:5000/api/vocabulary-sync/run?take=25"
+curl "http://localhost:5000/api/telemetry/intents?days=7&top=20&channel=api"
 ```
 
 On startup both UI and API apply EF migrations automatically.
@@ -184,6 +186,18 @@ For `POST /api/conversation/messages`, you can send natural language command-lik
 - `reset conversation`
 
 Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
+
+## Telemetry API
+
+Use telemetry endpoint to inspect how requests are routed by channel/agent/intent:
+
+- `GET /api/telemetry/intents?days=7&top=20&channel=api`
+
+Query parameters:
+
+- `days` (optional, default `7`, range `1..90`)
+- `top` (optional, default `20`, range `1..200`)
+- `channel` (optional, case-insensitive; examples: `api`, `ui`)
 ## Commands
 
 Use `/help` to see full command reference in the console.
@@ -227,15 +241,3 @@ Use `/help` to see full command reference in the console.
 dotnet build LagerthaAssistant.slnx
 dotnet test LagerthaAssistant.slnx -v minimal
 ```
-
-
-
-
-
-
-
-
-
-
-
-
