@@ -22,7 +22,7 @@ public sealed class ConversationControllerTests
         var payload = Assert.IsAssignableFrom<IReadOnlyList<ConversationCommandItemResponse>>(ok.Value);
 
         Assert.NotEmpty(payload);
-        Assert.Contains(payload, item => item.Command == ConversationSlashCommands.Help);
+        Assert.Contains(payload, item => item.Command == ConversationSlashCommands.Help && item.Category == ConversationCommandCategories.General);
         Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.PromptSet} <text>");
         Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.SyncRun} <n>");
     }

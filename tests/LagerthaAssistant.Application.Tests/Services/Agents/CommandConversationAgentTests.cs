@@ -23,6 +23,7 @@ public sealed class CommandConversationAgentTests
         var result = await sut.HandleAsync(new ConversationAgentContext(ConversationSlashCommands.Help, [ConversationSlashCommands.Help]));
 
         Assert.Equal("command.help", result.Intent);
+        Assert.Contains("General:", result.Message);
         Assert.Contains($"- {ConversationSlashCommands.Help}", result.Message);
         Assert.Contains($"- {ConversationSlashCommands.PromptSet} <text>", result.Message);
         Assert.Contains($"- {ConversationSlashCommands.SyncRun} <n>", result.Message);

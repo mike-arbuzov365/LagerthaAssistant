@@ -1,5 +1,6 @@
-﻿namespace LagerthaAssistant.Application.Models.Agents;
+namespace LagerthaAssistant.Application.Models.Agents;
 
 public sealed record ConversationCommandCatalogItem(
     string Command,
-    string Description);
+    string Description,
+    string Category);

@@ -26,7 +26,7 @@ public sealed class ConversationController : ControllerBase
     public ActionResult<IReadOnlyList<ConversationCommandItemResponse>> GetCommands()
     {
         var commands = ConversationCommandCatalog.SlashCommands
-            .Select(item => new ConversationCommandItemResponse(item.Command, item.Description))
+            .Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description))
             .ToList();
 
         return Ok(commands);

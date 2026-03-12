@@ -18,11 +18,15 @@ public sealed class ConversationCommandCatalogTests
     }
 
     [Fact]
-    public void SlashCommands_ShouldHaveNonEmptyDescriptions()
+    public void SlashCommands_ShouldHaveNonEmptyDescriptionsAndCategories()
     {
         Assert.All(
             ConversationCommandCatalog.SlashCommands,
-            item => Assert.False(string.IsNullOrWhiteSpace(item.Description)));
+            item =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(item.Description));
+                Assert.False(string.IsNullOrWhiteSpace(item.Category));
+            });
     }
 
     [Fact]

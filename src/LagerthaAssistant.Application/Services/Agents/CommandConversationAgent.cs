@@ -263,9 +263,21 @@ public sealed class CommandConversationAgent : IConversationAgent
             "Available slash commands:"
         };
 
-        lines.AddRange(
-            ConversationCommandCatalog.SlashCommands
-                .Select(item => $"- {item.Command} - {item.Description}"));
+        var groups = ConversationCommandCatalog.SlashCommands
+            .GroupBy(item => item.Category)
+            .ToList();
+
+        foreach (var group in groups)
+        {
+            lines.Add($"{group.Key}:");
+            lines.AddRange(group.Select(item => $"- {item.Command} - {item.Description}"));
+            lines.Add(string.Empty);
+        }
+
+        if (lines.Count > 0 && string.IsNullOrEmpty(lines[^1]))
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
 
         lines.Add("Natural-language command intents are also supported (for example: show history, show memory, reset conversation).");
 
