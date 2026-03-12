@@ -187,6 +187,58 @@ public sealed class CommandConversationAgentTests
     }
 
     [Fact]
+    public async Task HandleAsync_ShouldReturnUsage_ForPromptApplyWithoutId()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext("/prompt apply", ["/prompt apply"]));
+
+        Assert.Equal("command.prompt.apply", result.Intent);
+        Assert.Equal("Usage: /prompt apply <proposalId>", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldReturnUsage_ForPromptRejectWithInvalidId()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext("/prompt reject xyz", ["/prompt reject xyz"]));
+
+        Assert.Equal("command.prompt.reject", result.Intent);
+        Assert.Equal("Usage: /prompt reject <proposalId>", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldReturnUsage_ForPromptProposeWithoutPayload()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext("/prompt propose", ["/prompt propose"]));
+
+        Assert.Equal("command.prompt.propose", result.Intent);
+        Assert.Equal("Usage: /prompt propose <reason> || <new prompt text>", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldReturnUsage_ForPromptImproveWithoutGoal()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext("/prompt improve", ["/prompt improve"]));
+
+        Assert.Equal("command.prompt.improve", result.Intent);
+        Assert.Equal("Usage: /prompt improve <goal>", result.Message);
+    }
+
+    [Fact]
     public async Task HandleAsync_ShouldReturnUnsupported_ForUnknownSlashCommand()
     {
         var session = new FakeAssistantSessionService();
