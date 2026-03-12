@@ -86,6 +86,19 @@ public sealed class ConversationIntentRouterTests
     }
 
     [Fact]
+    public void TryResolve_ShouldParseSlashPromptSetWithMultilineArgument()
+    {
+        var sut = new ConversationIntentRouter();
+        var input = $"/prompt set line one{Environment.NewLine}line two";
+
+        var handled = sut.TryResolve(input, out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.PromptSet, intent.Type);
+        Assert.Equal($"line one{Environment.NewLine}line two", intent.Argument);
+    }
+
+    [Fact]
     public void TryResolve_ShouldParseSlashPromptProposeWithReasonAndPrompt()
     {
         var sut = new ConversationIntentRouter();

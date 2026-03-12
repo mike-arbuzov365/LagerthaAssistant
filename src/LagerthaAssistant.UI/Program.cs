@@ -5,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.DependencyInjection;
-using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
@@ -131,7 +130,6 @@ internal static partial class Program
         }
 
         var aiOptions = services.GetRequiredService<OpenAiOptions>();
-        var assistantSession = services.GetRequiredService<IAssistantSessionService>();
         var conversationOrchestrator = services.GetRequiredService<IConversationOrchestrator>();
         var vocabularyWorkflowService = services.GetRequiredService<IVocabularyWorkflowService>();
         var vocabularyDeckService = services.GetRequiredService<IVocabularyDeckService>();
@@ -149,7 +147,6 @@ internal static partial class Program
         }
 
         await RunConsoleAssistantAsync(
-            assistantSession,
             conversationOrchestrator,
             vocabularyWorkflowService,
             vocabularyDeckService,
@@ -162,7 +159,6 @@ internal static partial class Program
     }
 
     private static async Task RunConsoleAssistantAsync(
-        IAssistantSessionService assistantSession,
         IConversationOrchestrator conversationOrchestrator,
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyDeckService vocabularyDeckService,
@@ -199,7 +195,7 @@ internal static partial class Program
             var commandHandling = await TryHandleCommandAsync(
                 command,
                 saveMode,
-                assistantSession,
+                conversationOrchestrator,
                 vocabularyWorkflowService,
                 vocabularyDeckService,
                 vocabularyPersistenceService,

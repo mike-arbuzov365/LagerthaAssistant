@@ -1,4 +1,4 @@
-using LagerthaAssistant.Application.Interfaces.AI;
+using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
@@ -23,7 +23,7 @@ internal static partial class Program
     private static async Task<CommandHandlingResult> TryHandleCommandAsync(
         string command,
         SaveMode saveMode,
-        IAssistantSessionService assistantSession,
+        IConversationOrchestrator conversationOrchestrator,
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
@@ -203,9 +203,17 @@ internal static partial class Program
                 return CommandHandlingResult.Continue(saveMode);
             }
 
-            var updated = await assistantSession.SetSystemPromptAsync(capturedPrompt, "manual");
-            Console.WriteLine("System prompt updated and saved.");
-            PrintSystemPrompt(updated);
+            var commandResult = await conversationOrchestrator.ProcessAsync($"{setPrefix} {capturedPrompt}", "ui");
+            if (IsCommandResult(commandResult))
+            {
+                PrintCommandResult(commandResult);
+                Console.WriteLine();
+                return CommandHandlingResult.Continue(saveMode);
+            }
+
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("warning: Prompt update was not handled as a command.");
+            Console.ResetColor();
             return CommandHandlingResult.Continue(saveMode);
         }
 
