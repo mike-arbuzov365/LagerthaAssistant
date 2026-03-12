@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
+using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
@@ -17,6 +18,18 @@ public sealed class ConversationController : ControllerBase
     public ConversationController(IConversationOrchestrator orchestrator)
     {
         _orchestrator = orchestrator;
+    }
+
+
+    [HttpGet("commands")]
+    [ProducesResponseType(typeof(IReadOnlyList<ConversationCommandItemResponse>), StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<ConversationCommandItemResponse>> GetCommands()
+    {
+        var commands = ConversationCommandCatalog.SlashCommands
+            .Select(item => new ConversationCommandItemResponse(item.Command, item.Description))
+            .ToList();
+
+        return Ok(commands);
     }
 
     [HttpPost("messages")]

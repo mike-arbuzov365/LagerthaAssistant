@@ -2,6 +2,7 @@ namespace LagerthaAssistant.IntegrationTests.Controllers;
 
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Controllers;
+using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Models.Agents;
 using Microsoft.AspNetCore.Mvc;
@@ -9,6 +10,23 @@ using Xunit;
 
 public sealed class ConversationControllerTests
 {
+    [Fact]
+    public void GetCommands_ShouldReturnSlashCommandCatalog()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sut = new ConversationController(orchestrator);
+
+        var response = sut.GetCommands();
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsAssignableFrom<IReadOnlyList<ConversationCommandItemResponse>>(ok.Value);
+
+        Assert.NotEmpty(payload);
+        Assert.Contains(payload, item => item.Command == ConversationSlashCommands.Help);
+        Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.PromptSet} <text>");
+        Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.SyncRun} <n>");
+    }
+
     [Fact]
     public async Task PostMessage_ShouldUseDefaultChannel_WhenNotProvided()
     {
@@ -24,6 +42,7 @@ public sealed class ConversationControllerTests
         Assert.Equal("vocabulary.single", payload.Intent);
     }
 
+
     [Fact]
     public async Task PostMessage_ShouldNormalizeProvidedChannel()
     {
@@ -35,6 +54,7 @@ public sealed class ConversationControllerTests
         Assert.IsType<OkObjectResult>(response.Result);
         Assert.Equal("telegram", orchestrator.LastChannel);
     }
+
 
     [Fact]
     public async Task PostMessage_ShouldMapCommandResultPayload()
@@ -57,6 +77,7 @@ public sealed class ConversationControllerTests
         Assert.Empty(payload.Items);
         Assert.Equal("System prompt updated and saved.", payload.Message);
     }
+
 
     [Fact]
     public async Task PostMessage_ShouldReturnBadRequest_WhenInputIsEmpty()
