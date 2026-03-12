@@ -90,6 +90,79 @@ public sealed class ConversationOrchestratorIntentRoutingTests
     }
 
     [Fact]
+    public async Task ProcessAsync_ShouldRoutePromptPropose_ToCommandAgent()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+
+        IConversationAgent[] agents =
+        [
+            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            new VocabularyConversationAgent(workflow)
+        ];
+
+        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+
+        var result = await sut.ProcessAsync("/prompt propose Too verbose || Keep replies concise");
+
+        Assert.Equal("command-agent", result.AgentName);
+        Assert.Equal("command.prompt.propose", result.Intent);
+        Assert.Equal("Too verbose", session.LastProposalReason);
+        Assert.Equal("Keep replies concise", session.LastProposalPrompt);
+        Assert.Equal(0, workflow.SingleCalls);
+        Assert.Equal(0, workflow.BatchCalls);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ShouldRoutePromptApply_ToCommandAgent()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+
+        IConversationAgent[] agents =
+        [
+            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            new VocabularyConversationAgent(workflow)
+        ];
+
+        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+
+        var result = await sut.ProcessAsync("/prompt apply 17");
+
+        Assert.Equal("command-agent", result.AgentName);
+        Assert.Equal("command.prompt.apply", result.Intent);
+        Assert.Equal(17, session.LastAppliedProposalId);
+        Assert.Equal(0, workflow.SingleCalls);
+        Assert.Equal(0, workflow.BatchCalls);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ShouldRoutePromptReject_ToCommandAgent()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+
+        IConversationAgent[] agents =
+        [
+            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            new VocabularyConversationAgent(workflow)
+        ];
+
+        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+
+        var result = await sut.ProcessAsync("/prompt reject 19");
+
+        Assert.Equal("command-agent", result.AgentName);
+        Assert.Equal("command.prompt.reject", result.Intent);
+        Assert.Equal(19, session.LastRejectedProposalId);
+        Assert.Equal(0, workflow.SingleCalls);
+        Assert.Equal(0, workflow.BatchCalls);
+    }
+
+    [Fact]
     public async Task ProcessAsync_ShouldRouteSingleWord_ToVocabularyAgent()
     {
         var workflow = new FakeVocabularyWorkflowService();
@@ -169,6 +242,14 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         public string? LastSetPrompt { get; private set; }
 
+        public string? LastProposalPrompt { get; private set; }
+
+        public string? LastProposalReason { get; private set; }
+
+        public int? LastAppliedProposalId { get; private set; }
+
+        public int? LastRejectedProposalId { get; private set; }
+
         public Task<AssistantCompletionResult> AskAsync(string userMessage, CancellationToken cancellationToken = default)
             => Task.FromResult(new AssistantCompletionResult("reply", "test-model", null));
 
@@ -188,16 +269,30 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             => Task.FromResult<IReadOnlyCollection<SystemPromptProposal>>([]);
 
         public Task<SystemPromptProposal> CreateSystemPromptProposalAsync(string prompt, string reason, double confidence, string source = "manual", CancellationToken cancellationToken = default)
-            => Task.FromResult(new SystemPromptProposal());
+        {
+            LastProposalPrompt = prompt;
+            LastProposalReason = reason;
+            return Task.FromResult(new SystemPromptProposal
+            {
+                Id = 101,
+                Status = "proposed"
+            });
+        }
 
         public Task<SystemPromptProposal> GenerateSystemPromptProposalAsync(string goal, CancellationToken cancellationToken = default)
             => Task.FromResult(new SystemPromptProposal());
 
         public Task<string> ApplySystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
-            => Task.FromResult(Prompt);
+        {
+            LastAppliedProposalId = proposalId;
+            return Task.FromResult(Prompt);
+        }
 
         public Task RejectSystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+        {
+            LastRejectedProposalId = proposalId;
+            return Task.CompletedTask;
+        }
 
         public Task<string> SetSystemPromptAsync(string prompt, string source = "manual", CancellationToken cancellationToken = default)
         {
