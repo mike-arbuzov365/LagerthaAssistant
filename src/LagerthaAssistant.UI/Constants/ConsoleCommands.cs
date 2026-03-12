@@ -15,6 +15,10 @@ public static class ConsoleCommands
     public const string GraphLogin = "/graph login";
     public const string GraphLogout = "/graph logout";
 
+    public const string Sync = "/sync";
+    public const string SyncStatus = "/sync status";
+    public const string SyncRun = "/sync run";
+
     public const string Exit = "/exit";
     public const string Reset = "/reset";
 

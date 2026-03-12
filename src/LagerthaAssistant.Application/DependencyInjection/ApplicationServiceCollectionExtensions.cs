@@ -22,6 +22,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IVocabularyIndexService, VocabularyIndexService>();
         services.AddScoped<IVocabularyWorkflowService, VocabularyWorkflowService>();
         services.AddScoped<IVocabularyPersistenceService, VocabularyPersistenceService>();
+        services.AddScoped<IVocabularySyncProcessor, VocabularySyncProcessor>();
 
         services.AddScoped<IConversationOrchestrator, ConversationOrchestrator>();
         services.AddScoped<IConversationAgent, CommandConversationAgent>();

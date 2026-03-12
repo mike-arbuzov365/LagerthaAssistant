@@ -60,4 +60,21 @@ public sealed class VocabularySyncJobRepository : IVocabularySyncJobRepository
             throw new RepositoryException(nameof(VocabularySyncJobRepository), RepositoryOperations.GetActive, "Failed to load pending vocabulary sync jobs", ex);
         }
     }
+
+    public async Task<int> CountPendingAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Executing {Operation} for pending vocabulary sync jobs count", RepositoryOperations.GetActive);
+
+            return await _context.VocabularySyncJobs
+                .Where(x => x.Status == VocabularySyncJobStatus.Pending)
+                .CountAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for pending vocabulary sync jobs count", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(VocabularySyncJobRepository), RepositoryOperations.GetActive, "Failed to count pending vocabulary sync jobs", ex);
+        }
+    }
 }

@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -133,6 +133,7 @@ internal static class Program
         var vocabularyWorkflowService = services.GetRequiredService<IVocabularyWorkflowService>();
         var vocabularyDeckService = services.GetRequiredService<IVocabularyDeckService>();
         var vocabularyPersistenceService = services.GetRequiredService<IVocabularyPersistenceService>();
+        var vocabularySyncProcessor = services.GetRequiredService<IVocabularySyncProcessor>();
         var vocabularyStorageModeProvider = services.GetRequiredService<IVocabularyStorageModeProvider>();
         var graphAuthService = services.GetRequiredService<IGraphAuthService>();
         var userMemoryRepository = services.GetRequiredService<IUserMemoryRepository>();
@@ -150,6 +151,7 @@ internal static class Program
             vocabularyWorkflowService,
             vocabularyDeckService,
             vocabularyPersistenceService,
+            vocabularySyncProcessor,
             vocabularyStorageModeProvider,
             graphAuthService,
             userMemoryRepository,
@@ -162,6 +164,7 @@ internal static class Program
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
+        IVocabularySyncProcessor vocabularySyncProcessor,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
         IGraphAuthService graphAuthService,
         IUserMemoryRepository userMemoryRepository,
@@ -342,6 +345,25 @@ internal static class Program
                 Console.WriteLine("Graph token cache cleared.");
                 var status = await graphAuthService.GetStatusAsync();
                 PrintGraphStatus(status);
+                continue;
+            }
+
+            if (command.Equals(ConsoleCommands.Sync, StringComparison.OrdinalIgnoreCase)
+                || command.Equals(ConsoleCommands.SyncStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                var pendingCount = await vocabularySyncProcessor.GetPendingCountAsync();
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"info: Pending vocabulary sync jobs: {pendingCount}");
+                Console.ResetColor();
+                continue;
+            }
+
+            if (command.Equals(ConsoleCommands.SyncRun, StringComparison.OrdinalIgnoreCase)
+                || command.StartsWith(ConsoleCommands.SyncRun + " ", StringComparison.OrdinalIgnoreCase))
+            {
+                var take = ParseSyncBatchSize(command);
+                var summary = await vocabularySyncProcessor.ProcessPendingAsync(take);
+                PrintSyncRunSummary(summary);
                 continue;
             }
             if (command.Equals(ConsoleCommands.Exit, StringComparison.OrdinalIgnoreCase))
@@ -1697,7 +1719,31 @@ internal static class Program
         Console.WriteLine($"warning: Graph status: {status.Message}");
         Console.ResetColor();
     }
+    private static int ParseSyncBatchSize(string command)
+    {
+        if (command.Equals(ConsoleCommands.SyncRun, StringComparison.OrdinalIgnoreCase))
+        {
+            return 25;
+        }
 
+        var suffix = command[ConsoleCommands.SyncRun.Length..].Trim();
+        if (int.TryParse(suffix, out var parsed) && parsed > 0)
+        {
+            return parsed;
+        }
+
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("warning: Invalid batch size. Using default 25.");
+        Console.ResetColor();
+        return 25;
+    }
+
+    private static void PrintSyncRunSummary(VocabularySyncRunSummary summary)
+    {
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine($"info: Sync run processed {summary.Processed}/{summary.Requested} job(s): completed={summary.Completed}, requeued={summary.Requeued}, failed={summary.Failed}, pending={summary.PendingAfterRun}.");
+        Console.ResetColor();
+    }
     private static string? ReadMultilinePrompt()
     {
         Console.WriteLine("Paste the system prompt below.");
@@ -1790,6 +1836,13 @@ internal static class Program
         WriteCommandHelp(ConsoleCommands.GraphStatus, "Show Graph authentication/configuration status.");
         WriteCommandHelp(ConsoleCommands.GraphLogin, "Start device-code login for OneDrive access.");
         WriteCommandHelp(ConsoleCommands.GraphLogout, "Sign out and clear cached Graph tokens.");
+
+        Console.WriteLine();
+        Console.WriteLine("Sync queue");
+        WriteCommandHelp(ConsoleCommands.Sync, "Show pending vocabulary sync jobs.");
+        WriteCommandHelp(ConsoleCommands.SyncStatus, "Alias for /sync.");
+        WriteCommandHelp(ConsoleCommands.SyncRun, "Run pending sync jobs (default batch size: 25).");
+        WriteCommandHelp("/sync run <n>", "Run up to <n> pending sync jobs now.");
 
         Console.WriteLine();
         Console.WriteLine("Session");
@@ -1930,6 +1983,13 @@ internal static class Program
         };
     }
 }
+
+
+
+
+
+
+
 
 
 

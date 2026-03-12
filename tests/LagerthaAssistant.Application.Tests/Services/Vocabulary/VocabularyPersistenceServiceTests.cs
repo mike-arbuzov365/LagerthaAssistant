@@ -1,4 +1,4 @@
-namespace LagerthaAssistant.Application.Tests.Services.Vocabulary;
+﻿namespace LagerthaAssistant.Application.Tests.Services.Vocabulary;
 
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
@@ -21,7 +21,7 @@ public sealed class VocabularyPersistenceServiceTests
                 "(v) ????????",
                 "We prepare release notes."));
 
-        var deckService = new FakeVocabularyDeckService(expectedResult);
+        var deckService = new FakeVocabularyDeckModeService(expectedResult);
         var indexService = new FakeVocabularyIndexService();
         var modeProvider = new FakeStorageModeProvider();
 
@@ -44,27 +44,24 @@ public sealed class VocabularyPersistenceServiceTests
         Assert.Equal("prepare", indexService.LastRequestedWord);
     }
 
-    private sealed class FakeVocabularyDeckService : IVocabularyDeckService
+    private sealed class FakeVocabularyDeckModeService : IVocabularyDeckModeService
     {
         private readonly VocabularyAppendResult _result;
 
-        public FakeVocabularyDeckService(VocabularyAppendResult result)
+        public FakeVocabularyDeckModeService(VocabularyAppendResult result)
         {
             _result = result;
         }
 
         public int Calls { get; private set; }
 
-        public Task<VocabularyLookupResult> FindInWritableDecksAsync(string word, CancellationToken cancellationToken = default)
-            => Task.FromResult(new VocabularyLookupResult(word, []));
-
-        public Task<IReadOnlyList<VocabularyDeckFile>> GetWritableDeckFilesAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<VocabularyDeckFile>>([]);
-
-        public Task<VocabularyAppendPreviewResult> PreviewAppendFromAssistantReplyAsync(string requestedWord, string assistantReply, string? forcedDeckFileName = null, string? overridePartOfSpeech = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(new VocabularyAppendPreviewResult(VocabularyAppendPreviewStatus.ParseFailed, requestedWord));
-
-        public Task<VocabularyAppendResult> AppendFromAssistantReplyAsync(string requestedWord, string assistantReply, string? forcedDeckFileName = null, string? overridePartOfSpeech = null, CancellationToken cancellationToken = default)
+        public Task<VocabularyAppendResult> AppendFromAssistantReplyAsync(
+            VocabularyStorageMode mode,
+            string requestedWord,
+            string assistantReply,
+            string? forcedDeckFileName = null,
+            string? overridePartOfSpeech = null,
+            CancellationToken cancellationToken = default)
         {
             Calls++;
             return Task.FromResult(_result);
@@ -112,3 +109,5 @@ public sealed class VocabularyPersistenceServiceTests
             => mode.ToString().ToLowerInvariant();
     }
 }
+
+

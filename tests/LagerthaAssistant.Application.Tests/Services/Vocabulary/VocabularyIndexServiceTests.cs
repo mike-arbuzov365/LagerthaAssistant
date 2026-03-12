@@ -1,4 +1,4 @@
-namespace LagerthaAssistant.Application.Tests.Services.Vocabulary;
+﻿namespace LagerthaAssistant.Application.Tests.Services.Vocabulary;
 
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
@@ -191,6 +191,12 @@ The function returns void when there is no value to return
                 .ToList();
 
             return Task.FromResult<IReadOnlyList<VocabularySyncJob>>(pending);
+        }
+
+        public Task<int> CountPendingAsync(CancellationToken cancellationToken = default)
+        {
+            var count = Jobs.Count(job => job.Status == VocabularySyncJobStatus.Pending);
+            return Task.FromResult(count);
         }
     }
 
