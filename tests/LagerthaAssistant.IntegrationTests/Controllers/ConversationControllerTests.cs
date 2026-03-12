@@ -37,6 +37,28 @@ public sealed class ConversationControllerTests
     }
 
     [Fact]
+    public async Task PostMessage_ShouldMapCommandResultPayload()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = ConversationAgentResult.Empty("command-agent", "command.prompt.set", "System prompt updated and saved.")
+        };
+
+        var sut = new ConversationController(orchestrator);
+
+        var response = await sut.PostMessage(new ConversationMessageRequest("/prompt set Keep replies concise"), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<ConversationMessageResponse>(ok.Value);
+
+        Assert.Equal("command-agent", payload.Agent);
+        Assert.Equal("command.prompt.set", payload.Intent);
+        Assert.False(payload.IsBatch);
+        Assert.Empty(payload.Items);
+        Assert.Equal("System prompt updated and saved.", payload.Message);
+    }
+
+    [Fact]
     public async Task PostMessage_ShouldReturnBadRequest_WhenInputIsEmpty()
     {
         var orchestrator = new FakeConversationOrchestrator();
@@ -54,6 +76,12 @@ public sealed class ConversationControllerTests
 
         public string LastChannel { get; private set; } = string.Empty;
 
+        public ConversationAgentResult NextResult { get; set; } = new(
+            "vocabulary-agent",
+            "vocabulary.single",
+            false,
+            []);
+
         public Task<ConversationAgentResult> ProcessAsync(string input, CancellationToken cancellationToken = default)
             => ProcessAsync(input, "unknown", cancellationToken);
 
@@ -64,12 +92,7 @@ public sealed class ConversationControllerTests
         {
             Calls++;
             LastChannel = channel;
-
-            return Task.FromResult(new ConversationAgentResult(
-                "vocabulary-agent",
-                "vocabulary.single",
-                false,
-                []));
+            return Task.FromResult(NextResult);
         }
     }
 }
