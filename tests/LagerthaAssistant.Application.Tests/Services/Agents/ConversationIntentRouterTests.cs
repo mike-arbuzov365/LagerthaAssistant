@@ -33,7 +33,7 @@ public sealed class ConversationIntentRouterTests
     {
         var sut = new ConversationIntentRouter();
 
-        var handled = sut.TryResolve("які команди доступні", out var intent);
+        var handled = sut.TryResolve("\u044f\u043a\u0456 \u043a\u043e\u043c\u0430\u043d\u0434\u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0456", out var intent);
 
         Assert.True(handled);
         Assert.Equal(ConversationCommandIntentType.Help, intent.Type);
@@ -44,7 +44,7 @@ public sealed class ConversationIntentRouterTests
     {
         var sut = new ConversationIntentRouter();
 
-        var handled = sut.TryResolve("покажи пам'ять", out var intent);
+        var handled = sut.TryResolve("\u043f\u043e\u043a\u0430\u0436\u0438 \u043f\u0430\u043c'\u044f\u0442\u044c", out var intent);
 
         Assert.True(handled);
         Assert.Equal(ConversationCommandIntentType.Memory, intent.Type);
@@ -55,7 +55,7 @@ public sealed class ConversationIntentRouterTests
     {
         var sut = new ConversationIntentRouter();
 
-        var handled = sut.TryResolve("покажи промпт", out var intent);
+        var handled = sut.TryResolve("\u043f\u043e\u043a\u0430\u0436\u0438 \u043f\u0440\u043e\u043c\u043f\u0442", out var intent);
 
         Assert.True(handled);
         Assert.Equal(ConversationCommandIntentType.PromptShow, intent.Type);
@@ -66,10 +66,44 @@ public sealed class ConversationIntentRouterTests
     {
         var sut = new ConversationIntentRouter();
 
-        var handled = sut.TryResolve("скинь контекст розмови", out var intent);
+        var handled = sut.TryResolve("\u0441\u043a\u0438\u043d\u044c \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442 \u0440\u043e\u0437\u043c\u043e\u0432\u0438", out var intent);
 
         Assert.True(handled);
         Assert.Equal(ConversationCommandIntentType.ResetConversation, intent.Type);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseUkrainianPromptResetIntent()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("\u0432\u0456\u0434\u043d\u043e\u0432 \u043f\u0440\u043e\u043c\u043f\u0442 \u0434\u0435\u0444\u043e\u043b\u0442", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.PromptResetDefault, intent.Type);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseUkrainianSyncStatusIntent()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("\u043f\u043e\u043a\u0430\u0436\u0438 \u0441\u0442\u0430\u043d \u0441\u0438\u043d\u0445 \u0447\u0435\u0440\u0433\u0430", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.SyncStatus, intent.Type);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseUkrainianSyncRunIntentWithDefaultTake()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("\u0437\u0430\u043f\u0443\u0441\u0442\u0438 \u0441\u0438\u043d\u0445 \u0437\u0430\u0440\u0430\u0437", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.SyncRun, intent.Type);
+        Assert.Equal(25, intent.Number);
     }
 
     [Fact]
