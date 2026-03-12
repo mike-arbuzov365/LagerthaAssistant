@@ -8,13 +8,19 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
 {
     private readonly IAssistantSessionService _assistantSessionService;
     private readonly IVocabularyDeckService _vocabularyDeckService;
+    private readonly IVocabularyIndexService? _vocabularyIndexService;
+    private readonly IVocabularyStorageModeProvider? _storageModeProvider;
 
     public VocabularyWorkflowService(
         IAssistantSessionService assistantSessionService,
-        IVocabularyDeckService vocabularyDeckService)
+        IVocabularyDeckService vocabularyDeckService,
+        IVocabularyIndexService? vocabularyIndexService = null,
+        IVocabularyStorageModeProvider? storageModeProvider = null)
     {
         _assistantSessionService = assistantSessionService;
         _vocabularyDeckService = vocabularyDeckService;
+        _vocabularyIndexService = vocabularyIndexService;
+        _storageModeProvider = storageModeProvider;
     }
 
     public async Task<VocabularyWorkflowItemResult> ProcessAsync(
@@ -29,9 +35,24 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
             throw new ArgumentException("Input cannot be empty.", nameof(input));
         }
 
+        if (_vocabularyIndexService is not null)
+        {
+            var indexedLookup = await _vocabularyIndexService.FindByInputAsync(normalizedInput, cancellationToken);
+            if (indexedLookup.Found)
+            {
+                return new VocabularyWorkflowItemResult(normalizedInput, indexedLookup);
+            }
+        }
+
         var lookup = await _vocabularyDeckService.FindInWritableDecksAsync(normalizedInput, cancellationToken);
         if (lookup.Found)
         {
+            if (_vocabularyIndexService is not null)
+            {
+                var mode = _storageModeProvider?.CurrentMode ?? VocabularyStorageMode.Local;
+                await _vocabularyIndexService.IndexLookupResultAsync(lookup, mode, cancellationToken);
+            }
+
             return new VocabularyWorkflowItemResult(normalizedInput, lookup);
         }
 

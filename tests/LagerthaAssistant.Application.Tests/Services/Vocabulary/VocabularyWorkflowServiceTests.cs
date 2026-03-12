@@ -12,6 +12,30 @@ using Xunit;
 public sealed class VocabularyWorkflowServiceTests
 {
     [Fact]
+    public async Task ProcessAsync_ShouldReturnFromSqlIndex_WhenIndexedCardExists()
+    {
+        var order = new List<string>();
+        var assistant = new FakeAssistantSessionService(order);
+        var deck = new FakeVocabularyDeckService(order);
+        var index = new FakeVocabularyIndexService
+        {
+            LookupFactory = input => new VocabularyLookupResult(input,
+            [
+                new VocabularyDeckEntry("wm-nouns-ua-en.xlsx", "path", 7, input, "(n) indexed", "Indexed example")
+            ])
+        };
+
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
+
+        var result = await sut.ProcessAsync("void");
+
+        Assert.True(result.FoundInDeck);
+        Assert.Equal(0, assistant.AskCalls);
+        Assert.Equal(0, deck.LookupCalls);
+        Assert.Equal(0, index.IndexLookupCalls);
+    }
+
+    [Fact]
     public async Task ProcessAsync_ShouldSkipAssistant_WhenFoundInDeck()
     {
         var order = new List<string>();
@@ -24,7 +48,7 @@ public sealed class VocabularyWorkflowServiceTests
             ])
         };
 
-        var sut = new VocabularyWorkflowService(assistant, deck);
+        var sut = new VocabularyWorkflowService(assistant, deck, new FakeVocabularyIndexService(), new FakeStorageModeProvider());
 
         var result = await sut.ProcessAsync("void");
 
@@ -55,7 +79,7 @@ public sealed class VocabularyWorkflowServiceTests
                 "C:/deck/wm-verbs-us-en.xlsx")
         };
 
-        var sut = new VocabularyWorkflowService(assistant, deck);
+        var sut = new VocabularyWorkflowService(assistant, deck, new FakeVocabularyIndexService(), new FakeStorageModeProvider());
 
         var result = await sut.ProcessAsync("prepare");
 
@@ -86,7 +110,7 @@ public sealed class VocabularyWorkflowServiceTests
                 "C:/deck/wm-verbs-us-en.xlsx")
         };
 
-        var sut = new VocabularyWorkflowService(assistant, deck);
+        var sut = new VocabularyWorkflowService(assistant, deck, new FakeVocabularyIndexService(), new FakeStorageModeProvider());
 
         var results = await sut.ProcessBatchAsync(["void", "prepare"]);
 
@@ -173,6 +197,8 @@ public sealed class VocabularyWorkflowServiceTests
             _order = order;
         }
 
+        public int LookupCalls { get; private set; }
+
         public int PreviewCalls { get; private set; }
 
         public Func<string, VocabularyLookupResult>? LookupFactory { get; set; }
@@ -181,6 +207,7 @@ public sealed class VocabularyWorkflowServiceTests
 
         public Task<VocabularyLookupResult> FindInWritableDecksAsync(string word, CancellationToken cancellationToken = default)
         {
+            LookupCalls++;
             _order.Add($"lookup:{word}");
             return Task.FromResult(LookupFactory?.Invoke(word) ?? new VocabularyLookupResult(word, []));
         }
@@ -211,5 +238,42 @@ public sealed class VocabularyWorkflowServiceTests
         {
             return Task.FromResult(new VocabularyAppendResult(VocabularyAppendStatus.Error, Message: "not used"));
         }
+    }
+
+    private sealed class FakeVocabularyIndexService : IVocabularyIndexService
+    {
+        public int IndexLookupCalls { get; private set; }
+
+        public Func<string, VocabularyLookupResult>? LookupFactory { get; set; }
+
+        public Task<VocabularyLookupResult> FindByInputAsync(string input, CancellationToken cancellationToken = default)
+            => Task.FromResult(LookupFactory?.Invoke(input) ?? new VocabularyLookupResult(input, []));
+
+        public Task IndexLookupResultAsync(VocabularyLookupResult lookup, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
+        {
+            IndexLookupCalls++;
+            return Task.CompletedTask;
+        }
+
+        public Task HandleAppendResultAsync(string requestedWord, string assistantReply, string? targetDeckFileName, string? overridePartOfSpeech, VocabularyAppendResult appendResult, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+    }
+
+    private sealed class FakeStorageModeProvider : IVocabularyStorageModeProvider
+    {
+        public VocabularyStorageMode CurrentMode => VocabularyStorageMode.Local;
+
+        public void SetMode(VocabularyStorageMode mode)
+        {
+        }
+
+        public bool TryParse(string? value, out VocabularyStorageMode mode)
+        {
+            mode = VocabularyStorageMode.Local;
+            return true;
+        }
+
+        public string ToText(VocabularyStorageMode mode)
+            => mode.ToString().ToLowerInvariant();
     }
 }

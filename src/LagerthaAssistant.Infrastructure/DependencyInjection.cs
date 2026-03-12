@@ -105,12 +105,16 @@ public static class DependencyInjection
         services.AddScoped<IUserMemoryRepository, UserMemoryRepository>();
         services.AddScoped<ISystemPromptRepository, SystemPromptRepository>();
         services.AddScoped<ISystemPromptProposalRepository, SystemPromptProposalRepository>();
+        services.AddScoped<IVocabularyCardRepository, VocabularyCardRepository>();
+        services.AddScoped<IVocabularySyncJobRepository, VocabularySyncJobRepository>();
+        services.AddScoped<IConversationIntentMetricRepository, ConversationIntentMetricRepository>();
 
         services.AddScoped<VocabularyDeckService>();
         services.AddScoped<GraphVocabularyDeckService>();
         services.AddScoped<IVocabularyDeckBackend>(sp => sp.GetRequiredService<VocabularyDeckService>());
         services.AddScoped<IVocabularyDeckBackend>(sp => sp.GetRequiredService<GraphVocabularyDeckService>());
         services.AddScoped<IVocabularyDeckService, SwitchableVocabularyDeckService>();
+        services.AddScoped<IVocabularyDeckModeService, VocabularyDeckModeService>();
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
@@ -137,3 +141,4 @@ public static class DependencyInjection
             : fallback;
     }
 }
+

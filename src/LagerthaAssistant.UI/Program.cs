@@ -6,10 +6,12 @@ using Microsoft.Extensions.Logging;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.DependencyInjection;
 using LagerthaAssistant.Application.Interfaces.AI;
+using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.AI;
+using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Vocabulary;
 using LagerthaAssistant.Domain.AI;
@@ -130,8 +132,11 @@ internal static class Program
 
         var aiOptions = services.GetRequiredService<OpenAiOptions>();
         var assistantSession = services.GetRequiredService<IAssistantSessionService>();
+        var conversationOrchestrator = services.GetRequiredService<IConversationOrchestrator>();
         var vocabularyWorkflowService = services.GetRequiredService<IVocabularyWorkflowService>();
         var vocabularyDeckService = services.GetRequiredService<IVocabularyDeckService>();
+        var vocabularyPersistenceService = services.GetRequiredService<IVocabularyPersistenceService>();
+        var vocabularySyncProcessor = services.GetRequiredService<IVocabularySyncProcessor>();
         var vocabularyStorageModeProvider = services.GetRequiredService<IVocabularyStorageModeProvider>();
         var graphAuthService = services.GetRequiredService<IGraphAuthService>();
         var userMemoryRepository = services.GetRequiredService<IUserMemoryRepository>();
@@ -146,8 +151,11 @@ internal static class Program
 
         await RunConsoleAssistantAsync(
             assistantSession,
+            conversationOrchestrator,
             vocabularyWorkflowService,
             vocabularyDeckService,
+            vocabularyPersistenceService,
+            vocabularySyncProcessor,
             vocabularyStorageModeProvider,
             graphAuthService,
             userMemoryRepository,
@@ -157,8 +165,11 @@ internal static class Program
 
     private static async Task RunConsoleAssistantAsync(
         IAssistantSessionService assistantSession,
+        IConversationOrchestrator conversationOrchestrator,
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyDeckService vocabularyDeckService,
+        IVocabularyPersistenceService vocabularyPersistenceService,
+        IVocabularySyncProcessor vocabularySyncProcessor,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
         IGraphAuthService graphAuthService,
         IUserMemoryRepository userMemoryRepository,
@@ -232,6 +243,7 @@ internal static class Program
                     parsedItems,
                     vocabularyWorkflowService,
                     vocabularyDeckService,
+                    vocabularyPersistenceService,
                     saveMode);
                 continue;
             }
@@ -338,6 +350,25 @@ internal static class Program
                 Console.WriteLine("Graph token cache cleared.");
                 var status = await graphAuthService.GetStatusAsync();
                 PrintGraphStatus(status);
+                continue;
+            }
+
+            if (command.Equals(ConsoleCommands.Sync, StringComparison.OrdinalIgnoreCase)
+                || command.Equals(ConsoleCommands.SyncStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                var pendingCount = await vocabularySyncProcessor.GetPendingCountAsync();
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"info: Pending vocabulary sync jobs: {pendingCount}");
+                Console.ResetColor();
+                continue;
+            }
+
+            if (command.Equals(ConsoleCommands.SyncRun, StringComparison.OrdinalIgnoreCase)
+                || command.StartsWith(ConsoleCommands.SyncRun + " ", StringComparison.OrdinalIgnoreCase))
+            {
+                var take = ParseSyncBatchSize(command);
+                var summary = await vocabularySyncProcessor.ProcessPendingAsync(take);
+                PrintSyncRunSummary(summary);
                 continue;
             }
             if (command.Equals(ConsoleCommands.Exit, StringComparison.OrdinalIgnoreCase))
@@ -507,103 +538,20 @@ internal static class Program
 
             try
             {
-                var workflowResult = await vocabularyWorkflowService.ProcessAsync(command);
+                var orchestrationResult = await conversationOrchestrator.ProcessAsync(command, "ui");
 
-                if (workflowResult.FoundInDeck)
+                if (IsCommandResult(orchestrationResult))
                 {
-                    PrintVocabularyFromDeck(workflowResult.Lookup);
+                    PrintCommandResult(orchestrationResult);
+                    Console.WriteLine();
                     continue;
                 }
 
-                if (workflowResult.AssistantCompletion is null || workflowResult.AppendPreview is null)
-                {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine("warning: Could not process vocabulary input.");
-                    Console.ResetColor();
-                    continue;
-                }
-
-                var result = workflowResult.AssistantCompletion;
-                var preview = workflowResult.AppendPreview;
-
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"Assistant ({result.Model}) > {result.Content}");
-                Console.ResetColor();
-
-                if (preview.Status == VocabularyAppendPreviewStatus.ReadyToAppend
-                    && !string.IsNullOrWhiteSpace(preview.TargetDeckFileName)
-                    && !string.IsNullOrWhiteSpace(preview.TargetDeckPath))
-                {
-                    var shouldSave = saveMode != SaveMode.Off;
-                    var targetDeckFileName = preview.TargetDeckFileName;
-                    string? overridePartOfSpeech = null;
-                    var retryPreview = preview;
-
-                    if (saveMode == SaveMode.Ask)
-                    {
-                        var confirmationChoice = AskVocabularySaveConfirmation(preview);
-                        shouldSave = confirmationChoice != SaveConfirmationChoice.No;
-
-                        if (confirmationChoice == SaveConfirmationChoice.YesDontAskAgain)
-                        {
-                            saveMode = SaveMode.Auto;
-                        }
-                        else if (confirmationChoice == SaveConfirmationChoice.SaveToOtherDeck)
-                        {
-                            var customSave = await AskCustomSaveTargetAsync(vocabularyDeckService, preview);
-                            shouldSave = customSave.ShouldSave;
-
-                            if (customSave.ShouldSave)
-                            {
-                                targetDeckFileName = customSave.DeckFileName;
-                                overridePartOfSpeech = customSave.OverridePartOfSpeech;
-                                retryPreview = preview with
-                                {
-                                    TargetDeckFileName = customSave.DeckFileName,
-                                    TargetDeckPath = customSave.DeckPath
-                                };
-                            }
-                        }
-                    }
-
-                    if (shouldSave && !string.IsNullOrWhiteSpace(targetDeckFileName))
-                    {
-                        var appendResult = await vocabularyDeckService.AppendFromAssistantReplyAsync(
-                            command,
-                            result.Content,
-                            targetDeckFileName,
-                            overridePartOfSpeech);
-                        PrintVocabularyAppendResult(appendResult);
-
-                        while (IsFileLockedSaveError(appendResult) && AskRetrySaveConfirmation(retryPreview))
-                        {
-                            appendResult = await vocabularyDeckService.AppendFromAssistantReplyAsync(
-                                command,
-                                result.Content,
-                                targetDeckFileName,
-                                overridePartOfSpeech);
-                            PrintVocabularyAppendResult(appendResult);
-                        }
-                    }
-                    else
-                    {
-                        Console.ForegroundColor = ConsoleColor.Cyan;
-                        Console.WriteLine("info: Save skipped (mode=off or declined by user).");
-                        Console.ResetColor();
-                    }
-                }
-                else
-                {
-                    PrintVocabularyAppendPreviewResult(preview);
-                }
-
-                if (result.Usage is not null)
-                {
-                    Console.WriteLine(
-                        $"Tokens: prompt={result.Usage.PromptTokens}, completion={result.Usage.CompletionTokens}, total={result.Usage.TotalTokens}");
-                }
-
-                Console.WriteLine();
+                saveMode = await HandleVocabularyAgentResultAsync(
+                    orchestrationResult,
+                    vocabularyDeckService,
+                    vocabularyPersistenceService,
+                    saveMode);
             }
             catch (Exception ex)
             {
@@ -617,10 +565,224 @@ internal static class Program
         Console.WriteLine("Assistant session ended.");
     }
 
+    private static bool IsCommandResult(ConversationAgentResult result)
+    {
+        return result.AgentName.Equals("command-agent", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void PrintCommandResult(ConversationAgentResult result)
+    {
+        var message = string.IsNullOrWhiteSpace(result.Message)
+            ? $"Command '{result.Intent}' executed."
+            : result.Message;
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine($"Assistant > {message}");
+        Console.ResetColor();
+    }
+
+    private static async Task<SaveMode> HandleVocabularyAgentResultAsync(
+        ConversationAgentResult result,
+        IVocabularyDeckService vocabularyDeckService,
+        IVocabularyPersistenceService vocabularyPersistenceService,
+        SaveMode saveMode)
+    {
+        if (result.Items.Count == 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("warning: Could not process vocabulary input.");
+            Console.ResetColor();
+            Console.WriteLine();
+            return saveMode;
+        }
+
+        if (!result.IsBatch || result.Items.Count == 1)
+        {
+            return await HandleVocabularyAgentItemAsync(
+                result.Items[0],
+                vocabularyDeckService,
+                vocabularyPersistenceService,
+                saveMode);
+        }
+
+        return await HandleVocabularyBatchAgentItemsAsync(
+            result.Items,
+            vocabularyDeckService,
+            vocabularyPersistenceService,
+            saveMode);
+    }
+
+    private static async Task<SaveMode> HandleVocabularyAgentItemAsync(
+        ConversationAgentItemResult item,
+        IVocabularyDeckService vocabularyDeckService,
+        IVocabularyPersistenceService vocabularyPersistenceService,
+        SaveMode saveMode)
+    {
+        if (item.FoundInDeck)
+        {
+            PrintVocabularyFromDeck(item.Lookup);
+            Console.WriteLine();
+            return saveMode;
+        }
+
+        if (item.AssistantCompletion is null || item.AppendPreview is null)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("warning: Could not process vocabulary input.");
+            Console.ResetColor();
+            Console.WriteLine();
+            return saveMode;
+        }
+
+        var completion = item.AssistantCompletion;
+        var preview = item.AppendPreview;
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine($"Assistant ({completion.Model}) > {completion.Content}");
+        Console.ResetColor();
+
+        if (preview.Status == VocabularyAppendPreviewStatus.ReadyToAppend
+            && !string.IsNullOrWhiteSpace(preview.TargetDeckFileName)
+            && !string.IsNullOrWhiteSpace(preview.TargetDeckPath))
+        {
+            var shouldSave = saveMode != SaveMode.Off;
+            var targetDeckFileName = preview.TargetDeckFileName;
+            string? overridePartOfSpeech = null;
+            var retryPreview = preview;
+
+            if (saveMode == SaveMode.Ask)
+            {
+                var confirmationChoice = AskVocabularySaveConfirmation(preview);
+                shouldSave = confirmationChoice != SaveConfirmationChoice.No;
+
+                if (confirmationChoice == SaveConfirmationChoice.YesDontAskAgain)
+                {
+                    saveMode = SaveMode.Auto;
+                }
+                else if (confirmationChoice == SaveConfirmationChoice.SaveToOtherDeck)
+                {
+                    var customSave = await AskCustomSaveTargetAsync(vocabularyDeckService, preview);
+                    shouldSave = customSave.ShouldSave;
+
+                    if (customSave.ShouldSave)
+                    {
+                        targetDeckFileName = customSave.DeckFileName;
+                        overridePartOfSpeech = customSave.OverridePartOfSpeech;
+                        retryPreview = preview with
+                        {
+                            TargetDeckFileName = customSave.DeckFileName,
+                            TargetDeckPath = customSave.DeckPath
+                        };
+                    }
+                }
+            }
+
+            if (shouldSave && !string.IsNullOrWhiteSpace(targetDeckFileName))
+            {
+                var appendResult = await vocabularyPersistenceService.AppendFromAssistantReplyAsync(
+                    item.Input,
+                    completion.Content,
+                    targetDeckFileName,
+                    overridePartOfSpeech);
+                PrintVocabularyAppendResult(appendResult);
+
+                while (IsFileLockedSaveError(appendResult) && AskRetrySaveConfirmation(retryPreview))
+                {
+                    appendResult = await vocabularyPersistenceService.AppendFromAssistantReplyAsync(
+                        item.Input,
+                        completion.Content,
+                        targetDeckFileName,
+                        overridePartOfSpeech);
+                    PrintVocabularyAppendResult(appendResult);
+                }
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine("info: Save skipped (mode=off or declined by user).");
+                Console.ResetColor();
+            }
+        }
+        else
+        {
+            PrintVocabularyAppendPreviewResult(preview);
+        }
+
+        if (completion.Usage is not null)
+        {
+            Console.WriteLine(
+                $"Tokens: prompt={completion.Usage.PromptTokens}, completion={completion.Usage.CompletionTokens}, total={completion.Usage.TotalTokens}");
+        }
+
+        Console.WriteLine();
+        return saveMode;
+    }
+
+    private static async Task<SaveMode> HandleVocabularyBatchAgentItemsAsync(
+        IReadOnlyList<ConversationAgentItemResult> items,
+        IVocabularyDeckService vocabularyDeckService,
+        IVocabularyPersistenceService vocabularyPersistenceService,
+        SaveMode saveMode)
+    {
+        var pendingSaves = new List<PendingVocabularySave>();
+
+        foreach (var item in items)
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"Processing: {item.Input}");
+            Console.ResetColor();
+
+            if (item.FoundInDeck)
+            {
+                PrintVocabularyFromDeck(item.Lookup);
+                continue;
+            }
+
+            if (item.AssistantCompletion is null || item.AppendPreview is null)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("warning: Could not process vocabulary input.");
+                Console.ResetColor();
+                continue;
+            }
+
+            var completion = item.AssistantCompletion;
+            var preview = item.AppendPreview;
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"Assistant ({completion.Model}) > {completion.Content}");
+            Console.ResetColor();
+
+            if (preview.Status == VocabularyAppendPreviewStatus.ReadyToAppend
+                && !string.IsNullOrWhiteSpace(preview.TargetDeckFileName)
+                && !string.IsNullOrWhiteSpace(preview.TargetDeckPath))
+            {
+                pendingSaves.Add(new PendingVocabularySave(item.Input, completion.Content, preview));
+            }
+            else
+            {
+                PrintVocabularyAppendPreviewResult(preview);
+            }
+
+            if (completion.Usage is not null)
+            {
+                Console.WriteLine(
+                    $"Tokens: prompt={completion.Usage.PromptTokens}, completion={completion.Usage.CompletionTokens}, total={completion.Usage.TotalTokens}");
+            }
+        }
+
+        return await FinalizePendingBatchSavesAsync(
+            pendingSaves,
+            vocabularyDeckService,
+            vocabularyPersistenceService,
+            saveMode);
+    }
     private static async Task<SaveMode> ProcessBatchInputsAsync(
         IReadOnlyList<string> batchItems,
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyDeckService vocabularyDeckService,
+        IVocabularyPersistenceService vocabularyPersistenceService,
         SaveMode saveMode)
     {
         var pendingSaves = new List<PendingVocabularySave>();
@@ -673,6 +835,19 @@ internal static class Program
             }
         }
 
+        return await FinalizePendingBatchSavesAsync(
+            pendingSaves,
+            vocabularyDeckService,
+            vocabularyPersistenceService,
+            saveMode);
+    }
+
+    private static async Task<SaveMode> FinalizePendingBatchSavesAsync(
+        IReadOnlyList<PendingVocabularySave> pendingSaves,
+        IVocabularyDeckService vocabularyDeckService,
+        IVocabularyPersistenceService vocabularyPersistenceService,
+        SaveMode saveMode)
+    {
         if (pendingSaves.Count == 0)
         {
             Console.ForegroundColor = ConsoleColor.Cyan;
@@ -726,7 +901,7 @@ internal static class Program
             return saveMode;
         }
 
-        await SavePendingBatchItemsAsync(saveQueue, vocabularyDeckService);
+        await SavePendingBatchItemsAsync(saveQueue, vocabularyPersistenceService);
         Console.WriteLine();
 
         return saveMode;
@@ -734,7 +909,7 @@ internal static class Program
 
     private static async Task SavePendingBatchItemsAsync(
         IReadOnlyList<PendingVocabularySave> pendingSaves,
-        IVocabularyDeckService vocabularyDeckService)
+        IVocabularyPersistenceService vocabularyPersistenceService)
     {
         foreach (var pending in pendingSaves)
         {
@@ -746,7 +921,7 @@ internal static class Program
                 continue;
             }
 
-            var appendResult = await vocabularyDeckService.AppendFromAssistantReplyAsync(
+            var appendResult = await vocabularyPersistenceService.AppendFromAssistantReplyAsync(
                 pending.RequestedWord,
                 pending.AssistantReply,
                 pending.TargetDeckFileName,
@@ -762,7 +937,7 @@ internal static class Program
 
             while (IsFileLockedSaveError(appendResult) && AskRetrySaveConfirmation(retryPreview))
             {
-                appendResult = await vocabularyDeckService.AppendFromAssistantReplyAsync(
+                appendResult = await vocabularyPersistenceService.AppendFromAssistantReplyAsync(
                     pending.RequestedWord,
                     pending.AssistantReply,
                     pending.TargetDeckFileName,
@@ -1692,7 +1867,31 @@ internal static class Program
         Console.WriteLine($"warning: Graph status: {status.Message}");
         Console.ResetColor();
     }
+    private static int ParseSyncBatchSize(string command)
+    {
+        if (command.Equals(ConsoleCommands.SyncRun, StringComparison.OrdinalIgnoreCase))
+        {
+            return 25;
+        }
 
+        var suffix = command[ConsoleCommands.SyncRun.Length..].Trim();
+        if (int.TryParse(suffix, out var parsed) && parsed > 0)
+        {
+            return parsed;
+        }
+
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("warning: Invalid batch size. Using default 25.");
+        Console.ResetColor();
+        return 25;
+    }
+
+    private static void PrintSyncRunSummary(VocabularySyncRunSummary summary)
+    {
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine($"info: Sync run processed {summary.Processed}/{summary.Requested} job(s): completed={summary.Completed}, requeued={summary.Requeued}, failed={summary.Failed}, pending={summary.PendingAfterRun}.");
+        Console.ResetColor();
+    }
     private static string? ReadMultilinePrompt()
     {
         Console.WriteLine("Paste the system prompt below.");
@@ -1785,6 +1984,13 @@ internal static class Program
         WriteCommandHelp(ConsoleCommands.GraphStatus, "Show Graph authentication/configuration status.");
         WriteCommandHelp(ConsoleCommands.GraphLogin, "Start device-code login for OneDrive access.");
         WriteCommandHelp(ConsoleCommands.GraphLogout, "Sign out and clear cached Graph tokens.");
+
+        Console.WriteLine();
+        Console.WriteLine("Sync queue");
+        WriteCommandHelp(ConsoleCommands.Sync, "Show pending vocabulary sync jobs.");
+        WriteCommandHelp(ConsoleCommands.SyncStatus, "Alias for /sync.");
+        WriteCommandHelp(ConsoleCommands.SyncRun, "Run pending sync jobs (default batch size: 25).");
+        WriteCommandHelp("/sync run <n>", "Run up to <n> pending sync jobs now.");
 
         Console.WriteLine();
         Console.WriteLine("Session");
@@ -1925,6 +2131,13 @@ internal static class Program
         };
     }
 }
+
+
+
+
+
+
+
 
 
 

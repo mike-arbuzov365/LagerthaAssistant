@@ -16,6 +16,7 @@ Console AI assistant prototype built with Clean Architecture and SQL Server pers
 - Persistent user memory (`UserMemoryEntries`) injected into next requests.
 - Persistent versioned system prompts (`SystemPromptEntries`).
 - Prompt proposal workflow (`SystemPromptProposals`) with apply/reject flow.
+- Conversation telemetry metrics (`ConversationIntentMetrics`) for channel/agent/intent analysis.
 - Vocabulary workflow with Excel (`.xlsx`) decks in two storage modes:
   - `local` (direct filesystem access)
   - `graph` (OneDrive via Microsoft Graph)
@@ -48,6 +49,12 @@ Excel columns used:
 
 Read-only (composite) decks are configured via `VocabularyDecks.ReadOnlyFileNames` and are never written.
 
+SQL index + sync queue:
+
+- App stores indexed vocabulary records in SQL Server (`VocabularyCards`, `VocabularyCardTokens`) for fast duplicate lookup before Excel scan.
+- Excel/OneDrive remains the final export source for your mobile app workflow.
+- If write to Excel fails due lock/conflict, app stores a pending sync job in SQL (`VocabularySyncJobs`) so data is not lost and can be retried by worker flow.
+
 ## Configuration
 
 Set OpenAI API key (required):
@@ -59,6 +66,7 @@ $env:OPENAI_API_KEY = "your_api_key"
 Connection string and deck settings are configured in:
 
 - `src/LagerthaAssistant.UI/appsettings.json`
+- `src/LagerthaAssistant.Api/appsettings.json`
 
 ### Storage mode
 
@@ -92,6 +100,25 @@ Notes:
 - Run `/graph login` again only if `/graph status` says `Not authenticated` (or after `/graph logout`).
 - Open the exact sign-in URL printed by the app (in some tenants it is `https://www.microsoft.com/link`).
 
+### Background sync worker (API only)
+
+```json
+"VocabularySyncWorker": {
+  "Enabled": false,
+  "IntervalSeconds": 60,
+  "BatchSize": 25,
+  "RunOnStartup": true,
+  "MaxBackoffSeconds": 300,
+  "BackoffFactor": 2
+}
+```
+
+Notes:
+- Worker runs only in API host (`LagerthaAssistant.Api`), not in console UI.
+- Keep `Enabled=false` by default; turn on when you want automatic retry of pending sync jobs.
+- Worker applies exponential backoff on runtime failures up to `MaxBackoffSeconds` (`BackoffFactor` controls growth).
+- Manual processing is available from UI commands (`/sync`, `/sync run`) and API endpoints.
+
 ### Microsoft Entra quick setup
 
 1. Open [Microsoft Entra admin center](https://entra.microsoft.com/) -> `Identity` -> `Applications` -> `App registrations` -> `New registration`.
@@ -122,12 +149,58 @@ Notes:
 
 ## Run
 
+Console UI:
+
 ```powershell
 dotnet run --project src/LagerthaAssistant.UI/LagerthaAssistant.UI.csproj
 ```
 
-On startup the app applies EF migrations automatically.
+API service (Phase A foundation for multi-channel clients and agents):
 
+```powershell
+dotnet run --project src/LagerthaAssistant.Api/LagerthaAssistant.Api.csproj
+```
+
+Quick checks:
+
+```powershell
+curl http://localhost:5000/health
+curl -X POST http://localhost:5000/api/conversation/messages -H "Content-Type: application/json" -d "{\"input\":\"void\"}"
+curl http://localhost:5000/api/vocabulary-sync/status
+curl -X POST "http://localhost:5000/api/vocabulary-sync/run?take=25"
+curl "http://localhost:5000/api/telemetry/intents?days=7&top=20&channel=api"
+```
+
+On startup both UI and API apply EF migrations automatically.
+
+## API natural intents
+
+For `POST /api/conversation/messages`, you can send natural language command-like requests (no slash required), for example:
+
+- Optional request field `channel` can be used for multi-channel clients (`api` by default).
+- Example request body: `{"input":"void","channel":"telegram"}`
+
+- `show conversation history`
+- `show active memory`
+- `show system prompt`
+- `reset prompt to default`
+- `sync status`
+- `run sync 25`
+- `reset conversation`
+
+Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
+
+## Telemetry API
+
+Use telemetry endpoint to inspect how requests are routed by channel/agent/intent:
+
+- `GET /api/telemetry/intents?days=7&top=20&channel=api`
+
+Query parameters:
+
+- `days` (optional, default `7`, range `1..90`)
+- `top` (optional, default `20`, range `1..200`)
+- `channel` (optional, case-insensitive; examples: `api`, `ui`)
 ## Commands
 
 Use `/help` to see full command reference in the console.
@@ -143,6 +216,10 @@ Use `/help` to see full command reference in the console.
 - `/graph status`
 - `/graph login`
 - `/graph logout`
+- `/sync`
+- `/sync status`
+- `/sync run`
+- `/sync run <n>`
 - `/prompt`
 - `/prompt default`
 - `/prompt history`
