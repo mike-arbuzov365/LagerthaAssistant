@@ -1,9 +1,14 @@
+using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.UI.Constants;
 
 namespace LagerthaAssistant.UI;
 
 internal static partial class Program
 {
+    private static readonly IReadOnlyDictionary<string, string> CommandCatalogDescriptions =
+        ConversationCommandCatalog.SlashCommands
+            .ToDictionary(item => item.Command, item => item.Description, StringComparer.OrdinalIgnoreCase);
+
     private static void PrintBanner(string model)
     {
         Console.WriteLine(new string('=', 72));
@@ -20,30 +25,37 @@ internal static partial class Program
         Console.WriteLine("Available commands:");
         Console.WriteLine();
 
+        var promptSetText = $"{ConsoleCommands.PromptSet} <text>";
+        var promptProposeText = $"{ConsoleCommands.PromptPropose} <reason> || <text>";
+        var promptImproveText = $"{ConsoleCommands.PromptImprove} <goal>";
+        var promptApplyText = $"{ConsoleCommands.PromptApply} <id>";
+        var promptRejectText = $"{ConsoleCommands.PromptReject} <id>";
+        var syncRunWithCountText = $"{ConsoleCommands.SyncRun} <n>";
+
         Console.WriteLine("General");
-        WriteCommandHelp(ConsoleCommands.Help, "Show this help message.");
+        WriteCatalogCommandHelp(ConsoleCommands.Help, "Show this help message.");
         WriteCommandHelp(ConsoleCommands.Batch, "Start smart-paste batch mode for multiple words/phrases/sentences.");
 
         Console.WriteLine();
         Console.WriteLine("Conversation");
-        WriteCommandHelp(ConsoleCommands.History, "Show recent conversation history.");
-        WriteCommandHelp(ConsoleCommands.Memory, "Show active memory facts.");
+        WriteCatalogCommandHelp(ConsoleCommands.History, "Show recent conversation history.");
+        WriteCatalogCommandHelp(ConsoleCommands.Memory, "Show active memory facts.");
 
         Console.WriteLine();
         Console.WriteLine("System prompt");
-        WriteCommandHelp(ConsoleCommands.Prompt, "Show the active system prompt.");
-        WriteCommandHelp(ConsoleCommands.PromptDefault, "Reset active system prompt to default and save it.");
-        WriteCommandHelp(ConsoleCommands.PromptHistory, "Show saved system prompt versions.");
+        WriteCatalogCommandHelp(ConsoleCommands.Prompt, "Show the active system prompt.");
+        WriteCatalogCommandHelp(ConsoleCommands.PromptDefault, "Reset active system prompt to default and save it.");
+        WriteCatalogCommandHelp(ConsoleCommands.PromptHistory, "Show saved system prompt versions.");
         WriteCommandHelp(ConsoleCommands.PromptSet, "Start multiline prompt editor (finish with /end, cancel with /cancel).");
-        WriteCommandHelp($"{ConsoleCommands.PromptSet} <text>", "Set system prompt from a single line.");
+        WriteCatalogCommandHelp(promptSetText, "Set system prompt from a single line.");
 
         Console.WriteLine();
         Console.WriteLine("Prompt proposals");
-        WriteCommandHelp(ConsoleCommands.PromptProposals, "Show recent prompt proposals.");
-        WriteCommandHelp($"{ConsoleCommands.PromptPropose} <reason> || <text>", "Create a manual proposal for a new prompt.");
-        WriteCommandHelp($"{ConsoleCommands.PromptImprove} <goal>", "Ask AI to generate a prompt proposal for your goal.");
-        WriteCommandHelp($"{ConsoleCommands.PromptApply} <id>", "Apply a pending proposal and make it active.");
-        WriteCommandHelp($"{ConsoleCommands.PromptReject} <id>", "Reject a pending proposal.");
+        WriteCatalogCommandHelp(ConsoleCommands.PromptProposals, "Show recent prompt proposals.");
+        WriteCatalogCommandHelp(promptProposeText, "Create a manual proposal for a new prompt.");
+        WriteCatalogCommandHelp(promptImproveText, "Ask AI to generate a prompt proposal for your goal.");
+        WriteCatalogCommandHelp(promptApplyText, "Apply a pending proposal and make it active.");
+        WriteCatalogCommandHelp(promptRejectText, "Reject a pending proposal.");
 
         Console.WriteLine();
         Console.WriteLine("Saving");
@@ -69,14 +81,14 @@ internal static partial class Program
 
         Console.WriteLine();
         Console.WriteLine("Sync queue");
-        WriteCommandHelp(ConsoleCommands.Sync, "Show pending vocabulary sync jobs.");
-        WriteCommandHelp(ConsoleCommands.SyncStatus, "Alias for /sync.");
-        WriteCommandHelp(ConsoleCommands.SyncRun, "Run pending sync jobs (default batch size: 25).");
-        WriteCommandHelp($"{ConsoleCommands.SyncRun} <n>", "Run up to <n> pending sync jobs now.");
+        WriteCatalogCommandHelp(ConsoleCommands.Sync, "Show pending vocabulary sync jobs.");
+        WriteCatalogCommandHelp(ConsoleCommands.SyncStatus, "Alias for /sync.");
+        WriteCatalogCommandHelp(ConsoleCommands.SyncRun, "Run pending sync jobs (default batch size: 25).");
+        WriteCatalogCommandHelp(syncRunWithCountText, "Run up to <n> pending sync jobs now.");
 
         Console.WriteLine();
         Console.WriteLine("Session");
-        WriteCommandHelp(ConsoleCommands.Reset, "Reset in-memory conversation context.");
+        WriteCatalogCommandHelp(ConsoleCommands.Reset, "Reset in-memory conversation context.");
         WriteCommandHelp(ConsoleCommands.Exit, "Exit the application.");
 
         Console.WriteLine();
@@ -88,6 +100,16 @@ internal static partial class Program
         Console.WriteLine("What it does: detects phrasal verbs as (pv), keeps persistent expressions as (pe), normalizes irregular verbs to 3 forms as (iv),");
         Console.WriteLine("checks duplicates in writable decks, applies deck-specific save rules, and saves card data to the best deck or your custom target.");
         Console.WriteLine();
+    }
+
+    private static void WriteCatalogCommandHelp(string commandText, string fallbackDescription)
+    {
+        if (!CommandCatalogDescriptions.TryGetValue(commandText, out var description))
+        {
+            description = fallbackDescription;
+        }
+
+        WriteCommandHelp(commandText, description);
     }
 
     private static void WriteCommandHelp(string commandText, string description)
