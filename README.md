@@ -188,6 +188,16 @@ For `POST /api/conversation/messages`, you can send natural language command-lik
 - `run sync 25`
 - `reset conversation`
 
+Slash command forms are also supported through the same command-agent path, including:
+
+- `/prompt history`
+- `/prompt proposals`
+- `/prompt set <text>`
+- `/prompt propose <reason> || <text>`
+- `/prompt improve <goal>`
+- `/prompt apply <id>`
+- `/prompt reject <id>`
+
 Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
 
 ## Telemetry API
