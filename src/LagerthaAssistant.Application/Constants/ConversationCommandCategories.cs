@@ -8,4 +8,14 @@ public static class ConversationCommandCategories
     public const string PromptProposals = "Prompt proposals";
     public const string SyncQueue = "Sync queue";
     public const string Session = "Session";
+
+    public static IReadOnlyList<string> Ordered { get; } =
+    [
+        General,
+        Conversation,
+        SystemPrompt,
+        PromptProposals,
+        SyncQueue,
+        Session
+    ];
 }

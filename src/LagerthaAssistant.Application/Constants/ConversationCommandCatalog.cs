@@ -26,8 +26,13 @@ public static class ConversationCommandCatalog
     ];
 
     public static IReadOnlyList<ConversationCommandCatalogGroup> SlashCommandGroups { get; } =
-        SlashCommands
-            .GroupBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
-            .Select(group => new ConversationCommandCatalogGroup(group.Key, group.ToList()))
+        ConversationCommandCategories.Ordered
+            .Select(category =>
+                new ConversationCommandCatalogGroup(
+                    category,
+                    SlashCommands
+                        .Where(item => item.Category.Equals(category, StringComparison.OrdinalIgnoreCase))
+                        .ToList()))
+            .Where(group => group.Commands.Count > 0)
             .ToList();
 }

@@ -52,6 +52,19 @@ public sealed class ConversationCommandCatalogTests
     }
 
     [Fact]
+    public void SlashCommands_ShouldUseOnlyKnownCategories()
+    {
+        var knownCategories = ConversationCommandCategories.Ordered
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        Assert.All(
+            ConversationCommandCatalog.SlashCommands,
+            item => Assert.True(
+                knownCategories.Contains(item.Category),
+                $"Unknown command category '{item.Category}' for command '{item.Command}'."));
+    }
+
+    [Fact]
     public void SlashCommands_ShouldContainExpectedCanonicalCommands()
     {
         var commands = ConversationCommandCatalog.SlashCommands
@@ -101,16 +114,7 @@ public sealed class ConversationCommandCatalogTests
     {
         var groups = ConversationCommandCatalog.SlashCommandGroups;
 
-        var expectedCategoryOrder = new[]
-        {
-            ConversationCommandCategories.General,
-            ConversationCommandCategories.Conversation,
-            ConversationCommandCategories.SystemPrompt,
-            ConversationCommandCategories.PromptProposals,
-            ConversationCommandCategories.SyncQueue,
-            ConversationCommandCategories.Session
-        };
-
+        var expectedCategoryOrder = ConversationCommandCategories.Ordered;
         Assert.Equal(expectedCategoryOrder, groups.Select(group => group.Category));
 
         var flattenedGroupCommands = groups
