@@ -136,7 +136,6 @@ internal static partial class Program
         var vocabularyWorkflowService = services.GetRequiredService<IVocabularyWorkflowService>();
         var vocabularyDeckService = services.GetRequiredService<IVocabularyDeckService>();
         var vocabularyPersistenceService = services.GetRequiredService<IVocabularyPersistenceService>();
-        var vocabularySyncProcessor = services.GetRequiredService<IVocabularySyncProcessor>();
         var vocabularyStorageModeProvider = services.GetRequiredService<IVocabularyStorageModeProvider>();
         var graphAuthService = services.GetRequiredService<IGraphAuthService>();
         var userMemoryRepository = services.GetRequiredService<IUserMemoryRepository>();
@@ -155,7 +154,6 @@ internal static partial class Program
             vocabularyWorkflowService,
             vocabularyDeckService,
             vocabularyPersistenceService,
-            vocabularySyncProcessor,
             vocabularyStorageModeProvider,
             graphAuthService,
             userMemoryRepository,
@@ -169,7 +167,6 @@ internal static partial class Program
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
-        IVocabularySyncProcessor vocabularySyncProcessor,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
         IGraphAuthService graphAuthService,
         IUserMemoryRepository userMemoryRepository,
@@ -206,7 +203,6 @@ internal static partial class Program
                 vocabularyWorkflowService,
                 vocabularyDeckService,
                 vocabularyPersistenceService,
-                vocabularySyncProcessor,
                 vocabularyStorageModeProvider,
                 graphAuthService,
                 userMemoryRepository,
@@ -279,41 +275,3 @@ internal static partial class Program
         };
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

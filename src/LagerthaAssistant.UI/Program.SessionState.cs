@@ -1,10 +1,8 @@
-using System.Globalization;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Domain.Entities;
-using LagerthaAssistant.UI.Constants;
 
 namespace LagerthaAssistant.UI;
 
@@ -167,32 +165,6 @@ internal static partial class Program
 
         Console.ForegroundColor = ConsoleColor.Yellow;
         Console.WriteLine($"warning: Graph status: {status.Message}");
-        Console.ResetColor();
-    }
-
-    private static int ParseSyncBatchSize(string command)
-    {
-        if (command.Equals(ConsoleCommands.SyncRun, StringComparison.OrdinalIgnoreCase))
-        {
-            return 25;
-        }
-
-        var suffix = command[ConsoleCommands.SyncRun.Length..].Trim();
-        if (int.TryParse(suffix, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed > 0)
-        {
-            return parsed;
-        }
-
-        Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine("warning: Invalid batch size. Using default 25.");
-        Console.ResetColor();
-        return 25;
-    }
-
-    private static void PrintSyncRunSummary(VocabularySyncRunSummary summary)
-    {
-        Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine($"info: Sync run processed {summary.Processed}/{summary.Requested} job(s): completed={summary.Completed}, requeued={summary.Requeued}, failed={summary.Failed}, pending={summary.PendingAfterRun}.");
         Console.ResetColor();
     }
 

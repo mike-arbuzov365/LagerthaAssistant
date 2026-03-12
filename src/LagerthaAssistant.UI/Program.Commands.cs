@@ -1,5 +1,4 @@
 using System.Globalization;
-using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
@@ -29,7 +28,6 @@ internal static partial class Program
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
-        IVocabularySyncProcessor vocabularySyncProcessor,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
         IGraphAuthService graphAuthService,
         IUserMemoryRepository userMemoryRepository,
@@ -191,64 +189,9 @@ internal static partial class Program
             return CommandHandlingResult.Continue(saveMode);
         }
 
-        if (command.Equals(ConsoleCommands.Sync, StringComparison.OrdinalIgnoreCase)
-            || command.Equals(ConsoleCommands.SyncStatus, StringComparison.OrdinalIgnoreCase))
-        {
-            var pendingCount = await vocabularySyncProcessor.GetPendingCountAsync();
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine($"info: Pending vocabulary sync jobs: {pendingCount}");
-            Console.ResetColor();
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
-        if (command.Equals(ConsoleCommands.SyncRun, StringComparison.OrdinalIgnoreCase)
-            || command.StartsWith(ConsoleCommands.SyncRun + " ", StringComparison.OrdinalIgnoreCase))
-        {
-            var take = ParseSyncBatchSize(command);
-            var summary = await vocabularySyncProcessor.ProcessPendingAsync(take);
-            PrintSyncRunSummary(summary);
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
         if (command.Equals(ConsoleCommands.Exit, StringComparison.OrdinalIgnoreCase))
         {
             return CommandHandlingResult.Exit(saveMode);
-        }
-
-        if (command.Equals(ConsoleCommands.Reset, StringComparison.OrdinalIgnoreCase))
-        {
-            assistantSession.Reset();
-            Console.WriteLine("Conversation has been reset.");
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
-        if (command.Equals(ConsoleCommands.History, StringComparison.OrdinalIgnoreCase))
-        {
-            var preview = await assistantSession.GetRecentHistoryAsync(ConsoleCommands.HistoryPreviewTake);
-            PrintHistory(preview);
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
-        if (command.Equals(ConsoleCommands.Memory, StringComparison.OrdinalIgnoreCase))
-        {
-            var memory = await assistantSession.GetActiveMemoryAsync(ConsoleCommands.MemoryPreviewTake);
-            PrintMemory(memory);
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
-        if (command.Equals(ConsoleCommands.Prompt, StringComparison.OrdinalIgnoreCase))
-        {
-            var prompt = await assistantSession.GetSystemPromptAsync();
-            PrintSystemPrompt(prompt);
-            return CommandHandlingResult.Continue(saveMode);
-        }
-
-        if (command.Equals(ConsoleCommands.PromptDefault, StringComparison.OrdinalIgnoreCase))
-        {
-            var updated = await assistantSession.SetSystemPromptAsync(AssistantDefaults.SystemPrompt, "default");
-            Console.WriteLine("System prompt reset to default and saved.");
-            PrintSystemPrompt(updated);
-            return CommandHandlingResult.Continue(saveMode);
         }
 
         if (command.Equals(ConsoleCommands.PromptHistory, StringComparison.OrdinalIgnoreCase))
@@ -373,4 +316,3 @@ internal static partial class Program
         return CommandHandlingResult.NotHandled(saveMode);
     }
 }
-
