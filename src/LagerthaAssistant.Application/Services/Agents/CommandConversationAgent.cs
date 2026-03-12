@@ -10,7 +10,7 @@ using LagerthaAssistant.Application.Models.Agents;
 public sealed class CommandConversationAgent : IConversationAgent
 {
     private const int DefaultPreviewTake = 20;
-    private const int DefaultSyncRunTake = 25;
+    private const int DefaultSyncRunTake = ConversationCommandDefaults.SyncRunTake;
 
     private readonly IConversationIntentRouter _intentRouter;
     private readonly IAssistantSessionService _assistantSessionService;

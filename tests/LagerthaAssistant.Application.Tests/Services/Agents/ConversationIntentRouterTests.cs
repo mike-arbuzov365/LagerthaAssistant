@@ -47,7 +47,7 @@ public sealed class ConversationIntentRouterTests
 
         if (expectedType == ConversationCommandIntentType.SyncRun)
         {
-            Assert.Equal(25, intent.Number);
+            Assert.Equal(ConversationCommandDefaults.SyncRunTake, intent.Number);
         }
     }
 
@@ -137,7 +137,7 @@ public sealed class ConversationIntentRouterTests
 
         Assert.True(handled);
         Assert.Equal(ConversationCommandIntentType.SyncRun, intent.Type);
-        Assert.Equal(25, intent.Number);
+        Assert.Equal(ConversationCommandDefaults.SyncRunTake, intent.Number);
     }
 
     [Fact]

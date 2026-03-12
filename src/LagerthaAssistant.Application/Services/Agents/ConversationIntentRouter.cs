@@ -178,7 +178,7 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
 
         if (normalized.Equals(ConversationSlashCommands.SyncRun, StringComparison.Ordinal))
         {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.SyncRun, Number: 25, Raw: raw);
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.SyncRun, Number: ConversationCommandDefaults.SyncRunTake, Raw: raw);
             return true;
         }
 
@@ -350,7 +350,7 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
             return true;
         }
 
-        intent = new ConversationCommandIntent(ConversationCommandIntentType.SyncRun, 25, value);
+        intent = new ConversationCommandIntent(ConversationCommandIntentType.SyncRun, ConversationCommandDefaults.SyncRunTake, value);
         return true;
     }
 
