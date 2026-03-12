@@ -1,43 +1,122 @@
-# LagerthaAssistant.CleanConsole
+# LagerthaAssistant
 
-Console AI assistant prototype using OpenAI API in Clean Architecture.
+Console AI assistant prototype built with Clean Architecture and SQL Server persistence.
 
-## Structure
+## Projects
 
-- `src/LagerthaAssistant.Domain`: domain model, rules, entities
-- `src/LagerthaAssistant.Application`: use cases, interfaces, `IUnitOfWork`, memory extraction
-- `src/LagerthaAssistant.Infrastructure`: EF Core (SQL Server), repositories, unit of work, OpenAI client
-- `src/LagerthaAssistant.UI`: console host and chat loop
+- `src/LagerthaAssistant.Domain` - domain rules, entities, shared abstractions.
+- `src/LagerthaAssistant.Application` - use-case services, interfaces, prompt/memory/vocabulary parsing logic.
+- `src/LagerthaAssistant.Infrastructure` - EF Core, repositories, migrations, OpenAI HTTP client, local Excel + OneDrive Graph deck integration.
+- `src/LagerthaAssistant.UI` - interactive console app and command routing.
+- `tests/LagerthaAssistant.*` - domain, application, and integration tests.
 
-## Persistence and Memory
+## Core capabilities
 
-Conversation data is stored in SQL Server tables:
+- Persistent conversation history (`ConversationSessions`, `ConversationHistoryEntries`).
+- Persistent user memory (`UserMemoryEntries`) injected into next requests.
+- Persistent versioned system prompts (`SystemPromptEntries`).
+- Prompt proposal workflow (`SystemPromptProposals`) with apply/reject flow.
+- Vocabulary workflow with Excel (`.xlsx`) decks in two storage modes:
+  - `local` (direct filesystem access)
+  - `graph` (OneDrive via Microsoft Graph)
 
-- `ConversationSessions`
-- `ConversationHistoryEntries`
-- `UserMemoryEntries`
+## Vocabulary workflow
 
-Behavior:
+When you type a word or phrase (non-command input):
 
-- On startup, assistant loads recent history from the latest session.
-- `/history` shows only a recent slice (`HistoryPreviewTake`), not full history.
-- `/memory` (or `/mem`) shows currently stored active user memory facts.
-- Assistant extracts important facts from user messages (e.g., name/language) and stores them in `UserMemoryEntries`.
-- Stored memory facts are injected into system context for next requests.
+1. Assistant checks duplicates in writable decks for the active storage mode.
+2. If found, it prints saved data and skips AI call.
+3. If not found, it calls AI and parses the response.
+4. Before write, app decides by save mode: `ask` (confirm), `auto` (write immediately), `off` (skip writing).
 
-## Configure
+Batch smart-paste mode:
 
-Set OpenAI key:
+- Run `/batch`.
+- Paste multiple items and finish with `/end` (or cancel with `/cancel`).
+- Parser auto-detects entries by line, tab, `;`, and sentence boundaries (`.`, `!`, `?`) for single-line paste.
+- For one-line space-separated text without separators, app can ask whether to keep one phrase or split by spaces.
+- Items are processed sequentially.
+- In `ask` mode app prompts once at the end to save all, review targets, or skip.
+
+Irregular verbs are supported via a dedicated deck (for example `beat - beat - beaten`). Duplicate lookup matches by any form (base/past/participle).
+
+Excel columns used:
+
+- `A` - meanings (`(n) ...`, `(v) ...`) with line breaks.
+- `B` - English word.
+- `H` - example sentences with line breaks.
+
+Read-only (composite) decks are configured via `VocabularyDecks.ReadOnlyFileNames` and are never written.
+
+## Configuration
+
+Set OpenAI API key (required):
 
 ```powershell
 $env:OPENAI_API_KEY = "your_api_key"
 ```
 
-Connection string is in `src/LagerthaAssistant.UI/appsettings.json`:
+Connection string and deck settings are configured in:
+
+- `src/LagerthaAssistant.UI/appsettings.json`
+
+### Storage mode
 
 ```json
-"ConnectionStrings": {
-  "DefaultConnection": "Server=(localdb)\\MSSQLLocalDB;Database=LagerthaAssistantDb;Trusted_Connection=True;TrustServerCertificate=True;"
+"VocabularyStorage": {
+  "DefaultMode": "local"
+}
+```
+
+Values:
+- `local` - use local files from `VocabularyDecks.FolderPath`
+- `graph` - use OneDrive via Graph
+
+### Graph settings
+
+```json
+"Graph": {
+  "TenantId": "common",
+  "ClientId": "<your app client id>",
+  "Scopes": ["User.Read", "Files.ReadWrite", "offline_access"],
+  "RootPath": "/Apps/Flashcards Deluxe",
+  "TokenCachePath": "%LOCALAPPDATA%\\LagerthaAssistant\\graph-token.json"
+}
+```
+
+Notes:
+- `ClientId` is required for Graph mode/login.
+- App uses device-code login (`/graph login`).
+- Token cache is stored locally at `TokenCachePath`.
+- You usually do **not** need `/graph login` on every app start. After first successful sign-in, cached token/refresh token are reused automatically.
+- Run `/graph login` again only if `/graph status` says `Not authenticated` (or after `/graph logout`).
+- Open the exact sign-in URL printed by the app (in some tenants it is `https://www.microsoft.com/link`).
+
+### Microsoft Entra quick setup
+
+1. Open [Microsoft Entra admin center](https://entra.microsoft.com/) -> `Identity` -> `Applications` -> `App registrations` -> `New registration`.
+2. Create app and set `Supported account types` to `Accounts in any organizational directory and personal Microsoft accounts`.
+3. Open created app -> `Authentication` and enable `Allow public client flows` = `Yes`.
+4. Open `API permissions` -> `Add a permission` -> `Microsoft Graph` -> `Delegated permissions`, then add `User.Read`, `Files.ReadWrite`, `offline_access`.
+5. Copy `Application (client) ID` from `Overview` and put it into `Graph:ClientId` in `appsettings.json`.
+6. Set `Graph:TenantId`:
+   - `consumers` for personal OneDrive
+   - `common` for work/school or mixed scenarios
+7. Start app, run `/graph login`, complete device-code sign-in in browser, then check `/graph status`.
+
+### Deck mapping and file rules
+
+```json
+"VocabularyDecks": {
+  "FolderPath": "%OneDrive%\\Apps\\Flashcards Deluxe",
+  "FilePattern": "wm-*.xlsx",
+  "IrregularVerbDeckFileName": "wm-irregular-verbs-ua-en.xlsx",
+  "PhrasalVerbDeckFileName": "wm-phrasal-verbs-ua-en.xlsx",
+  "ReadOnlyFileNames": [
+    "wm-vocabulary-all-ru-en.xlsx",
+    "wm-training-all-ru-en.xlsx",
+    "wm-grammar-all-ru-en.xlsx"
+  ]
 }
 ```
 
@@ -47,12 +126,44 @@ Connection string is in `src/LagerthaAssistant.UI/appsettings.json`:
 dotnet run --project src/LagerthaAssistant.UI/LagerthaAssistant.UI.csproj
 ```
 
+On startup the app applies EF migrations automatically.
+
+## Commands
+
+Use `/help` to see full command reference in the console.
+
+- `/help`
+- `/batch`
+- `/history`
+- `/memory`
+- `/save`
+- `/save mode ask|auto|off`
+- `/storage`
+- `/storage mode local|graph`
+- `/graph status`
+- `/graph login`
+- `/graph logout`
+- `/prompt`
+- `/prompt default`
+- `/prompt history`
+- `/prompt set`
+- `/prompt set <text>`
+- `/prompt proposals`
+- `/prompt propose <reason> || <text>`
+- `/prompt improve <goal>`
+- `/prompt apply <id>`
+- `/prompt reject <id>`
+- `/reset`
+- `/exit`
+
+## Prompt behavior notes
+
+- For a new database, the default system prompt from `AssistantDefaults.SystemPrompt` is seeded as version 1.
+- For an existing database with an active prompt, the active prompt remains unchanged until you update it.
+
 ## Verify
 
 ```powershell
-dotnet build LagerthaAssistant.CleanConsole.slnx
-dotnet test LagerthaAssistant.CleanConsole.slnx
+dotnet build LagerthaAssistant.slnx
+dotnet test LagerthaAssistant.slnx -v minimal
 ```
-
-
-

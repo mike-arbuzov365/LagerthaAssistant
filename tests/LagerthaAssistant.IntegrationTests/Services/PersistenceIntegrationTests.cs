@@ -92,6 +92,8 @@ public sealed class PersistenceIntegrationTests
                 new ConversationSessionRepository(context, NullLogger<ConversationSessionRepository>.Instance),
                 new ConversationHistoryRepository(context, NullLogger<ConversationHistoryRepository>.Instance),
                 new UserMemoryRepository(context, NullLogger<UserMemoryRepository>.Instance),
+                new SystemPromptRepository(context, NullLogger<SystemPromptRepository>.Instance),
+                new SystemPromptProposalRepository(context, NullLogger<SystemPromptProposalRepository>.Instance),
                 new ConversationMemoryExtractor(),
                 new UnitOfWork(context, NullLogger<UnitOfWork>.Instance),
                 new AssistantSessionOptions { SystemPrompt = "system prompt", MaxHistoryMessages = 20 },
@@ -192,3 +194,6 @@ public sealed class PersistenceIntegrationTests
         }
     }
 }
+
+
+
