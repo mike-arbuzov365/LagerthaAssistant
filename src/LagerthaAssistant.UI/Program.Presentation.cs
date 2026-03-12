@@ -10,11 +10,10 @@ internal static partial class Program
             .ToDictionary(item => item.Command, item => item.Description, StringComparer.OrdinalIgnoreCase);
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> CommandCatalogCommandsByCategory =
-        ConversationCommandCatalog.SlashCommands
-            .GroupBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
+        ConversationCommandCatalog.SlashCommandGroups
             .ToDictionary(
-                group => group.Key,
-                group => (IReadOnlyList<string>)group.Select(item => item.Command).ToList(),
+                group => group.Category,
+                group => (IReadOnlyList<string>)group.Commands.Select(item => item.Command).ToList(),
                 StringComparer.OrdinalIgnoreCase);
 
     private static void PrintBanner(string model)

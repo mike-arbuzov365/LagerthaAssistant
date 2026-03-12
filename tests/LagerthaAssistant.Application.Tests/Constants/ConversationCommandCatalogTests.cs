@@ -95,4 +95,49 @@ public sealed class ConversationCommandCatalogTests
 
         Assert.Equal(expectedCategory, item.Category);
     }
+
+    [Fact]
+    public void SlashCommandGroups_ShouldPreserveCategoryOrder_AndContainAllCommands()
+    {
+        var groups = ConversationCommandCatalog.SlashCommandGroups;
+
+        var expectedCategoryOrder = new[]
+        {
+            ConversationCommandCategories.General,
+            ConversationCommandCategories.Conversation,
+            ConversationCommandCategories.SystemPrompt,
+            ConversationCommandCategories.PromptProposals,
+            ConversationCommandCategories.SyncQueue,
+            ConversationCommandCategories.Session
+        };
+
+        Assert.Equal(expectedCategoryOrder, groups.Select(group => group.Category));
+
+        var flattenedGroupCommands = groups
+            .SelectMany(group => group.Commands)
+            .Select(item => item.Command)
+            .ToList();
+
+        var sourceCommands = ConversationCommandCatalog.SlashCommands
+            .Select(item => item.Command)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(sourceCommands.Count, flattenedGroupCommands.Count);
+        Assert.Equal(sourceCommands.Count, flattenedGroupCommands.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+
+        foreach (var command in sourceCommands)
+        {
+            Assert.True(
+                flattenedGroupCommands.Contains(command, StringComparer.OrdinalIgnoreCase),
+                $"Grouped catalog is missing command '{command}'.");
+        }
+    }
+
+    [Fact]
+    public void SlashCommandGroups_ShouldContainOnlyCommandsFromOwnCategory()
+    {
+        Assert.All(
+            ConversationCommandCatalog.SlashCommandGroups,
+            group => Assert.All(group.Commands, item => Assert.Equal(group.Category, item.Category)));
+    }
 }

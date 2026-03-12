@@ -24,4 +24,10 @@ public static class ConversationCommandCatalog
         new($"{ConversationSlashCommands.SyncRun} <n>", "Run up to <n> pending sync jobs.", ConversationCommandCategories.SyncQueue),
         new(ConversationSlashCommands.Reset, "Reset conversation context.", ConversationCommandCategories.Session)
     ];
+
+    public static IReadOnlyList<ConversationCommandCatalogGroup> SlashCommandGroups { get; } =
+        SlashCommands
+            .GroupBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new ConversationCommandCatalogGroup(group.Key, group.ToList()))
+            .ToList();
 }

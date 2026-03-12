@@ -263,14 +263,12 @@ public sealed class CommandConversationAgent : IConversationAgent
             "Available slash commands:"
         };
 
-        var groups = ConversationCommandCatalog.SlashCommands
-            .GroupBy(item => item.Category)
-            .ToList();
+        var groups = ConversationCommandCatalog.SlashCommandGroups;
 
         foreach (var group in groups)
         {
-            lines.Add($"{group.Key}:");
-            lines.AddRange(group.Select(item => $"- {item.Command} - {item.Description}"));
+            lines.Add($"{group.Category}:");
+            lines.AddRange(group.Commands.Select(item => $"- {item.Command} - {item.Description}"));
             lines.Add(string.Empty);
         }
 

@@ -60,12 +60,13 @@ public sealed class ConversationController : ControllerBase
 
     private static IReadOnlyList<ConversationCommandGroupResponse> BuildCommandGroups()
     {
-        return ConversationCommandCatalog.SlashCommands
-            .GroupBy(item => item.Category)
+        return ConversationCommandCatalog.SlashCommandGroups
             .Select(group =>
                 new ConversationCommandGroupResponse(
-                    group.Key,
-                    group.Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description)).ToList()))
+                    group.Category,
+                    group.Commands
+                        .Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description))
+                        .ToList()))
             .ToList();
     }
 
