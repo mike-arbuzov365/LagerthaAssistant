@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.Application.Tests.Services.Agents;
+namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
@@ -55,6 +55,54 @@ public sealed class ConversationOrchestratorTests
         Assert.Single(result.Items);
         Assert.Equal(1, workflow.SingleCalls);
         Assert.Equal(0, workflow.BatchCalls);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ShouldTrackMetrics_WithProvidedChannel()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var metrics = new FakeConversationMetricsService();
+
+        var agents = new IConversationAgent[]
+        {
+            new FakeSlashCommandAgent(),
+            new VocabularyConversationAgent(workflow)
+        };
+
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            metrics);
+
+        var result = await sut.ProcessAsync("void", "ui");
+
+        Assert.Equal("vocabulary-agent", result.AgentName);
+        var tracked = Assert.Single(metrics.Tracked);
+        Assert.Equal("ui", tracked.Channel);
+        Assert.Equal("vocabulary.single", tracked.Result.Intent);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_DefaultOverload_ShouldTrackMetrics_WithUnknownChannel()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var metrics = new FakeConversationMetricsService();
+
+        var agents = new IConversationAgent[]
+        {
+            new FakeSlashCommandAgent(),
+            new VocabularyConversationAgent(workflow)
+        };
+
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            metrics);
+
+        _ = await sut.ProcessAsync("void");
+
+        var tracked = Assert.Single(metrics.Tracked);
+        Assert.Equal("unknown", tracked.Channel);
     }
 
     private static VocabularyWorkflowItemResult BuildSingle(string input)
@@ -114,6 +162,24 @@ public sealed class ConversationOrchestratorTests
             return Task.FromResult(output);
         }
     }
+
+    private sealed class FakeConversationMetricsService : IConversationMetricsService
+    {
+        public List<TrackedRow> Tracked { get; } = [];
+
+        public Task TrackAsync(string channel, ConversationAgentResult result, CancellationToken cancellationToken = default)
+        {
+            Tracked.Add(new TrackedRow(channel, result));
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<ConversationIntentMetricSummary>> GetTopIntentsAsync(
+            int days,
+            int take,
+            string? channel = null,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<ConversationIntentMetricSummary>>([]);
+
+        public sealed record TrackedRow(string Channel, ConversationAgentResult Result);
+    }
 }
-
-
