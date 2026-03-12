@@ -143,7 +143,54 @@ She has undertaken to deliver the project by the end of the month.
 
         Assert.Equal(3, nonEmptyLines.Count);
     }
-        [Fact]
+
+    [Fact]
+    public async Task AskAsync_ShouldNormalizeRegularVerbReply_WhenModelReturnsIvForSingleFormWord()
+    {
+        var fx = new Fixture();
+        fx.AiClient.NextContent = """
+prepare
+
+(iv) get ready, make something ready
+
+We prepare the deployment scripts before the release.
+""";
+
+        var sut = fx.CreateSut();
+
+        var result = await sut.AskAsync("prepare");
+
+        Assert.Contains("(v) get ready, make something ready", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("(iv) get ready, make something ready", result.Content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AskAsync_ShouldNormalizePersistentExpressionReply_AndNotTreatItAsPhrasalVerb()
+    {
+        var fx = new Fixture();
+        fx.AiClient.NextContent = """
+on the same page
+
+(v) мати спільне розуміння
+
+We are on the same page about the release.
+""";
+
+        var sut = fx.CreateSut();
+
+        var result = await sut.AskAsync("on the same page");
+
+        Assert.StartsWith("On the same page", result.Content, StringComparison.Ordinal);
+        Assert.Contains("(pe) мати спільне розуміння", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("(pv)", result.Content, StringComparison.OrdinalIgnoreCase);
+
+        var nonEmptyLines = result.Content
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
+        Assert.Equal(2, nonEmptyLines.Count);
+    }
+    [Fact]
     public async Task AskAsync_ShouldNormalizePhrasalVerbReply_WhenModelReturnsV()
     {
         var fx = new Fixture();

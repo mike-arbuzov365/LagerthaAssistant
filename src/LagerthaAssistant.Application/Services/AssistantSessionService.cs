@@ -24,6 +24,16 @@ public sealed class AssistantSessionService : IAssistantSessionService
         "back", "up", "down", "out", "off", "on", "in", "over", "away", "through", "around", "about", "along", "across", "apart", "by", "into", "onto", "under"
     };
 
+    private static readonly HashSet<string> PhrasalMiddlePronouns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "me", "you", "him", "her", "it", "us", "them"
+    };
+
+    private static readonly HashSet<string> NonVerbStarters = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "a", "an", "the", "to", "in", "on", "at", "for", "with", "of", "by", "from", "as", "if", "when", "while", "because", "although", "that", "this", "these", "those", "there", "here", "it", "he", "she", "they", "we", "you", "i", "my", "your", "our", "their"
+    };
+
     private readonly IAiChatClient _aiChatClient;
     private readonly IConversationSessionRepository _sessionRepository;
     private readonly IConversationHistoryRepository _historyRepository;
@@ -82,8 +92,10 @@ public sealed class AssistantSessionService : IAssistantSessionService
 
         var contextMessages = await BuildContextMessagesAsync(cancellationToken);
         var completion = await _aiChatClient.CompleteAsync(contextMessages, cancellationToken);
+        completion = NormalizePersistentExpressionCompletion(completion);
         completion = NormalizePhrasalVerbCompletion(completion);
         completion = NormalizeIrregularVerbCompletion(completion);
+        completion = NormalizeRegularVerbCompletion(completion);
 
         _conversation.AddAssistantMessage(completion.Content, _clock);
 
@@ -383,6 +395,28 @@ public sealed class AssistantSessionService : IAssistantSessionService
         return completion with { Content = normalizedContent };
     }
 
+    private static AssistantCompletionResult NormalizeRegularVerbCompletion(AssistantCompletionResult completion)
+    {
+        var normalizedContent = NormalizeRegularVerbReply(completion.Content);
+        if (string.Equals(normalizedContent, completion.Content, StringComparison.Ordinal))
+        {
+            return completion;
+        }
+
+        return completion with { Content = normalizedContent };
+    }
+
+    private static AssistantCompletionResult NormalizePersistentExpressionCompletion(AssistantCompletionResult completion)
+    {
+        var normalizedContent = NormalizePersistentExpressionReply(completion.Content);
+        if (string.Equals(normalizedContent, completion.Content, StringComparison.Ordinal))
+        {
+            return completion;
+        }
+
+        return completion with { Content = normalizedContent };
+    }
+
     private static AssistantCompletionResult NormalizePhrasalVerbCompletion(AssistantCompletionResult completion)
     {
         var normalizedContent = NormalizePhrasalVerbReply(completion.Content);
@@ -394,6 +428,79 @@ public sealed class AssistantSessionService : IAssistantSessionService
         return completion with { Content = normalizedContent };
     }
 
+    private static string NormalizePersistentExpressionReply(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return content;
+        }
+
+        var lines = content
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList();
+
+        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[0]))
+        {
+            lines.RemoveAt(0);
+        }
+
+        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[^1]))
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
+
+        if (lines.Count == 0)
+        {
+            return content;
+        }
+
+        var header = lines[0].Trim();
+        if (!LooksLikePersistentExpression(header))
+        {
+            return content;
+        }
+
+        var meanings = new List<string>();
+        var examplesSection = false;
+
+        foreach (var rawLine in lines.Skip(1))
+        {
+            var line = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var match = MeaningLineRegex.Match(line);
+            if (!examplesSection && match.Success)
+            {
+                var closeIndex = line.IndexOf(')');
+                var meaningBody = closeIndex >= 0
+                    ? line[(closeIndex + 1)..].TrimStart()
+                    : line.Trim('(', ')', ' ');
+
+                meanings.Add($"(pe) {meaningBody}");
+                continue;
+            }
+
+            examplesSection = true;
+        }
+
+        if (meanings.Count == 0)
+        {
+            return content;
+        }
+
+        return string.Join(
+            Environment.NewLine + Environment.NewLine,
+            new[]
+            {
+                CapitalizeFirstLetter(header),
+                string.Join(Environment.NewLine + Environment.NewLine, meanings)
+            });
+    }
     private static string NormalizePhrasalVerbReply(string content)
     {
         if (string.IsNullOrWhiteSpace(content))
@@ -492,13 +599,89 @@ public sealed class AssistantSessionService : IAssistantSessionService
         var tokens = header
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        if (tokens.Length < 2 || tokens.Length > 4)
+        if (tokens.Length < 2 || tokens.Length > 3)
         {
             return false;
         }
 
-        return tokens.Skip(1).Any(token => PhrasalParticles.Contains(token));
+        if (!IsLikelyVerbStarter(tokens[0]))
+        {
+            return false;
+        }
+
+        if (tokens.Length == 2)
+        {
+            return PhrasalParticles.Contains(tokens[1]);
+        }
+
+        return PhrasalMiddlePronouns.Contains(tokens[1])
+            && PhrasalParticles.Contains(tokens[2]);
     }
+
+    private static bool LooksLikePersistentExpression(string header)
+    {
+        if (string.IsNullOrWhiteSpace(header))
+        {
+            return false;
+        }
+
+        var normalized = header.Trim().ToLowerInvariant();
+        if (SplitIrregularForms(normalized).Count >= 3)
+        {
+            return false;
+        }
+
+        if (LooksLikePhrasalVerb(normalized))
+        {
+            return false;
+        }
+
+        var hasSpaces = normalized.Contains(' ', StringComparison.Ordinal);
+        var hasExpressionPunctuation = normalized.Any(IsExpressionPunctuation);
+
+        return hasSpaces || hasExpressionPunctuation;
+    }
+
+    private static bool IsLikelyVerbStarter(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return false;
+        }
+
+        if (NonVerbStarters.Contains(token))
+        {
+            return false;
+        }
+
+        return token.All(char.IsLetter);
+    }
+
+    private static bool IsExpressionPunctuation(char value)
+    {
+        return value is '.' or '!' or '?' or ':' or ';' or ',';
+    }
+
+    private static string CapitalizeFirstLetter(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        var trimmed = value.Trim();
+        var first = trimmed[0];
+        if (!char.IsLetter(first))
+        {
+            return trimmed;
+        }
+
+        var capitalizedFirst = char.ToUpperInvariant(first);
+        return trimmed.Length == 1
+            ? capitalizedFirst.ToString()
+            : capitalizedFirst + trimmed[1..];
+    }
+
     private static string NormalizeIrregularVerbReply(string content)
     {
         if (string.IsNullOrWhiteSpace(content))
@@ -597,6 +780,92 @@ public sealed class AssistantSessionService : IAssistantSessionService
             });
     }
 
+    private static string NormalizeRegularVerbReply(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return content;
+        }
+
+        var lines = content
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList();
+
+        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[0]))
+        {
+            lines.RemoveAt(0);
+        }
+
+        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[^1]))
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
+
+        if (lines.Count == 0)
+        {
+            return content;
+        }
+
+        var header = lines[0].Trim().ToLowerInvariant();
+        var forms = SplitIrregularForms(header);
+        if (forms.Count >= 3)
+        {
+            return content;
+        }
+
+        var meanings = new List<string>();
+        var examples = new List<string>();
+        var examplesSection = false;
+        var hasChanges = false;
+
+        foreach (var rawLine in lines.Skip(1))
+        {
+            var line = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var match = MeaningLineRegex.Match(line);
+            if (!examplesSection && match.Success)
+            {
+                if (line.StartsWith("(iv)", StringComparison.OrdinalIgnoreCase))
+                {
+                    meanings.Add("(v)" + line[4..]);
+                    hasChanges = true;
+                }
+                else
+                {
+                    meanings.Add(line);
+                }
+
+                continue;
+            }
+
+            examplesSection = true;
+            examples.Add(line);
+        }
+
+        if (!hasChanges || meanings.Count == 0)
+        {
+            return content;
+        }
+
+        var sections = new List<string>
+        {
+            header,
+            string.Join(Environment.NewLine + Environment.NewLine, meanings)
+        };
+
+        if (examples.Count > 0)
+        {
+            sections.Add(string.Join(Environment.NewLine + Environment.NewLine, examples));
+        }
+
+        return string.Join(Environment.NewLine + Environment.NewLine, sections);
+    }
     private static void EnsureIrregularExamples(IReadOnlyList<string> forms, List<string> examples)
     {
         if (examples.Count >= 3)

@@ -17,6 +17,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IAssistantSessionService, AssistantSessionService>();
         services.AddSingleton<IConversationMemoryExtractor, ConversationMemoryExtractor>();
         services.AddSingleton<IVocabularyReplyParser, VocabularyReplyParser>();
+        services.AddScoped<IVocabularyWorkflowService, VocabularyWorkflowService>();
 
         return services;
     }

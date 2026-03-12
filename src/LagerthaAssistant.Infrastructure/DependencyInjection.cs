@@ -57,13 +57,32 @@ public static class DependencyInjection
             PrepositionDeckFileName = vocabularySection[VocabularyDeckConstants.PrepositionDeckFileNameKey] ?? "wm-prepositions-ua-en.xlsx",
             ConjunctionDeckFileName = vocabularySection[VocabularyDeckConstants.ConjunctionDeckFileNameKey] ?? "wm-conjunctions-ua-en.xlsx",
             PronounDeckFileName = vocabularySection[VocabularyDeckConstants.PronounDeckFileNameKey] ?? "wm-pronouns-ua-en.xlsx",
+            PersistentExpressionDeckFileName = vocabularySection[VocabularyDeckConstants.PersistentExpressionDeckFileNameKey] ?? "wm-persistant-expressions-ua-en.xlsx",
             FallbackDeckFileName = vocabularySection[VocabularyDeckConstants.FallbackDeckFileNameKey] ?? "wm-vocabulary-1-grade-ua-en.xlsx"
+        };
+
+        var storageSection = configuration.GetSection(VocabularyStorageConstants.SectionName);
+        var storageOptions = new VocabularyStorageOptions
+        {
+            DefaultMode = storageSection[VocabularyStorageConstants.DefaultModeKey] ?? "local"
+        };
+
+        var graphSection = configuration.GetSection(GraphConstants.SectionName);
+        var graphOptions = new GraphOptions
+        {
+            TenantId = graphSection[GraphConstants.TenantIdKey] ?? "common",
+            ClientId = graphSection[GraphConstants.ClientIdKey] ?? string.Empty,
+            Scopes = ReadStringArray(graphSection.GetSection(GraphConstants.ScopesKey), ["User.Read", "Files.ReadWrite", "offline_access"]),
+            RootPath = graphSection[GraphConstants.RootPathKey] ?? "/Apps/Flashcards Deluxe",
+            TokenCachePath = graphSection[GraphConstants.TokenCachePathKey] ?? "%LOCALAPPDATA%\\LagerthaAssistant\\graph-token.json"
         };
 
         services.AddDbContext<AppDbContext>(db => db.UseSqlServer(connectionString));
 
         services.AddSingleton(options);
         services.AddSingleton(vocabularyOptions);
+        services.AddSingleton(storageOptions);
+        services.AddSingleton(graphOptions);
         services.AddSingleton<IClock, SystemClock>();
 
         services.AddSingleton(sp =>
@@ -76,13 +95,23 @@ public static class DependencyInjection
             };
         });
 
+        services.AddSingleton<IVocabularyStorageModeProvider, VocabularyStorageModeProvider>();
+        services.AddSingleton<IGraphAuthService, GraphAuthService>();
+        services.AddSingleton<IGraphDriveClient, GraphDriveClient>();
+
         services.AddScoped<IAiChatClient, OpenAiChatClient>();
         services.AddScoped<IConversationSessionRepository, ConversationSessionRepository>();
         services.AddScoped<IConversationHistoryRepository, ConversationHistoryRepository>();
         services.AddScoped<IUserMemoryRepository, UserMemoryRepository>();
         services.AddScoped<ISystemPromptRepository, SystemPromptRepository>();
         services.AddScoped<ISystemPromptProposalRepository, SystemPromptProposalRepository>();
-        services.AddScoped<IVocabularyDeckService, VocabularyDeckService>();
+
+        services.AddScoped<VocabularyDeckService>();
+        services.AddScoped<GraphVocabularyDeckService>();
+        services.AddScoped<IVocabularyDeckBackend>(sp => sp.GetRequiredService<VocabularyDeckService>());
+        services.AddScoped<IVocabularyDeckBackend>(sp => sp.GetRequiredService<GraphVocabularyDeckService>());
+        services.AddScoped<IVocabularyDeckService, SwitchableVocabularyDeckService>();
+
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         return services;

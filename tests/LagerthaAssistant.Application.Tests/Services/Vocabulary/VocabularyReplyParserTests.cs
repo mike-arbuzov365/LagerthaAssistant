@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.Application.Tests.Services.Vocabulary;
+namespace LagerthaAssistant.Application.Tests.Services.Vocabulary;
 
 using LagerthaAssistant.Application.Services.Vocabulary;
 using Xunit;
@@ -74,6 +74,23 @@ We need to add one more layer.
         Assert.Single(result.Examples);
     }
 
+    [Fact]
+    public void TryParse_ShouldAllowPersistentExpressionWithoutExamples()
+    {
+        const string response = """
+On the same page
+
+(pe) мати спільне розуміння
+""";
+
+        var parsed = _sut.TryParse(response, out var result);
+
+        Assert.True(parsed);
+        Assert.NotNull(result);
+        Assert.Equal("on the same page", result!.Word);
+        Assert.Equal(["pe"], result.PartsOfSpeech);
+        Assert.Empty(result.Examples);
+    }
     [Fact]
     public void TryParse_ShouldReturnFalse_WhenFormatIsInvalid()
     {

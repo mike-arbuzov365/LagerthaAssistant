@@ -3,6 +3,7 @@ namespace LagerthaAssistant.IntegrationTests.Services;
 using System.IO.Compression;
 using System.Security;
 using System.Xml.Linq;
+using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using Microsoft.Extensions.Logging.Abstractions;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Vocabulary;
@@ -167,6 +168,104 @@ public sealed class VocabularyDeckServiceIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task AppendFromAssistantReplyAsync_ShouldRouteSingleFormIvToVerbDeck()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var verbsPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
+            var irregularPath = Path.Combine(tempDir, "wm-irregular-verbs-ua-en.xlsx");
+
+            CreateTemplateWorkbook(verbsPath, "build", "(v) create software", "We build services daily.");
+            CreateTemplateWorkbook(irregularPath, "beat - beat - beaten", "(iv) hit", "I beat the estimate.");
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                VerbDeckFileName = "wm-verbs-us-en.xlsx",
+                IrregularVerbDeckFileName = "wm-irregular-verbs-ua-en.xlsx",
+                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+
+            var response = """
+            prepare
+
+            (iv) get ready, make something ready
+
+            We prepare the deployment scripts before the release.
+            """;
+
+            var result = await sut.AppendFromAssistantReplyAsync("prepare", response);
+
+            Assert.Equal(VocabularyAppendStatus.Added, result.Status);
+            Assert.NotNull(result.Entry);
+            Assert.Equal("wm-verbs-us-en.xlsx", result.Entry!.DeckFileName);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task AppendFromAssistantReplyAsync_ShouldSavePersistentExpressionToPersistentDeck_WithoutExamples()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var verbsPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
+            var persistentPath = Path.Combine(tempDir, "wm-persistant-expressions-ua-en.xlsx");
+
+            CreateTemplateWorkbook(verbsPath, "build", "(v) create software", "We build services daily.");
+            CreateTemplateWorkbook(persistentPath, "On purpose", "(pe) навмисно", string.Empty);
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                VerbDeckFileName = "wm-verbs-us-en.xlsx",
+                PersistentExpressionDeckFileName = "wm-persistant-expressions-ua-en.xlsx",
+                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+
+            var response = """
+on the same page
+
+(pe) мати спільне розуміння
+""";
+
+            var result = await sut.AppendFromAssistantReplyAsync("on the same page", response);
+
+            Assert.Equal(VocabularyAppendStatus.Added, result.Status);
+            Assert.NotNull(result.Entry);
+            Assert.Equal("wm-persistant-expressions-ua-en.xlsx", result.Entry!.DeckFileName);
+            Assert.Equal("On the same page", result.Entry.Word);
+            Assert.True(string.IsNullOrWhiteSpace(result.Entry.Examples));
+            Assert.Contains("(pe)", result.Entry.Meaning, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
     [Fact]
     public async Task AppendFromAssistantReplyAsync_ShouldRoutePhrasalVerbToPhrasalDeck()
     {
@@ -362,6 +461,163 @@ public sealed class VocabularyDeckServiceIntegrationTests
             }
         }
     }
+
+    [Fact]
+    public async Task FindInWritableDecksAsync_ShouldMatchMinorTypoForSingleWord()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
+            CreateTemplateWorkbook(workbookPath, "undertake", "(v) take responsibility for a task", "We undertake migrations every quarter.");
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                VerbDeckFileName = "wm-verbs-us-en.xlsx",
+                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+
+            var lookup = await sut.FindInWritableDecksAsync("undertak");
+
+            Assert.True(lookup.Found);
+            var match = Assert.Single(lookup.Matches);
+            Assert.Equal("undertake", match.Word);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PreviewAppendFromAssistantReplyAsync_ShouldDetectDuplicateForMinorTypoWord()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
+            CreateTemplateWorkbook(workbookPath, "undertake", "(v) take responsibility for a task", "We undertake migrations every quarter.");
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                VerbDeckFileName = "wm-verbs-us-en.xlsx",
+                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+
+            var response = """
+            undertak
+
+            (v) take responsibility for a task
+
+            We undertak infrastructure tasks.
+            """;
+
+            var preview = await sut.PreviewAppendFromAssistantReplyAsync("undertak", response);
+
+            Assert.Equal(VocabularyAppendPreviewStatus.DuplicateFound, preview.Status);
+            Assert.NotNull(preview.DuplicateMatches);
+            Assert.NotEmpty(preview.DuplicateMatches!);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+
+    [Fact]
+    public async Task PreviewThenAppend_ShouldReusePreparedPlan_AndSkipSecondParse()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
+            CreateTemplateWorkbook(workbookPath, "build", "(v) to build software components", "We build services daily.");
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                VerbDeckFileName = "wm-verbs-us-en.xlsx",
+                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+            };
+
+            var parsedReply = new ParsedVocabularyReply(
+                "void",
+                ["(v) no return value"],
+                ["The function returns void when there is no value to return."],
+                ["v"]);
+
+            var parser = new CountingReplyParser(parsedReply, throwOnSecondCall: true);
+            var sut = new VocabularyDeckService(options, parser, NullLogger<VocabularyDeckService>.Instance);
+
+            const string assistantReply = "raw-reply";
+
+            var preview = await sut.PreviewAppendFromAssistantReplyAsync("void", assistantReply);
+            Assert.Equal(VocabularyAppendPreviewStatus.ReadyToAppend, preview.Status);
+
+            var append = await sut.AppendFromAssistantReplyAsync("void", assistantReply);
+            Assert.Equal(VocabularyAppendStatus.Added, append.Status);
+            Assert.Equal(1, parser.TryParseCalls);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    private sealed class CountingReplyParser : IVocabularyReplyParser
+    {
+        private readonly ParsedVocabularyReply _parsedReply;
+        private readonly bool _throwOnSecondCall;
+
+        public CountingReplyParser(ParsedVocabularyReply parsedReply, bool throwOnSecondCall)
+        {
+            _parsedReply = parsedReply;
+            _throwOnSecondCall = throwOnSecondCall;
+        }
+
+        public int TryParseCalls { get; private set; }
+
+        public bool TryParse(string assistantReply, out ParsedVocabularyReply? parsedReply)
+        {
+            TryParseCalls++;
+
+            if (_throwOnSecondCall && TryParseCalls > 1)
+            {
+                throw new InvalidOperationException("Parser should not be called more than once for preview->append flow.");
+            }
+
+            parsedReply = _parsedReply;
+            return true;
+        }
+    }
     private static void CreateTemplateWorkbook(string workbookPath, string initialWord, string initialMeaning, string initialExamples)
     {
         using var archive = ZipFile.Open(workbookPath, ZipArchiveMode.Create);
@@ -434,5 +690,6 @@ public sealed class VocabularyDeckServiceIntegrationTests
         writer.Write(content);
     }
 }
+
 
 

@@ -10,7 +10,7 @@ using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Infrastructure.Options;
 
-public sealed class VocabularyDeckService : IVocabularyDeckService
+public sealed class VocabularyDeckService : IVocabularyDeckBackend
 {
     private const int HeaderRowNumber = 10;
     private const int DataStartRowNumber = 11;
@@ -21,7 +21,22 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
     private static readonly XNamespace WorkbookRelNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
     private static readonly char[] WordFormSeparators = ['-', ',', '/', '='];
+    private const int MinTypoMatchLength = 5;
 
+    private static readonly HashSet<string> PhrasalParticles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "back", "up", "down", "out", "off", "on", "in", "over", "away", "through", "around", "about", "along", "across", "apart", "by", "into", "onto", "under"
+    };
+
+    private static readonly HashSet<string> PhrasalMiddlePronouns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "me", "you", "him", "her", "it", "us", "them"
+    };
+
+    private static readonly HashSet<string> NonVerbStarters = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "a", "an", "the", "to", "in", "on", "at", "for", "with", "of", "by", "from", "as", "if", "when", "while", "because", "although", "that", "this", "these", "those", "there", "here", "it", "he", "she", "they", "we", "you", "i", "my", "your", "our", "their"
+    };
     private static readonly Dictionary<string, string[]> PosToDeckTokens = new(StringComparer.OrdinalIgnoreCase)
     {
         ["n"] = ["noun", "nouns"],
@@ -32,12 +47,23 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
         ["adv"] = ["adverb", "adverbs"],
         ["prep"] = ["preposition", "prepositions"],
         ["conj"] = ["conjunction", "conjunctions"],
-        ["pron"] = ["pronoun", "pronouns"]
+        ["pron"] = ["pronoun", "pronouns"],
+        ["pe"] = ["persistent", "persistant", "expression", "expressions", "phrase", "phrases", "sentence", "sentences"]
     };
+
+    public VocabularyStorageMode Mode => VocabularyStorageMode.Local;
+
+    private static readonly TimeSpan WritableDeckCacheLifetime = TimeSpan.FromSeconds(20);
 
     private readonly VocabularyDeckOptions _options;
     private readonly IVocabularyReplyParser _replyParser;
     private readonly ILogger<VocabularyDeckService> _logger;
+    private readonly object _sync = new();
+
+    private IReadOnlyList<DeckFile> _cachedWritableDecks = [];
+    private DateTimeOffset _cachedWritableDecksCachedAtUtc;
+    private bool _hasWritableDeckCache;
+    private CachedAppendPlan? _cachedAppendPlan;
 
     public VocabularyDeckService(
         VocabularyDeckOptions options,
@@ -51,31 +77,33 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
 
     public Task<VocabularyLookupResult> FindInWritableDecksAsync(string word, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var normalizedWord = NormalizeWord(word);
         if (string.IsNullOrWhiteSpace(normalizedWord))
         {
             return Task.FromResult(new VocabularyLookupResult(string.Empty, []));
         }
 
-        var matches = new List<VocabularyDeckEntry>();
-        foreach (var deck in GetWritableDeckFiles())
+        lock (_sync)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            matches.AddRange(FindWordInDeck(deck, normalizedWord));
+            var matches = FindInWritableDecksCore(normalizedWord, cancellationToken);
+            return Task.FromResult(new VocabularyLookupResult(normalizedWord, matches));
         }
-
-        return Task.FromResult(new VocabularyLookupResult(normalizedWord, matches));
     }
 
     public Task<IReadOnlyList<VocabularyDeckFile>> GetWritableDeckFilesAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var files = GetWritableDeckFiles()
-            .Select(deck => new VocabularyDeckFile(deck.FileName, deck.FullPath))
-            .ToList();
+        lock (_sync)
+        {
+            var files = GetWritableDeckFilesCached()
+                .Select(deck => new VocabularyDeckFile(deck.FileName, deck.FullPath))
+                .ToList();
 
-        return Task.FromResult<IReadOnlyList<VocabularyDeckFile>>(files);
+            return Task.FromResult<IReadOnlyList<VocabularyDeckFile>>(files);
+        }
     }
 
     public Task<VocabularyAppendPreviewResult> PreviewAppendFromAssistantReplyAsync(
@@ -85,13 +113,26 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
         string? overridePartOfSpeech = null,
         CancellationToken cancellationToken = default)
     {
-        var preparation = PrepareAppendFromAssistantReply(
-            requestedWord,
-            assistantReply,
-            forcedDeckFileName,
-            overridePartOfSpeech,
-            cancellationToken);
-        return Task.FromResult(ToPreviewResult(preparation));
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            var preparation = PrepareAppendFromAssistantReply(
+                requestedWord,
+                assistantReply,
+                forcedDeckFileName,
+                overridePartOfSpeech,
+                cancellationToken);
+
+            var signature = VocabularyAppendPlanning.CreateSignature(
+                requestedWord,
+                assistantReply,
+                forcedDeckFileName,
+                overridePartOfSpeech);
+
+            CacheAppendPlan(signature, preparation);
+            return Task.FromResult(ToPreviewResult(preparation));
+        }
     }
 
     public Task<VocabularyAppendResult> AppendFromAssistantReplyAsync(
@@ -101,15 +142,111 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
         string? overridePartOfSpeech = null,
         CancellationToken cancellationToken = default)
     {
-        var preparation = PrepareAppendFromAssistantReply(
-            requestedWord,
-            assistantReply,
-            forcedDeckFileName,
-            overridePartOfSpeech,
-            cancellationToken);
-        if (preparation.Status != VocabularyAppendPreviewStatus.ReadyToAppend || preparation.SelectedDeck is null)
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_sync)
         {
-            return Task.FromResult(ToAppendResult(preparation));
+            var signature = VocabularyAppendPlanning.CreateSignature(
+                requestedWord,
+                assistantReply,
+                forcedDeckFileName,
+                overridePartOfSpeech);
+
+            if (TryAppendUsingCachedPlan(signature, cancellationToken, out var cachedResult))
+            {
+                return Task.FromResult(cachedResult);
+            }
+
+            var preparation = PrepareAppendFromAssistantReply(
+                requestedWord,
+                assistantReply,
+                forcedDeckFileName,
+                overridePartOfSpeech,
+                cancellationToken);
+
+            if (preparation.Status != VocabularyAppendPreviewStatus.ReadyToAppend || preparation.SelectedDeck is null)
+            {
+                ClearCachedAppendPlan();
+                return Task.FromResult(ToAppendResult(preparation));
+            }
+
+            CacheAppendPlan(signature, preparation);
+
+            var appendResult = AppendPrepared(preparation);
+            FinalizeCacheAfterAppend(appendResult);
+
+            return Task.FromResult(appendResult);
+        }
+    }
+
+    public Task<VocabularyAppendResult> AppendPreparedCardAsync(
+        string requestedWord,
+        string meaningText,
+        string examplesText,
+        string targetDeckFileName,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            var result = AppendPreparedCardCore(requestedWord, meaningText, examplesText, targetDeckFileName, cancellationToken);
+            FinalizeCacheAfterAppend(result);
+            return Task.FromResult(result);
+        }
+    }
+
+    private IReadOnlyList<VocabularyDeckEntry> FindInWritableDecksCore(string normalizedWord, CancellationToken cancellationToken)
+    {
+        var matches = new List<VocabularyDeckEntry>();
+        foreach (var deck in GetWritableDeckFilesCached())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            matches.AddRange(FindWordInDeck(deck, normalizedWord));
+        }
+
+        return matches;
+    }
+
+    private VocabularyAppendResult AppendPreparedCardCore(
+        string requestedWord,
+        string meaningText,
+        string examplesText,
+        string targetDeckFileName,
+        CancellationToken cancellationToken)
+    {
+        var targetWord = NormalizeWord(requestedWord);
+        if (string.IsNullOrWhiteSpace(targetWord))
+        {
+            return new VocabularyAppendResult(
+                VocabularyAppendStatus.Error,
+                Message: "Word is empty after parsing, skipped Excel save.");
+        }
+
+        if (!TryResolveWritableDeck(targetDeckFileName, out var selectedDeck))
+        {
+            return new VocabularyAppendResult(
+                VocabularyAppendStatus.NoWritableDecks,
+                Message: $"Selected deck '{targetDeckFileName}' is not writable or was not found.");
+        }
+
+        var preparation = new AppendPreparation(
+            VocabularyAppendPreviewStatus.ReadyToAppend,
+            targetWord,
+            meaningText,
+            examplesText,
+            selectedDeck);
+
+        return AppendPrepared(preparation);
+    }
+
+    private VocabularyAppendResult AppendPrepared(AppendPreparation preparation)
+    {
+        if (preparation.SelectedDeck is null)
+        {
+            return new VocabularyAppendResult(
+                VocabularyAppendStatus.Error,
+                Message: "Selected deck is not available for append.");
         }
 
         try
@@ -123,7 +260,7 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
                 preparation.MeaningText,
                 preparation.ExamplesText);
 
-            return Task.FromResult(new VocabularyAppendResult(VocabularyAppendStatus.Added, Entry: addedEntry));
+            return new VocabularyAppendResult(VocabularyAppendStatus.Added, Entry: addedEntry);
         }
         catch (Exception ex)
         {
@@ -134,16 +271,133 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
                     preparation.TargetWord,
                     preparation.SelectedDeck.FileName);
 
-                return Task.FromResult(new VocabularyAppendResult(
+                return new VocabularyAppendResult(
                     VocabularyAppendStatus.Error,
-                    Message: $"Failed to append vocabulary card to {preparation.SelectedDeck.FileName}: file is open in another app. Close it and try again."));
+                    Message: $"Failed to append vocabulary card to {preparation.SelectedDeck.FileName}: file is open in another app. Close it and try again.");
             }
 
             _logger.LogError(ex, "Failed to append vocabulary word {Word} to deck {DeckFile}", preparation.TargetWord, preparation.SelectedDeck.FileName);
-            return Task.FromResult(new VocabularyAppendResult(
+            return new VocabularyAppendResult(
                 VocabularyAppendStatus.Error,
-                Message: $"Failed to append vocabulary card to {preparation.SelectedDeck.FileName}: {ex.Message}"));
+                Message: $"Failed to append vocabulary card to {preparation.SelectedDeck.FileName}: {ex.Message}");
         }
+    }
+    private bool TryAppendUsingCachedPlan(
+        VocabularyAppendRequestSignature signature,
+        CancellationToken cancellationToken,
+        out VocabularyAppendResult appendResult)
+    {
+        appendResult = null!;
+
+        if (_cachedAppendPlan is null || !_cachedAppendPlan.Signature.Equals(signature))
+        {
+            return false;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!TryResolveWritableDeck(_cachedAppendPlan.TargetDeckFileName, out var selectedDeck))
+        {
+            ClearCachedAppendPlan();
+            return false;
+        }
+
+        var preparation = new AppendPreparation(
+            VocabularyAppendPreviewStatus.ReadyToAppend,
+            _cachedAppendPlan.TargetWord,
+            _cachedAppendPlan.MeaningText,
+            _cachedAppendPlan.ExamplesText,
+            selectedDeck);
+
+        appendResult = AppendPrepared(preparation);
+        FinalizeCacheAfterAppend(appendResult);
+        return true;
+    }
+
+    private void CacheAppendPlan(VocabularyAppendRequestSignature signature, AppendPreparation preparation)
+    {
+        if (preparation.Status != VocabularyAppendPreviewStatus.ReadyToAppend
+            || preparation.SelectedDeck is null)
+        {
+            ClearCachedAppendPlan();
+            return;
+        }
+
+        _cachedAppendPlan = new CachedAppendPlan(
+            signature,
+            preparation.TargetWord,
+            preparation.MeaningText,
+            preparation.ExamplesText,
+            preparation.SelectedDeck.FileName);
+    }
+
+    private void ClearCachedAppendPlan()
+    {
+        _cachedAppendPlan = null;
+    }
+
+    private void FinalizeCacheAfterAppend(VocabularyAppendResult appendResult)
+    {
+        if (appendResult.Status == VocabularyAppendStatus.Added)
+        {
+            ClearCachedAppendPlan();
+            return;
+        }
+
+        if (appendResult.Status == VocabularyAppendStatus.Error && IsFileLockedAppendResult(appendResult))
+        {
+            return;
+        }
+
+        ClearCachedAppendPlan();
+    }
+
+    private static bool IsFileLockedAppendResult(VocabularyAppendResult result)
+    {
+        return !string.IsNullOrWhiteSpace(result.Message)
+            && result.Message.Contains("file is open in another app", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool TryResolveWritableDeck(string deckFileName, out DeckFile selectedDeck)
+    {
+        var normalizedDeckFileName = deckFileName.Trim();
+
+        var fromCache = GetWritableDeckFilesCached()
+            .FirstOrDefault(x => x.FileName.Equals(normalizedDeckFileName, StringComparison.OrdinalIgnoreCase));
+
+        if (fromCache is not null)
+        {
+            selectedDeck = fromCache;
+            return true;
+        }
+
+        var fromRefresh = GetWritableDeckFilesCached(forceRefresh: true)
+            .FirstOrDefault(x => x.FileName.Equals(normalizedDeckFileName, StringComparison.OrdinalIgnoreCase));
+
+        if (fromRefresh is not null)
+        {
+            selectedDeck = fromRefresh;
+            return true;
+        }
+
+        selectedDeck = null!;
+        return false;
+    }
+
+    private IReadOnlyList<DeckFile> GetWritableDeckFilesCached(bool forceRefresh = false)
+    {
+        if (!forceRefresh
+            && _hasWritableDeckCache
+            && DateTimeOffset.UtcNow - _cachedWritableDecksCachedAtUtc <= WritableDeckCacheLifetime)
+        {
+            return _cachedWritableDecks;
+        }
+
+        _cachedWritableDecks = LoadWritableDeckFiles();
+        _cachedWritableDecksCachedAtUtc = DateTimeOffset.UtcNow;
+        _hasWritableDeckCache = true;
+
+        return _cachedWritableDecks;
     }
 
     private AppendPreparation PrepareAppendFromAssistantReply(
@@ -161,47 +415,43 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
         }
 
         var normalizedRequestedWord = NormalizeWord(requestedWord);
-        var normalizedParsedWord = NormalizeWord(parsedReply.Word);
-        var targetWord = string.IsNullOrWhiteSpace(normalizedParsedWord)
-            ? normalizedRequestedWord
-            : normalizedParsedWord;
 
-        if (string.IsNullOrWhiteSpace(targetWord))
+        if (!VocabularyAppendPlanning.TryBuildPayload(
+                normalizedRequestedWord,
+                parsedReply,
+                overridePartOfSpeech,
+                out var payload))
         {
             return new AppendPreparation(
                 VocabularyAppendPreviewStatus.ParseFailed,
                 Message: "Word is empty after parsing, skipped Excel save.");
         }
 
-        var writableDecks = GetWritableDeckFiles();
+        var targetWord = payload.TargetWord;
+
+        var writableDecks = GetWritableDeckFilesCached();
         if (writableDecks.Count == 0)
         {
-            return new AppendPreparation(
-                VocabularyAppendPreviewStatus.NoWritableDecks,
-                targetWord,
-                Message: "No writable vocabulary decks found.");
-        }
-
-        var duplicates = new List<VocabularyDeckEntry>();
-        foreach (var deck in writableDecks)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            duplicates.AddRange(FindWordInDeck(deck, targetWord));
-        }
-
-        if (duplicates.Count > 0)
-        {
-            return new AppendPreparation(
-                VocabularyAppendPreviewStatus.DuplicateFound,
-                targetWord,
-                Duplicates: duplicates,
-                Message: "Word already exists in writable decks.");
+            writableDecks = GetWritableDeckFilesCached(forceRefresh: true);
+            if (writableDecks.Count == 0)
+            {
+                return new AppendPreparation(
+                    VocabularyAppendPreviewStatus.NoWritableDecks,
+                    targetWord,
+                    Message: "No writable vocabulary decks found.");
+            }
         }
 
         DeckFile? selectedDeck;
         if (!string.IsNullOrWhiteSpace(forcedDeckFileName))
         {
             selectedDeck = writableDecks.FirstOrDefault(x => x.FileName.Equals(forcedDeckFileName.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (selectedDeck is null)
+            {
+                writableDecks = GetWritableDeckFilesCached(forceRefresh: true);
+                selectedDeck = writableDecks.FirstOrDefault(x => x.FileName.Equals(forcedDeckFileName.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
+
             if (selectedDeck is null)
             {
                 return new AppendPreparation(
@@ -222,15 +472,36 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
             }
         }
 
-        var normalizedMeanings = NormalizeMeaningsWithOverridePos(parsedReply.Meanings, overridePartOfSpeech);
-        var meaningText = string.Join(Environment.NewLine + Environment.NewLine, normalizedMeanings);
-        var examplesText = string.Join(Environment.NewLine + Environment.NewLine, parsedReply.Examples);
+        payload = VocabularyAppendPlanning.ApplyDeckSpecificProfile(
+            payload,
+            parsedReply,
+            requestedWord,
+            selectedDeck.FileName,
+            _options);
+
+        targetWord = payload.TargetWord;
+
+        var duplicates = new List<VocabularyDeckEntry>();
+        foreach (var deck in writableDecks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            duplicates.AddRange(FindWordInDeck(deck, targetWord));
+        }
+
+        if (duplicates.Count > 0)
+        {
+            return new AppendPreparation(
+                VocabularyAppendPreviewStatus.DuplicateFound,
+                targetWord,
+                Duplicates: duplicates,
+                Message: "Word already exists in writable decks.");
+        }
 
         return new AppendPreparation(
             VocabularyAppendPreviewStatus.ReadyToAppend,
             targetWord,
-            meaningText,
-            examplesText,
+            payload.MeaningText,
+            payload.ExamplesText,
             selectedDeck);
     }
 
@@ -271,74 +542,15 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
             Message: preparation.Message);
     }
 
-    private static IReadOnlyList<string> NormalizeMeaningsWithOverridePos(
-        IReadOnlyList<string> meanings,
-        string? overridePartOfSpeech)
-    {
-        var normalizedPos = NormalizePartOfSpeech(overridePartOfSpeech);
-        if (string.IsNullOrWhiteSpace(normalizedPos))
-        {
-            return meanings;
-        }
-
-        var adjusted = new List<string>(meanings.Count);
-
-        foreach (var meaning in meanings)
-        {
-            var trimmed = meaning?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(trimmed))
-            {
-                continue;
-            }
-
-            if (trimmed.StartsWith("(", StringComparison.Ordinal))
-            {
-                var closeIndex = trimmed.IndexOf(')');
-                if (closeIndex > 0)
-                {
-                    adjusted.Add($"({normalizedPos}) {trimmed[(closeIndex + 1)..].TrimStart()}");
-                }
-                else
-                {
-                    adjusted.Add($"({normalizedPos}) {trimmed.Trim('(', ')', ' ')}");
-                }
-            }
-            else
-            {
-                adjusted.Add($"({normalizedPos}) {trimmed}");
-            }
-        }
-
-        return adjusted.Count > 0
-            ? adjusted
-            : meanings;
-    }
-
-    private static string? NormalizePartOfSpeech(string? partOfSpeech)
-    {
-        var value = partOfSpeech?.Trim().ToLowerInvariant();
-
-        return value switch
-        {
-            "n" or "noun" => "n",
-            "v" or "verb" => "v",
-            "iv" or "irregular" or "irregular-verb" => "iv",
-            "pv" or "phrasal" or "phrasal-verb" => "pv",
-            "adj" or "adjective" => "adj",
-            "adv" or "adverb" => "adv",
-            "prep" or "preposition" => "prep",
-            "conj" or "conjunction" => "conj",
-            "pron" or "pronoun" => "pron",
-            _ => null
-        };
-    }
     private DeckFile? SelectTargetDeck(
         IReadOnlyList<DeckFile> writableDecks,
         ParsedVocabularyReply parsedReply,
         string normalizedRequestedWord,
         string targetWord)
     {
-        if (IsIrregularVerbCandidate(targetWord, parsedReply.PartsOfSpeech))
+        var isIrregularVerbCandidate = IsIrregularVerbCandidate(targetWord, parsedReply.PartsOfSpeech);
+
+        if (isIrregularVerbCandidate)
         {
             var irregularDeck = writableDecks.FirstOrDefault(x => x.FileName.Equals(_options.IrregularVerbDeckFileName, StringComparison.OrdinalIgnoreCase));
             if (irregularDeck is not null)
@@ -347,9 +559,22 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
             }
         }
 
+        if (IsPersistentExpressionCandidate(normalizedRequestedWord, targetWord, parsedReply.PartsOfSpeech))
+        {
+            var persistentDeck = writableDecks.FirstOrDefault(x => x.FileName.Equals(_options.PersistentExpressionDeckFileName, StringComparison.OrdinalIgnoreCase));
+            if (persistentDeck is not null)
+            {
+                return persistentDeck;
+            }
+        }
+
         foreach (var partOfSpeech in parsedReply.PartsOfSpeech)
         {
-            var preferredDeckFileName = GetPreferredDeckFileName(partOfSpeech);
+            var normalizedPartOfSpeech = partOfSpeech.Equals("iv", StringComparison.OrdinalIgnoreCase) && !isIrregularVerbCandidate
+                ? "v"
+                : partOfSpeech;
+
+            var preferredDeckFileName = GetPreferredDeckFileName(normalizedPartOfSpeech);
             if (string.IsNullOrWhiteSpace(preferredDeckFileName))
             {
                 continue;
@@ -373,7 +598,11 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
 
             foreach (var pos in parsedReply.PartsOfSpeech)
             {
-                if (PosToDeckTokens.TryGetValue(pos, out var posTokens) && posTokens.Any(token => deck.Tokens.Contains(token)))
+                var normalizedPos = pos.Equals("iv", StringComparison.OrdinalIgnoreCase) && !isIrregularVerbCandidate
+                    ? "v"
+                    : pos;
+
+                if (PosToDeckTokens.TryGetValue(normalizedPos, out var posTokens) && posTokens.Any(token => deck.Tokens.Contains(token)))
                 {
                     score += 12;
                 }
@@ -439,6 +668,7 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
             "prep" => _options.PrepositionDeckFileName,
             "conj" => _options.ConjunctionDeckFileName,
             "pron" => _options.PronounDeckFileName,
+            "pe" => _options.PersistentExpressionDeckFileName,
             _ => null
         };
     }
@@ -633,7 +863,7 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
         }
     }
 
-    private IReadOnlyList<DeckFile> GetWritableDeckFiles()
+    private IReadOnlyList<DeckFile> LoadWritableDeckFiles()
     {
         var folderPath = ExpandFolderPath(_options.FolderPath);
         if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
@@ -942,8 +1172,13 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
 
     private static bool IsLookupMatch(string storedWord, string normalizedLookup)
     {
+        if (string.IsNullOrWhiteSpace(normalizedLookup))
+        {
+            return false;
+        }
+
         var normalizedStoredWord = NormalizeWord(storedWord);
-        if (normalizedStoredWord.Equals(normalizedLookup, StringComparison.Ordinal))
+        if (AreEquivalentOrMinorTypo(normalizedStoredWord, normalizedLookup))
         {
             return true;
         }
@@ -954,7 +1189,90 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
             return false;
         }
 
-        return forms.Any(form => form.Equals(normalizedLookup, StringComparison.Ordinal));
+        return forms.Any(form => AreEquivalentOrMinorTypo(form, normalizedLookup));
+    }
+
+    private static bool IsPersistentExpressionCandidate(
+        string normalizedRequestedWord,
+        string targetWord,
+        IReadOnlyList<string> partsOfSpeech)
+    {
+        if (partsOfSpeech.Any(pos => pos.Equals("pe", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (partsOfSpeech.Any(pos => pos.Equals("pv", StringComparison.OrdinalIgnoreCase)
+            || pos.Equals("iv", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        var candidate = string.IsNullOrWhiteSpace(normalizedRequestedWord)
+            ? targetWord
+            : normalizedRequestedWord;
+
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return false;
+        }
+
+        var hasSpaces = candidate.Contains(' ', StringComparison.Ordinal);
+        var hasExpressionPunctuation = candidate.Any(IsExpressionPunctuation);
+        if (!hasSpaces && !hasExpressionPunctuation)
+        {
+            return false;
+        }
+
+        return !LooksLikePhrasalVerbPhrase(candidate);
+    }
+
+    private static bool LooksLikePhrasalVerbPhrase(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)
+            || text.Contains(" - ", StringComparison.Ordinal)
+            || text.Contains(',', StringComparison.Ordinal)
+            || text.Contains('=', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var tokens = text
+            .ToLowerInvariant()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (tokens.Length < 2 || tokens.Length > 3)
+        {
+            return false;
+        }
+
+        if (!IsLikelyVerbStarter(tokens[0]))
+        {
+            return false;
+        }
+
+        if (tokens.Length == 2)
+        {
+            return PhrasalParticles.Contains(tokens[1]);
+        }
+
+        return PhrasalMiddlePronouns.Contains(tokens[1])
+            && PhrasalParticles.Contains(tokens[2]);
+    }
+
+    private static bool IsLikelyVerbStarter(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || NonVerbStarters.Contains(value))
+        {
+            return false;
+        }
+
+        return value.All(char.IsLetter);
+    }
+
+    private static bool IsExpressionPunctuation(char value)
+    {
+        return value is '.' or '!' or '?' or ':' or ';' or ',';
     }
 
     private static bool IsIrregularVerbCandidate(string targetWord, IReadOnlyList<string> partsOfSpeech)
@@ -995,6 +1313,101 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
             .ToList();
     }
 
+    private static bool AreEquivalentOrMinorTypo(string left, string right)
+    {
+        if (left.Equals(right, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return IsMinorSingleWordTypo(left, right);
+    }
+
+    private static bool IsMinorSingleWordTypo(string left, string right)
+    {
+        if (!CanUseTypoMatching(left) || !CanUseTypoMatching(right))
+        {
+            return false;
+        }
+
+        if (left[0] != right[0])
+        {
+            return false;
+        }
+
+        return HasEditDistanceAtMostOne(left, right);
+    }
+
+    private static bool CanUseTypoMatching(string value)
+    {
+        if (value.Length < MinTypoMatchLength)
+        {
+            return false;
+        }
+
+        return value.All(char.IsLetter);
+    }
+
+    private static bool HasEditDistanceAtMostOne(string left, string right)
+    {
+        if (left.Equals(right, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var lengthDiff = Math.Abs(left.Length - right.Length);
+        if (lengthDiff > 1)
+        {
+            return false;
+        }
+
+        if (left.Length == right.Length)
+        {
+            var mismatchCount = 0;
+            for (var i = 0; i < left.Length; i++)
+            {
+                if (left[i] == right[i])
+                {
+                    continue;
+                }
+
+                mismatchCount++;
+                if (mismatchCount > 1)
+                {
+                    return false;
+                }
+            }
+
+            return mismatchCount == 1;
+        }
+
+        var shorter = left.Length < right.Length ? left : right;
+        var longer = left.Length < right.Length ? right : left;
+
+        var shortIndex = 0;
+        var longIndex = 0;
+        var skipped = false;
+
+        while (shortIndex < shorter.Length && longIndex < longer.Length)
+        {
+            if (shorter[shortIndex] == longer[longIndex])
+            {
+                shortIndex++;
+                longIndex++;
+                continue;
+            }
+
+            if (skipped)
+            {
+                return false;
+            }
+
+            skipped = true;
+            longIndex++;
+        }
+
+        return true;
+    }
     private static string NormalizeWord(string value)
     {
         return value.Trim().ToLowerInvariant();
@@ -1039,6 +1452,13 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
         return false;
     }
 
+    private sealed record CachedAppendPlan(
+        VocabularyAppendRequestSignature Signature,
+        string TargetWord,
+        string MeaningText,
+        string ExamplesText,
+        string TargetDeckFileName);
+
     private sealed record AppendPreparation(
         VocabularyAppendPreviewStatus Status,
         string TargetWord = "",
@@ -1049,6 +1469,10 @@ public sealed class VocabularyDeckService : IVocabularyDeckService
         string? Message = null);
     private sealed record DeckFile(string FileName, string FullPath, HashSet<string> Tokens);
 }
+
+
+
+
 
 
 

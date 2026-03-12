@@ -17,5 +17,6 @@ public sealed class VocabularyDeckOptions
     public string PrepositionDeckFileName { get; init; } = "wm-prepositions-ua-en.xlsx";
     public string ConjunctionDeckFileName { get; init; } = "wm-conjunctions-ua-en.xlsx";
     public string PronounDeckFileName { get; init; } = "wm-pronouns-ua-en.xlsx";
+    public string PersistentExpressionDeckFileName { get; init; } = "wm-persistant-expressions-ua-en.xlsx";
     public string FallbackDeckFileName { get; init; } = "wm-vocabulary-1-grade-ua-en.xlsx";
 }

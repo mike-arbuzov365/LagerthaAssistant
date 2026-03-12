@@ -3,8 +3,17 @@ namespace LagerthaAssistant.UI.Constants;
 public static class ConsoleCommands
 {
     public const string Help = "/help";
+    public const string Batch = "/batch";
+
     public const string Save = "/save";
     public const string SaveMode = "/save mode";
+
+    public const string Storage = "/storage";
+    public const string StorageMode = "/storage mode";
+
+    public const string GraphStatus = "/graph status";
+    public const string GraphLogin = "/graph login";
+    public const string GraphLogout = "/graph logout";
 
     public const string Exit = "/exit";
     public const string Reset = "/reset";

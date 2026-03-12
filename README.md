@@ -6,7 +6,7 @@ Console AI assistant prototype built with Clean Architecture and SQL Server pers
 
 - `src/LagerthaAssistant.Domain` - domain rules, entities, shared abstractions.
 - `src/LagerthaAssistant.Application` - use-case services, interfaces, prompt/memory/vocabulary parsing logic.
-- `src/LagerthaAssistant.Infrastructure` - EF Core, repositories, migrations, OpenAI HTTP client, Excel deck integration.
+- `src/LagerthaAssistant.Infrastructure` - EF Core, repositories, migrations, OpenAI HTTP client, local Excel + OneDrive Graph deck integration.
 - `src/LagerthaAssistant.UI` - interactive console app and command routing.
 - `tests/LagerthaAssistant.*` - domain, application, and integration tests.
 
@@ -16,16 +16,27 @@ Console AI assistant prototype built with Clean Architecture and SQL Server pers
 - Persistent user memory (`UserMemoryEntries`) injected into next requests.
 - Persistent versioned system prompts (`SystemPromptEntries`).
 - Prompt proposal workflow (`SystemPromptProposals`) with apply/reject flow.
-- Vocabulary workflow with Excel (`.xlsx`) decks in OneDrive folder.
+- Vocabulary workflow with Excel (`.xlsx`) decks in two storage modes:
+  - `local` (direct filesystem access)
+  - `graph` (OneDrive via Microsoft Graph)
 
 ## Vocabulary workflow
 
 When you type a word or phrase (non-command input):
 
-1. Assistant checks duplicates only in writable decks.
-2. If found, it prints saved data from Excel and skips AI call.
+1. Assistant checks duplicates in writable decks for the active storage mode.
+2. If found, it prints saved data and skips AI call.
 3. If not found, it calls AI and parses the response.
 4. Before write, app decides by save mode: `ask` (confirm), `auto` (write immediately), `off` (skip writing).
+
+Batch smart-paste mode:
+
+- Run `/batch`.
+- Paste multiple items and finish with `/end` (or cancel with `/cancel`).
+- Parser auto-detects entries by line, tab, `;`, and sentence boundaries (`.`, `!`, `?`) for single-line paste.
+- For one-line space-separated text without separators, app can ask whether to keep one phrase or split by spaces.
+- Items are processed sequentially.
+- In `ask` mode app prompts once at the end to save all, review targets, or skip.
 
 Irregular verbs are supported via a dedicated deck (for example `beat - beat - beaten`). Duplicate lookup matches by any form (base/past/participle).
 
@@ -45,17 +56,62 @@ Set OpenAI API key (required):
 $env:OPENAI_API_KEY = "your_api_key"
 ```
 
-Connection string and vocabulary deck settings are configured in:
+Connection string and deck settings are configured in:
 
 - `src/LagerthaAssistant.UI/appsettings.json`
 
-Example vocabulary section:
+### Storage mode
+
+```json
+"VocabularyStorage": {
+  "DefaultMode": "local"
+}
+```
+
+Values:
+- `local` - use local files from `VocabularyDecks.FolderPath`
+- `graph` - use OneDrive via Graph
+
+### Graph settings
+
+```json
+"Graph": {
+  "TenantId": "common",
+  "ClientId": "<your app client id>",
+  "Scopes": ["User.Read", "Files.ReadWrite", "offline_access"],
+  "RootPath": "/Apps/Flashcards Deluxe",
+  "TokenCachePath": "%LOCALAPPDATA%\\LagerthaAssistant\\graph-token.json"
+}
+```
+
+Notes:
+- `ClientId` is required for Graph mode/login.
+- App uses device-code login (`/graph login`).
+- Token cache is stored locally at `TokenCachePath`.
+- You usually do **not** need `/graph login` on every app start. After first successful sign-in, cached token/refresh token are reused automatically.
+- Run `/graph login` again only if `/graph status` says `Not authenticated` (or after `/graph logout`).
+- Open the exact sign-in URL printed by the app (in some tenants it is `https://www.microsoft.com/link`).
+
+### Microsoft Entra quick setup
+
+1. Open [Microsoft Entra admin center](https://entra.microsoft.com/) -> `Identity` -> `Applications` -> `App registrations` -> `New registration`.
+2. Create app and set `Supported account types` to `Accounts in any organizational directory and personal Microsoft accounts`.
+3. Open created app -> `Authentication` and enable `Allow public client flows` = `Yes`.
+4. Open `API permissions` -> `Add a permission` -> `Microsoft Graph` -> `Delegated permissions`, then add `User.Read`, `Files.ReadWrite`, `offline_access`.
+5. Copy `Application (client) ID` from `Overview` and put it into `Graph:ClientId` in `appsettings.json`.
+6. Set `Graph:TenantId`:
+   - `consumers` for personal OneDrive
+   - `common` for work/school or mixed scenarios
+7. Start app, run `/graph login`, complete device-code sign-in in browser, then check `/graph status`.
+
+### Deck mapping and file rules
 
 ```json
 "VocabularyDecks": {
   "FolderPath": "%OneDrive%\\Apps\\Flashcards Deluxe",
   "FilePattern": "wm-*.xlsx",
   "IrregularVerbDeckFileName": "wm-irregular-verbs-ua-en.xlsx",
+  "PhrasalVerbDeckFileName": "wm-phrasal-verbs-ua-en.xlsx",
   "ReadOnlyFileNames": [
     "wm-vocabulary-all-ru-en.xlsx",
     "wm-training-all-ru-en.xlsx",
@@ -77,10 +133,16 @@ On startup the app applies EF migrations automatically.
 Use `/help` to see full command reference in the console.
 
 - `/help`
+- `/batch`
 - `/history`
 - `/memory`
 - `/save`
 - `/save mode ask|auto|off`
+- `/storage`
+- `/storage mode local|graph`
+- `/graph status`
+- `/graph login`
+- `/graph logout`
 - `/prompt`
 - `/prompt default`
 - `/prompt history`
@@ -105,8 +167,3 @@ Use `/help` to see full command reference in the console.
 dotnet build LagerthaAssistant.slnx
 dotnet test LagerthaAssistant.slnx -v minimal
 ```
-
-
-
-
-

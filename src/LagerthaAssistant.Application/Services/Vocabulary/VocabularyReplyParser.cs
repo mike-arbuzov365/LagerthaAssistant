@@ -77,7 +77,13 @@ public sealed class VocabularyReplyParser : IVocabularyReplyParser
             examples.Add(line);
         }
 
-        if (meanings.Count == 0 || examples.Count == 0)
+        if (meanings.Count == 0)
+        {
+            return false;
+        }
+
+        var allowsNoExamples = partsOfSpeech.Any(pos => pos.Equals("pe", StringComparison.OrdinalIgnoreCase));
+        if (!allowsNoExamples && examples.Count == 0)
         {
             return false;
         }

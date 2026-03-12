@@ -17,6 +17,7 @@ public static class VocabularyDeckConstants
     public const string PrepositionDeckFileNameKey = "PrepositionDeckFileName";
     public const string ConjunctionDeckFileNameKey = "ConjunctionDeckFileName";
     public const string PronounDeckFileNameKey = "PronounDeckFileName";
+    public const string PersistentExpressionDeckFileNameKey = "PersistentExpressionDeckFileName";
     public const string FallbackDeckFileNameKey = "FallbackDeckFileName";
 
     public static readonly string[] DefaultReadOnlyFileNames =
