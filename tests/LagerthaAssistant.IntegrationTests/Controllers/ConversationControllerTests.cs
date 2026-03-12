@@ -22,9 +22,10 @@ public sealed class ConversationControllerTests
         var payload = Assert.IsAssignableFrom<IReadOnlyList<ConversationCommandItemResponse>>(ok.Value);
 
         Assert.NotEmpty(payload);
+        Assert.All(payload, item => Assert.False(string.IsNullOrWhiteSpace(item.Category)));
         Assert.Contains(payload, item => item.Command == ConversationSlashCommands.Help && item.Category == ConversationCommandCategories.General);
-        Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.PromptSet} <text>");
-        Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.SyncRun} <n>");
+        Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.PromptSet} <text>" && item.Category == ConversationCommandCategories.SystemPrompt);
+        Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.SyncRun} <n>" && item.Category == ConversationCommandCategories.SyncQueue);
     }
 
     [Fact]
