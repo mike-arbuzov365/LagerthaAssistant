@@ -1,5 +1,6 @@
 namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
+using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.AI;
@@ -12,6 +13,21 @@ using Xunit;
 
 public sealed class CommandConversationAgentTests
 {
+    [Fact]
+    public async Task HandleAsync_ShouldReturnCatalogBackedHelp_ForHelpCommand()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext(ConversationSlashCommands.Help, [ConversationSlashCommands.Help]));
+
+        Assert.Equal("command.help", result.Intent);
+        Assert.Contains($"- {ConversationSlashCommands.Help}", result.Message);
+        Assert.Contains($"- {ConversationSlashCommands.PromptSet} <text>", result.Message);
+        Assert.Contains($"- {ConversationSlashCommands.SyncRun} <n>", result.Message);
+    }
+
     [Fact]
     public async Task HandleAsync_ShouldReturnSyncStatus_ForSyncCommand()
     {

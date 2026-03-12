@@ -258,24 +258,17 @@ public sealed class CommandConversationAgent : IConversationAgent
 
     private static string BuildHelpMessage()
     {
-        return string.Join(Environment.NewLine, new[]
+        var lines = new List<string>
         {
-            "Available command intents:",
-            "- show history",
-            "- show memory",
-            "- show system prompt",
-            "- reset prompt to default",
-            "- show prompt history",
-            "- show prompt proposals",
-            "- set system prompt",
-            "- propose prompt update",
-            "- generate prompt proposal",
-            "- apply prompt proposal",
-            "- reject prompt proposal",
-            "- sync status",
-            "- run sync [N]",
-            "- reset conversation",
-            $"You can also use slash forms like {ConversationSlashCommands.History}, {ConversationSlashCommands.Prompt}, {ConversationSlashCommands.PromptSet} <text>, {ConversationSlashCommands.PromptApply} <id>, {ConversationSlashCommands.SyncRun} 25."
-        });
+            "Available slash commands:"
+        };
+
+        lines.AddRange(
+            ConversationCommandCatalog.SlashCommands
+                .Select(item => $"- {item.Command} - {item.Description}"));
+
+        lines.Add("Natural-language command intents are also supported (for example: show history, show memory, reset conversation).");
+
+        return string.Join(Environment.NewLine, lines);
     }
 }
