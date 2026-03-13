@@ -186,8 +186,7 @@ internal static partial class Program
             Console.Write("You > ");
             Console.ResetColor();
 
-            var input = Console.ReadLine();
-            if (input is null)
+            if (!TryReadInputLine(out var input))
             {
                 break;
             }
