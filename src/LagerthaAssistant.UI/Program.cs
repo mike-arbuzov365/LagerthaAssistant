@@ -130,7 +130,6 @@ internal static partial class Program
         var vocabularySaveModePreferenceService = services.GetRequiredService<IVocabularySaveModePreferenceService>();
         var vocabularySessionPreferenceService = services.GetRequiredService<IVocabularySessionPreferenceService>();
         var vocabularyStorageModeProvider = services.GetRequiredService<IVocabularyStorageModeProvider>();
-        var vocabularyStoragePreferenceService = services.GetRequiredService<IVocabularyStoragePreferenceService>();
         var graphAuthService = services.GetRequiredService<IGraphAuthService>();
 
         if (string.IsNullOrWhiteSpace(aiOptions.ApiKey))
@@ -149,7 +148,6 @@ internal static partial class Program
             vocabularySaveModePreferenceService,
             vocabularySessionPreferenceService,
             vocabularyStorageModeProvider,
-            vocabularyStoragePreferenceService,
             graphAuthService,
             aiOptions.Model);
     }
@@ -163,7 +161,6 @@ internal static partial class Program
         IVocabularySaveModePreferenceService vocabularySaveModePreferenceService,
         IVocabularySessionPreferenceService vocabularySessionPreferenceService,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
-        IVocabularyStoragePreferenceService vocabularyStoragePreferenceService,
         IGraphAuthService graphAuthService,
         string model)
     {
@@ -203,8 +200,8 @@ internal static partial class Program
                 vocabularyDeckService,
                 vocabularyPersistenceService,
                 vocabularySaveModePreferenceService,
+                vocabularySessionPreferenceService,
                 vocabularyStorageModeProvider,
-                vocabularyStoragePreferenceService,
                 graphAuthService);
             saveMode = commandHandling.SaveMode;
 

@@ -14,14 +14,6 @@ internal static partial class Program
         return await vocabularySessionPreferenceService.GetAsync(scope);
     }
 
-    private static async Task PersistSaveModeAsync(
-        IVocabularySaveModePreferenceService vocabularySaveModePreferenceService,
-        VocabularySaveMode saveMode,
-        ConversationScope scope)
-    {
-        await vocabularySaveModePreferenceService.SetModeAsync(scope, saveMode);
-    }
-
     private static void PrintCurrentSaveMode(
         IVocabularySaveModePreferenceService vocabularySaveModePreferenceService,
         VocabularySaveMode saveMode)
@@ -29,16 +21,6 @@ internal static partial class Program
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine($"info: Save mode is '{vocabularySaveModePreferenceService.ToText(saveMode)}'.");
         Console.ResetColor();
-    }
-
-    private static async Task PersistStorageModeAsync(
-        IVocabularyStoragePreferenceService vocabularyStoragePreferenceService,
-        VocabularyStorageMode mode,
-        IVocabularyStorageModeProvider vocabularyStorageModeProvider,
-        ConversationScope scope)
-    {
-        await vocabularyStoragePreferenceService.SetModeAsync(scope, mode);
-        vocabularyStorageModeProvider.SetMode(mode);
     }
 
     private static void PrintCurrentStorageMode(

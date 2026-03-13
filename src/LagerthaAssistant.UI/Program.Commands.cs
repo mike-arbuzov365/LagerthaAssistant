@@ -27,8 +27,8 @@ internal static partial class Program
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
         IVocabularySaveModePreferenceService vocabularySaveModePreferenceService,
+        IVocabularySessionPreferenceService vocabularySessionPreferenceService,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
-        IVocabularyStoragePreferenceService vocabularyStoragePreferenceService,
         IGraphAuthService graphAuthService)
     {
         if (command.Equals(ConsoleCommands.Help, StringComparison.OrdinalIgnoreCase))
@@ -104,9 +104,11 @@ internal static partial class Program
                 return CommandHandlingResult.Continue(saveMode);
             }
 
-            saveMode = updatedSaveMode;
-            await PersistSaveModeAsync(vocabularySaveModePreferenceService, saveMode, uiScope);
-            PrintCurrentSaveMode(vocabularySaveModePreferenceService, saveMode);
+            var session = await vocabularySessionPreferenceService.SetAsync(
+                uiScope,
+                saveMode: updatedSaveMode);
+            saveMode = session.SaveMode;
+            PrintCurrentSaveMode(vocabularySaveModePreferenceService, session.SaveMode);
             return CommandHandlingResult.Continue(saveMode);
         }
 
@@ -132,10 +134,13 @@ internal static partial class Program
                 return CommandHandlingResult.Continue(saveMode);
             }
 
-            await PersistStorageModeAsync(vocabularyStoragePreferenceService, updatedStorageMode, vocabularyStorageModeProvider, uiScope);
-            PrintCurrentStorageMode(vocabularyStorageModeProvider, updatedStorageMode);
+            var session = await vocabularySessionPreferenceService.SetAsync(
+                uiScope,
+                storageMode: updatedStorageMode);
+            saveMode = session.SaveMode;
+            PrintCurrentStorageMode(vocabularyStorageModeProvider, session.StorageMode);
 
-            if (updatedStorageMode == VocabularyStorageMode.Graph)
+            if (session.StorageMode == VocabularyStorageMode.Graph)
             {
                 var status = await graphAuthService.GetStatusAsync();
                 PrintGraphStatus(status);
@@ -161,11 +166,10 @@ internal static partial class Program
                 if (vocabularyStorageModeProvider.CurrentMode != VocabularyStorageMode.Graph
                     && AskYesNo("Switch storage mode to graph now?"))
                 {
-                    await PersistStorageModeAsync(
-                        vocabularyStoragePreferenceService,
-                        VocabularyStorageMode.Graph,
-                        vocabularyStorageModeProvider,
-                        uiScope);
+                    var session = await vocabularySessionPreferenceService.SetAsync(
+                        uiScope,
+                        storageMode: VocabularyStorageMode.Graph);
+                    saveMode = session.SaveMode;
                     PrintCurrentStorageMode(vocabularyStorageModeProvider, VocabularyStorageMode.Graph);
                 }
 
