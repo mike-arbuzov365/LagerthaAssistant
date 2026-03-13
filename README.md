@@ -181,6 +181,13 @@ curl "http://localhost:5000/api/conversation/memory?take=20&channel=api&userId=a
 curl http://localhost:5000/api/conversation/prompt
 curl "http://localhost:5000/api/conversation/prompt/history?take=20"
 curl "http://localhost:5000/api/conversation/prompt/proposals?take=20"
+curl -X PUT http://localhost:5000/api/conversation/prompt -H "Content-Type: application/json" -d "{\"prompt\":\"Keep replies concise\",\"source\":\"manual-api\"}"
+curl -X POST http://localhost:5000/api/conversation/prompt/default
+curl -X POST http://localhost:5000/api/conversation/prompt/proposals -H "Content-Type: application/json" -d "{\"prompt\":\"Focus on practical outputs\",\"reason\":\"reduce verbosity\"}"
+curl -X POST http://localhost:5000/api/conversation/prompt/proposals/improve -H "Content-Type: application/json" -d "{\"goal\":\"make outputs more practical\"}"
+curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/apply
+curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/reject
+curl -X POST "http://localhost:5000/api/conversation/reset?channel=api&userId=anonymous&conversationId=default"
 ```
 
 On startup both UI and API apply EF migrations automatically.
@@ -219,6 +226,13 @@ Command catalog endpoints (for external clients):
 - `GET /api/conversation/prompt` (active system prompt)
 - `GET /api/conversation/prompt/history?take=20` (system prompt versions)
 - `GET /api/conversation/prompt/proposals?take=20` (pending/reviewed prompt proposals)
+- `PUT /api/conversation/prompt` (set active system prompt)
+- `POST /api/conversation/prompt/default` (reset system prompt to default)
+- `POST /api/conversation/prompt/proposals` (create manual prompt proposal)
+- `POST /api/conversation/prompt/proposals/improve` (generate AI prompt proposal)
+- `POST /api/conversation/prompt/proposals/{id}/apply` (apply proposal)
+- `POST /api/conversation/prompt/proposals/{id}/reject` (reject proposal)
+- `POST /api/conversation/reset?channel=api&userId=anonymous&conversationId=default` (reset conversation for exact scope)
 
 Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
 

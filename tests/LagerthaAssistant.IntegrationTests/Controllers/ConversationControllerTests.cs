@@ -140,6 +140,58 @@ public sealed class ConversationControllerTests
     }
 
     [Fact]
+    public async Task SetPrompt_ShouldReturnBadRequest_WhenPromptMissing()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.SetPrompt(new ConversationSetSystemPromptRequest("   "), CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Null(sessionService.LastSetPrompt);
+    }
+
+    [Fact]
+    public async Task SetPrompt_ShouldUpdatePromptWithProvidedSource()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.SetPrompt(
+            new ConversationSetSystemPromptRequest("Keep replies practical.", "manual-api"),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<ConversationSystemPromptResponse>(ok.Value);
+
+        Assert.Equal("Keep replies practical.", payload.Prompt);
+        Assert.Equal("Keep replies practical.", sessionService.LastSetPrompt);
+        Assert.Equal("manual-api", sessionService.LastSetPromptSource);
+    }
+
+    [Fact]
+    public async Task ResetPromptToDefault_ShouldUseDefaultPrompt()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.ResetPromptToDefault(CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<ConversationSystemPromptResponse>(ok.Value);
+
+        Assert.Equal(AssistantDefaults.SystemPrompt, payload.Prompt);
+        Assert.Equal(AssistantDefaults.SystemPrompt, sessionService.LastSetPrompt);
+        Assert.Equal("default", sessionService.LastSetPromptSource);
+    }
+
+    [Fact]
     public async Task GetPromptHistory_ShouldReturnMappedEntries()
     {
         var orchestrator = new FakeConversationOrchestrator();
@@ -207,6 +259,146 @@ public sealed class ConversationControllerTests
         Assert.Equal("New prompt", entry.ProposedPrompt);
         Assert.Equal("Improve clarity", entry.Reason);
         Assert.Equal("pending", entry.Status);
+    }
+
+    [Fact]
+    public async Task CreatePromptProposal_ShouldCreateAndMapProposal()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService
+        {
+            NextCreatedProposal = new SystemPromptProposal
+            {
+                Id = 11,
+                ProposedPrompt = "Use concise outputs",
+                Reason = "Reduce noise",
+                Confidence = 0.9,
+                Source = "manual",
+                Status = "pending",
+                CreatedAtUtc = DateTimeOffset.UtcNow
+            }
+        };
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.CreatePromptProposal(
+            new ConversationCreatePromptProposalRequest("Use concise outputs", "Reduce noise", 0.9, "manual"),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<ConversationSystemPromptProposalResponse>(ok.Value);
+
+        Assert.Equal(11, payload.Id);
+        Assert.Equal("Use concise outputs", sessionService.LastProposalPrompt);
+        Assert.Equal("Reduce noise", sessionService.LastProposalReason);
+        Assert.Equal(0.9, sessionService.LastProposalConfidence);
+        Assert.Equal("manual", sessionService.LastProposalSource);
+    }
+
+    [Fact]
+    public async Task ImprovePromptProposal_ShouldCreateProposalFromGoal()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService
+        {
+            NextGeneratedProposal = new SystemPromptProposal
+            {
+                Id = 12,
+                ProposedPrompt = "Prioritize examples",
+                Reason = "AI-generated",
+                Confidence = 0.7,
+                Source = "assistant",
+                Status = "pending",
+                CreatedAtUtc = DateTimeOffset.UtcNow
+            }
+        };
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.ImprovePromptProposal(
+            new ConversationPromptImproveRequest("Focus on examples"),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<ConversationSystemPromptProposalResponse>(ok.Value);
+
+        Assert.Equal(12, payload.Id);
+        Assert.Equal("Focus on examples", sessionService.LastImproveGoal);
+    }
+
+    [Fact]
+    public async Task ApplyPromptProposal_ShouldReturnUpdatedPrompt()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService
+        {
+            ApplyPromptResult = "Applied prompt"
+        };
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.ApplyPromptProposal(5, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<ConversationSystemPromptResponse>(ok.Value);
+
+        Assert.Equal("Applied prompt", payload.Prompt);
+        Assert.Equal(5, sessionService.LastAppliedProposalId);
+    }
+
+    [Fact]
+    public async Task ApplyPromptProposal_ShouldReturnNotFound_WhenProposalMissing()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService
+        {
+            ThrowOnApply = true
+        };
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.ApplyPromptProposal(99, CancellationToken.None);
+
+        Assert.IsType<NotFoundObjectResult>(response.Result);
+    }
+
+    [Fact]
+    public async Task RejectPromptProposal_ShouldReturnActionMessage()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.RejectPromptProposal(7, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<ConversationActionResponse>(ok.Value);
+
+        Assert.Equal("Proposal #7 rejected.", payload.Message);
+        Assert.Equal(7, sessionService.LastRejectedProposalId);
+    }
+
+    [Fact]
+    public void ResetConversation_ShouldSetScopeAndResetSession()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = sut.ResetConversation("telegram", "Mike", "chat-42");
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<ConversationActionResponse>(ok.Value);
+
+        Assert.Contains("channel=telegram", payload.Message, StringComparison.Ordinal);
+        Assert.Contains("userId=mike", payload.Message, StringComparison.Ordinal);
+        Assert.Contains("conversationId=chat-42", payload.Message, StringComparison.Ordinal);
+        Assert.Equal(1, sessionService.ResetCalls);
+        Assert.Equal("telegram", scopeAccessor.Current.Channel);
+        Assert.Equal("mike", scopeAccessor.Current.UserId);
+        Assert.Equal("chat-42", scopeAccessor.Current.ConversationId);
     }
 
     [Fact]
@@ -359,6 +551,54 @@ public sealed class ConversationControllerTests
 
         public IReadOnlyCollection<SystemPromptProposal> PromptProposals { get; set; } = [];
 
+        public SystemPromptProposal NextCreatedProposal { get; set; } = new()
+        {
+            Id = 1,
+            ProposedPrompt = "proposal",
+            Reason = "reason",
+            Confidence = 0.8,
+            Source = "manual",
+            Status = "pending",
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+
+        public SystemPromptProposal NextGeneratedProposal { get; set; } = new()
+        {
+            Id = 2,
+            ProposedPrompt = "generated",
+            Reason = "ai",
+            Confidence = 0.7,
+            Source = "assistant",
+            Status = "pending",
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+
+        public string ApplyPromptResult { get; set; } = "prompt";
+
+        public string? LastSetPrompt { get; private set; }
+
+        public string? LastSetPromptSource { get; private set; }
+
+        public string? LastProposalPrompt { get; private set; }
+
+        public string? LastProposalReason { get; private set; }
+
+        public double? LastProposalConfidence { get; private set; }
+
+        public string? LastProposalSource { get; private set; }
+
+        public string? LastImproveGoal { get; private set; }
+
+        public int? LastAppliedProposalId { get; private set; }
+
+        public int? LastRejectedProposalId { get; private set; }
+
+        public int ResetCalls { get; private set; }
+
+        public bool ThrowOnApply { get; set; }
+
+        public bool ThrowOnReject { get; set; }
+
         public Task<AssistantCompletionResult> AskAsync(string userMessage, CancellationToken cancellationToken = default)
             => Task.FromResult(new AssistantCompletionResult("ok", "test-model", null));
 
@@ -383,22 +623,53 @@ public sealed class ConversationControllerTests
             double confidence,
             string source = "manual",
             CancellationToken cancellationToken = default)
-            => Task.FromResult(new SystemPromptProposal());
+        {
+            LastProposalPrompt = prompt;
+            LastProposalReason = reason;
+            LastProposalConfidence = confidence;
+            LastProposalSource = source;
+            return Task.FromResult(NextCreatedProposal);
+        }
 
         public Task<SystemPromptProposal> GenerateSystemPromptProposalAsync(string goal, CancellationToken cancellationToken = default)
-            => Task.FromResult(new SystemPromptProposal());
+        {
+            LastImproveGoal = goal;
+            return Task.FromResult(NextGeneratedProposal);
+        }
 
         public Task<string> ApplySystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
-            => Task.FromResult("prompt");
+        {
+            if (ThrowOnApply)
+            {
+                throw new InvalidOperationException("Proposal not found.");
+            }
+
+            LastAppliedProposalId = proposalId;
+            return Task.FromResult(ApplyPromptResult);
+        }
 
         public Task RejectSystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+        {
+            if (ThrowOnReject)
+            {
+                throw new InvalidOperationException("Proposal not found.");
+            }
+
+            LastRejectedProposalId = proposalId;
+            return Task.CompletedTask;
+        }
 
         public Task<string> SetSystemPromptAsync(string prompt, string source = "manual", CancellationToken cancellationToken = default)
-            => Task.FromResult(prompt);
+        {
+            LastSetPrompt = prompt;
+            LastSetPromptSource = source;
+            SystemPrompt = prompt;
+            return Task.FromResult(prompt);
+        }
 
         public void Reset()
         {
+            ResetCalls++;
         }
     }
 }
