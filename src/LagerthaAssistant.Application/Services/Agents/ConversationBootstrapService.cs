@@ -34,8 +34,12 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
         bool includeDecks = false,
         CancellationToken cancellationToken = default)
     {
-        var session = await _sessionPreferenceService.GetAsync(scope, cancellationToken);
-        var graph = await _graphAuthService.GetStatusAsync(cancellationToken);
+        var sessionTask = _sessionPreferenceService.GetAsync(scope, cancellationToken);
+        var graphTask = _graphAuthService.GetStatusAsync(cancellationToken);
+        await Task.WhenAll(sessionTask, graphTask);
+
+        var session = await sessionTask;
+        var graph = await graphTask;
 
         var saveMode = _saveModePreferenceService.ToText(session.SaveMode);
         var storageMode = _storageModeProvider.ToText(session.StorageMode);
