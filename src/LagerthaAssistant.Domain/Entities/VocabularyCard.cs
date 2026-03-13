@@ -33,5 +33,17 @@ public sealed class VocabularyCard : AuditableEntity
 
     public DateTimeOffset? SyncedAtUtc { get; set; }
 
+    public NotionSyncStatus NotionSyncStatus { get; set; } = NotionSyncStatus.Pending;
+
+    public string? NotionPageId { get; set; }
+
+    public int NotionAttemptCount { get; set; }
+
+    public string? NotionLastError { get; set; }
+
+    public DateTimeOffset? NotionLastAttemptAtUtc { get; set; }
+
+    public DateTimeOffset? NotionSyncedAtUtc { get; set; }
+
     public ICollection<VocabularyCardToken> Tokens { get; set; } = [];
 }

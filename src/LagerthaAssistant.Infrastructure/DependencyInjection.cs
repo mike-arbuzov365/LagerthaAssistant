@@ -77,12 +77,34 @@ public static class DependencyInjection
             TokenCachePath = graphSection[GraphConstants.TokenCachePathKey] ?? "%LOCALAPPDATA%\\LagerthaAssistant\\graph-token.json"
         };
 
+        var notionSection = configuration.GetSection(NotionConstants.SectionName);
+        var notionOptions = new NotionOptions
+        {
+            Enabled = ParseBool(notionSection[NotionConstants.EnabledKey], false),
+            ApiKey = notionSection[NotionConstants.ApiKeyKey] ?? string.Empty,
+            DatabaseId = notionSection[NotionConstants.DatabaseIdKey] ?? string.Empty,
+            ApiBaseUrl = notionSection[NotionConstants.ApiBaseUrlKey] ?? "https://api.notion.com/v1",
+            Version = notionSection[NotionConstants.VersionKey] ?? "2022-06-28",
+            ConflictMode = notionSection[NotionConstants.ConflictModeKey] ?? "update",
+            RequestTimeoutSeconds = ParseInt(notionSection[NotionConstants.RequestTimeoutSecondsKey], 60),
+            KeyPropertyName = notionSection[NotionConstants.KeyPropertyNameKey] ?? "Key",
+            WordPropertyName = notionSection[NotionConstants.WordPropertyNameKey] ?? "Word",
+            MeaningPropertyName = notionSection[NotionConstants.MeaningPropertyNameKey] ?? "Meaning",
+            ExamplesPropertyName = notionSection[NotionConstants.ExamplesPropertyNameKey] ?? "Examples",
+            PartOfSpeechPropertyName = notionSection[NotionConstants.PartOfSpeechPropertyNameKey] ?? "PartOfSpeech",
+            DeckPropertyName = notionSection[NotionConstants.DeckPropertyNameKey] ?? "DeckFile",
+            StorageModePropertyName = notionSection[NotionConstants.StorageModePropertyNameKey] ?? "StorageMode",
+            RowNumberPropertyName = notionSection[NotionConstants.RowNumberPropertyNameKey] ?? "RowNumber",
+            LastSeenPropertyName = notionSection[NotionConstants.LastSeenPropertyNameKey] ?? "LastSeenAtUtc"
+        };
+
         services.AddDbContext<AppDbContext>(db => db.UseSqlServer(connectionString));
 
         services.AddSingleton(options);
         services.AddSingleton(vocabularyOptions);
         services.AddSingleton(storageOptions);
         services.AddSingleton(graphOptions);
+        services.AddSingleton(notionOptions);
         services.AddSingleton<IClock, SystemClock>();
 
         services.AddSingleton(sp =>
@@ -100,6 +122,7 @@ public static class DependencyInjection
         services.AddSingleton<IGraphDriveClient, GraphDriveClient>();
 
         services.AddScoped<IAiChatClient, OpenAiChatClient>();
+        services.AddScoped<INotionCardExportService, NotionCardExportService>();
         services.AddScoped<IConversationSessionRepository, ConversationSessionRepository>();
         services.AddScoped<IConversationHistoryRepository, ConversationHistoryRepository>();
         services.AddScoped<IUserMemoryRepository, UserMemoryRepository>();
@@ -138,6 +161,20 @@ public static class DependencyInjection
     private static double ParseDouble(string? value, double fallback)
     {
         return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : fallback;
+    }
+
+    private static int ParseInt(string? value, int fallback)
+    {
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : fallback;
+    }
+
+    private static bool ParseBool(string? value, bool fallback)
+    {
+        return bool.TryParse(value, out var parsed)
             ? parsed
             : fallback;
     }
