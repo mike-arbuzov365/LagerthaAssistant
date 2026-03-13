@@ -6,6 +6,10 @@ public interface IVocabularyIndexService
 {
     Task<VocabularyLookupResult> FindByInputAsync(string input, CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindByInputsAsync(
+        IReadOnlyList<string> inputs,
+        CancellationToken cancellationToken = default);
+
     Task IndexLookupResultAsync(
         VocabularyLookupResult lookup,
         VocabularyStorageMode storageMode,

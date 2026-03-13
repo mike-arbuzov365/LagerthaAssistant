@@ -44,13 +44,63 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
         }
 
         var cards = await _cardRepository.FindByAnyTokenAsync(tokens, cancellationToken);
-        var matches = cards
-            .OrderByDescending(card => card.LastSeenAtUtc)
-            .ThenBy(card => card.DeckFileName, StringComparer.OrdinalIgnoreCase)
-            .Select(MapToEntry)
-            .ToList();
+        var matches = BuildMatches(cards, tokens);
 
         return new VocabularyLookupResult(input, matches);
+    }
+
+    public async Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindByInputsAsync(
+        IReadOnlyList<string> inputs,
+        CancellationToken cancellationToken = default)
+    {
+        if (inputs is null)
+        {
+            throw new ArgumentNullException(nameof(inputs));
+        }
+
+        var normalizedInputs = inputs
+            .Where(input => !string.IsNullOrWhiteSpace(input))
+            .Select(input => input.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalizedInputs.Count == 0)
+        {
+            return new Dictionary<string, VocabularyLookupResult>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var tokensByInput = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        var allTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var input in normalizedInputs)
+        {
+            var inputTokens = BuildTokens(input);
+            tokensByInput[input] = inputTokens;
+
+            foreach (var token in inputTokens)
+            {
+                allTokens.Add(token);
+            }
+        }
+
+        IReadOnlyList<VocabularyCard> cards = [];
+        if (allTokens.Count > 0)
+        {
+            cards = await _cardRepository.FindByAnyTokenAsync(allTokens.ToList(), cancellationToken);
+        }
+
+        var lookups = new Dictionary<string, VocabularyLookupResult>(StringComparer.OrdinalIgnoreCase);
+        foreach (var input in normalizedInputs)
+        {
+            var inputTokens = tokensByInput[input];
+            var matches = inputTokens.Count == 0
+                ? []
+                : BuildMatches(cards, inputTokens);
+
+            lookups[input] = new VocabularyLookupResult(input, matches);
+        }
+
+        return lookups;
     }
 
     public async Task IndexLookupResultAsync(
@@ -262,6 +312,20 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
             card.Examples);
     }
 
+    private static IReadOnlyList<VocabularyDeckEntry> BuildMatches(
+        IReadOnlyList<VocabularyCard> cards,
+        IReadOnlyCollection<string> tokens)
+    {
+        var tokenSet = tokens.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return cards
+            .Where(card => card.Tokens.Any(token => tokenSet.Contains(token.TokenNormalized)))
+            .OrderByDescending(card => card.LastSeenAtUtc)
+            .ThenBy(card => card.DeckFileName, StringComparer.OrdinalIgnoreCase)
+            .Select(MapToEntry)
+            .ToList();
+    }
+
     private string? ResolvePartOfSpeech(string assistantReply, string? overridePartOfSpeech, string meaning)
     {
         if (!string.IsNullOrWhiteSpace(overridePartOfSpeech))
@@ -341,8 +405,8 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
             }
 
             var parts = value
-                .Replace('–', '-')
-                .Replace('—', '-')
+                .Replace('â€“', '-')
+                .Replace('â€”', '-')
                 .Split(WordFormSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
             foreach (var part in parts)
@@ -386,8 +450,8 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
         }
 
         var normalized = value
-            .Replace('–', '-')
-            .Replace('—', '-')
+            .Replace('â€“', '-')
+            .Replace('â€”', '-')
             .Trim()
             .Trim(TokenTrimChars);
 

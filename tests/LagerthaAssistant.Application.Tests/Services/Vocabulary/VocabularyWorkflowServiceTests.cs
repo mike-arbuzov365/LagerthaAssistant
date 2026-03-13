@@ -48,7 +48,8 @@ public sealed class VocabularyWorkflowServiceTests
             ])
         };
 
-        var sut = new VocabularyWorkflowService(assistant, deck, new FakeVocabularyIndexService(), new FakeStorageModeProvider());
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
 
         var result = await sut.ProcessAsync("void");
 
@@ -79,7 +80,8 @@ public sealed class VocabularyWorkflowServiceTests
                 "C:/deck/wm-verbs-us-en.xlsx")
         };
 
-        var sut = new VocabularyWorkflowService(assistant, deck, new FakeVocabularyIndexService(), new FakeStorageModeProvider());
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
 
         var result = await sut.ProcessAsync("prepare");
 
@@ -110,7 +112,8 @@ public sealed class VocabularyWorkflowServiceTests
                 "C:/deck/wm-verbs-us-en.xlsx")
         };
 
-        var sut = new VocabularyWorkflowService(assistant, deck, new FakeVocabularyIndexService(), new FakeStorageModeProvider());
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
 
         var results = await sut.ProcessBatchAsync(["void", "prepare"]);
 
@@ -120,6 +123,63 @@ public sealed class VocabularyWorkflowServiceTests
                 "lookup:void",
                 "ask:void",
                 "preview:void",
+                "lookup:prepare",
+                "ask:prepare",
+                "preview:prepare"
+            ],
+            order);
+        Assert.Equal(1, index.BatchLookupCalls);
+        Assert.Equal(0, index.SingleLookupCalls);
+    }
+
+    [Fact]
+    public async Task ProcessBatchAsync_ShouldUseBulkIndexLookups_AndSkipPerItemIndexQueries()
+    {
+        var order = new List<string>();
+        var assistant = new FakeAssistantSessionService(order)
+        {
+            CompletionFactory = input => new AssistantCompletionResult($"{input}\n\n(v) test\n\nExample.", "test-model", null)
+        };
+
+        var deck = new FakeVocabularyDeckService(order)
+        {
+            LookupFactory = word => new VocabularyLookupResult(word, []),
+            PreviewFactory = (word, _) => new VocabularyAppendPreviewResult(
+                VocabularyAppendPreviewStatus.ReadyToAppend,
+                word,
+                "wm-verbs-us-en.xlsx",
+                "C:/deck/wm-verbs-us-en.xlsx")
+        };
+
+        var index = new FakeVocabularyIndexService
+        {
+            BatchLookupFactory = inputs =>
+            {
+                var result = inputs.ToDictionary(
+                    input => input,
+                    input => new VocabularyLookupResult(input, []),
+                    StringComparer.OrdinalIgnoreCase);
+
+                result["void"] = new VocabularyLookupResult("void",
+                [
+                    new VocabularyDeckEntry("wm-nouns-ua-en.xlsx", "path", 7, "void", "(n) indexed", "Indexed example")
+                ]);
+
+                return result;
+            }
+        };
+
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
+
+        var results = await sut.ProcessBatchAsync(["void", "prepare"]);
+
+        Assert.Equal(2, results.Count);
+        Assert.True(results[0].FoundInDeck);
+        Assert.False(results[1].FoundInDeck);
+        Assert.Equal(1, index.BatchLookupCalls);
+        Assert.Equal(0, index.SingleLookupCalls);
+        Assert.Equal(
+            [
                 "lookup:prepare",
                 "ask:prepare",
                 "preview:prepare"
@@ -244,10 +304,42 @@ public sealed class VocabularyWorkflowServiceTests
     {
         public int IndexLookupCalls { get; private set; }
 
+        public int SingleLookupCalls { get; private set; }
+
+        public int BatchLookupCalls { get; private set; }
+
         public Func<string, VocabularyLookupResult>? LookupFactory { get; set; }
 
+        public Func<IReadOnlyList<string>, IReadOnlyDictionary<string, VocabularyLookupResult>>? BatchLookupFactory { get; set; }
+
         public Task<VocabularyLookupResult> FindByInputAsync(string input, CancellationToken cancellationToken = default)
-            => Task.FromResult(LookupFactory?.Invoke(input) ?? new VocabularyLookupResult(input, []));
+        {
+            SingleLookupCalls++;
+            return Task.FromResult(LookupFactory?.Invoke(input) ?? new VocabularyLookupResult(input, []));
+        }
+
+        public Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindByInputsAsync(
+            IReadOnlyList<string> inputs,
+            CancellationToken cancellationToken = default)
+        {
+            BatchLookupCalls++;
+
+            if (BatchLookupFactory is not null)
+            {
+                return Task.FromResult(BatchLookupFactory(inputs));
+            }
+
+            var result = inputs
+                .Where(input => !string.IsNullOrWhiteSpace(input))
+                .Select(input => input.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    input => input,
+                    input => new VocabularyLookupResult(input, []),
+                    StringComparer.OrdinalIgnoreCase);
+
+            return Task.FromResult<IReadOnlyDictionary<string, VocabularyLookupResult>>(result);
+        }
 
         public Task IndexLookupResultAsync(VocabularyLookupResult lookup, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
         {
@@ -276,4 +368,5 @@ public sealed class VocabularyWorkflowServiceTests
         public string ToText(VocabularyStorageMode mode)
             => mode.ToString().ToLowerInvariant();
     }
+
 }
