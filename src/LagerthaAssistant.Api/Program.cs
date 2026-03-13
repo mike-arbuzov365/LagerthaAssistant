@@ -7,6 +7,8 @@ using LagerthaAssistant.Infrastructure;
 using LagerthaAssistant.Infrastructure.Data;
 using LagerthaAssistant.Api.Options;
 using LagerthaAssistant.Api.HostedServices;
+using LagerthaAssistant.Api.Interfaces;
+using LagerthaAssistant.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +27,9 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.Configure<VocabularySyncWorkerOptions>(builder.Configuration.GetSection("VocabularySyncWorker"));
+builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
+builder.Services.AddSingleton<ITelegramConversationResponseFormatter, TelegramConversationResponseFormatter>();
+builder.Services.AddSingleton<ITelegramBotSender, TelegramBotSender>();
 builder.Services.AddHostedService<VocabularySyncHostedService>();
 
 var app = builder.Build();

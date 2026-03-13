@@ -109,6 +109,25 @@ Notes:
 - Run `/graph login` again only if `/graph status` says `Not authenticated` (or after `/graph logout`).
 - Open the exact sign-in URL printed by the app (in some tenants it is `https://www.microsoft.com/link`).
 
+### Telegram settings (API channel adapter)
+
+```json
+"Telegram": {
+  "Enabled": false,
+  "BotToken": "<telegram bot token>",
+  "ApiBaseUrl": "https://api.telegram.org",
+  "WebhookSecret": "<optional secret token>"
+}
+```
+
+Notes:
+- Integration entrypoint: `POST /api/telegram/webhook`.
+- Session/state mapping:
+  - `channel = telegram`
+  - `userId = message.from.id`
+  - `conversationId = chat.id` (or `chat.id:message_thread_id` for topic threads)
+- If `WebhookSecret` is set, requests must include header `X-Telegram-Bot-Api-Secret-Token`.
+
 UI scope overrides (optional):
 
 - `LAGERTHA_USER_ID` - override default UI user identity (otherwise OS username is used).
@@ -208,6 +227,7 @@ curl -X POST http://localhost:5000/api/graph/login
 curl -X POST http://localhost:5000/api/graph/login/start
 curl -X POST http://localhost:5000/api/graph/login/complete -H "Content-Type: application/json" -d "{\"challenge\":{\"deviceCode\":\"<device-code>\",\"userCode\":\"<user-code>\",\"verificationUri\":\"https://www.microsoft.com/link\",\"expiresInSeconds\":900,\"intervalSeconds\":5,\"expiresAtUtc\":\"2026-03-20T10:15:00Z\"}}"
 curl -X POST http://localhost:5000/api/graph/logout
+curl -X POST http://localhost:5000/api/telegram/webhook -H "Content-Type: application/json" -d "{\"update_id\":1,\"message\":{\"message_id\":10,\"from\":{\"id\":2002,\"is_bot\":false,\"first_name\":\"Mike\"},\"chat\":{\"id\":1001,\"type\":\"private\"},\"text\":\"void\"}}"
 curl -X POST http://localhost:5000/api/vocabulary/analyze -H "Content-Type: application/json" -d "{\"input\":\"void\",\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\",\"storageMode\":\"local\"}"
 curl -X POST http://localhost:5000/api/vocabulary/analyze-batch -H "Content-Type: application/json" -d "{\"inputs\":[\"void\",\"call back\"],\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\",\"storageMode\":\"graph\"}"
 curl "http://localhost:5000/api/vocabulary/storage-mode?channel=api&userId=anonymous&conversationId=default"
@@ -275,6 +295,7 @@ Command catalog endpoints (for external clients):
 - `POST /api/graph/login/start` (start two-phase Graph device-code flow and return device challenge payload)
 - `POST /api/graph/login/complete` (complete two-phase device-code login using returned challenge payload)
 - `POST /api/graph/logout` (clear Graph token cache and return fresh auth status)
+- `POST /api/telegram/webhook` (Telegram webhook adapter; maps Telegram chat/user/thread to conversation scope and sends reply via Bot API)
 - `GET /api/vocabulary-sync/failed?take=20` (list recent failed sync jobs)
 - `POST /api/vocabulary-sync/retry-failed?take=25` (move failed jobs back to pending with reset attempts)
 - `GET /api/preferences/save-mode` (get scoped save mode preference and available values)
