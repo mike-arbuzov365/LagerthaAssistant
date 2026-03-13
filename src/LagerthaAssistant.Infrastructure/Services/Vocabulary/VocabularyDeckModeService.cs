@@ -2,19 +2,15 @@ namespace LagerthaAssistant.Infrastructure.Services.Vocabulary;
 
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
-using Microsoft.Extensions.Logging;
 
 public sealed class VocabularyDeckModeService : IVocabularyDeckModeService
 {
-    private readonly IReadOnlyDictionary<VocabularyStorageMode, IVocabularyDeckBackend> _backends;
-    private readonly ILogger<VocabularyDeckModeService> _logger;
+    private readonly IVocabularyDeckBackendResolver _backendResolver;
 
     public VocabularyDeckModeService(
-        IEnumerable<IVocabularyDeckBackend> backends,
-        ILogger<VocabularyDeckModeService> logger)
+        IVocabularyDeckBackendResolver backendResolver)
     {
-        _backends = backends.ToDictionary(x => x.Mode);
-        _logger = logger;
+        _backendResolver = backendResolver;
     }
 
     public Task<VocabularyAppendResult> AppendFromAssistantReplyAsync(
@@ -25,29 +21,12 @@ public sealed class VocabularyDeckModeService : IVocabularyDeckModeService
         string? overridePartOfSpeech = null,
         CancellationToken cancellationToken = default)
     {
-        var backend = ResolveBackend(mode);
+        var backend = _backendResolver.Resolve(mode);
         return backend.AppendFromAssistantReplyAsync(
             requestedWord,
             assistantReply,
             forcedDeckFileName,
             overridePartOfSpeech,
             cancellationToken);
-    }
-
-    private IVocabularyDeckBackend ResolveBackend(VocabularyStorageMode mode)
-    {
-        if (_backends.TryGetValue(mode, out var backend))
-        {
-            return backend;
-        }
-
-        _logger.LogWarning("Vocabulary backend for mode {Mode} is not registered. Falling back to local.", mode);
-
-        if (_backends.TryGetValue(VocabularyStorageMode.Local, out var localBackend))
-        {
-            return localBackend;
-        }
-
-        throw new InvalidOperationException("No vocabulary backends are registered.");
     }
 }

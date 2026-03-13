@@ -40,11 +40,11 @@ public sealed class VocabularyStorageModeProviderTests
 
         var localBackend = new FakeBackend(VocabularyStorageMode.Local, "local-deck");
         var graphBackend = new FakeBackend(VocabularyStorageMode.Graph, "graph-deck");
+        var resolver = CreateResolver(localBackend, graphBackend);
 
         var sut = new SwitchableVocabularyDeckService(
-            [localBackend, graphBackend],
-            provider,
-            NullLogger<SwitchableVocabularyDeckService>.Instance);
+            resolver,
+            provider);
 
         var localResult = await sut.GetWritableDeckFilesAsync();
         Assert.Single(localResult);
@@ -55,6 +55,75 @@ public sealed class VocabularyStorageModeProviderTests
         var graphResult = await sut.GetWritableDeckFilesAsync();
         Assert.Single(graphResult);
         Assert.Equal("graph-deck", graphResult[0].FileName);
+    }
+
+    [Fact]
+    public async Task SwitchableService_ShouldFallbackToLocal_WhenCurrentModeBackendMissing()
+    {
+        var provider = new VocabularyStorageModeProvider(new VocabularyStorageOptions { DefaultMode = "graph" });
+        var localBackend = new FakeBackend(VocabularyStorageMode.Local, "local-deck");
+        var resolver = CreateResolver(localBackend);
+
+        var sut = new SwitchableVocabularyDeckService(
+            resolver,
+            provider);
+
+        var result = await sut.GetWritableDeckFilesAsync();
+
+        Assert.Single(result);
+        Assert.Equal("local-deck", result[0].FileName);
+    }
+
+    [Fact]
+    public async Task DeckModeService_ShouldUseRequestedModeBackend()
+    {
+        var localBackend = new FakeBackend(VocabularyStorageMode.Local, "local-deck");
+        var graphBackend = new FakeBackend(VocabularyStorageMode.Graph, "graph-deck");
+        var resolver = CreateResolver(localBackend, graphBackend);
+        var sut = new VocabularyDeckModeService(resolver);
+
+        var result = await sut.AppendFromAssistantReplyAsync(
+            VocabularyStorageMode.Graph,
+            "void",
+            "void\n\n(n) emptiness");
+
+        Assert.Equal(VocabularyAppendStatus.Added, result.Status);
+        Assert.Equal(0, localBackend.AppendCalls);
+        Assert.Equal(1, graphBackend.AppendCalls);
+    }
+
+    [Fact]
+    public async Task DeckModeService_ShouldFallbackToLocal_WhenRequestedModeBackendMissing()
+    {
+        var localBackend = new FakeBackend(VocabularyStorageMode.Local, "local-deck");
+        var resolver = CreateResolver(localBackend);
+        var sut = new VocabularyDeckModeService(resolver);
+
+        var result = await sut.AppendFromAssistantReplyAsync(
+            VocabularyStorageMode.Graph,
+            "void",
+            "void\n\n(n) emptiness");
+
+        Assert.Equal(VocabularyAppendStatus.Added, result.Status);
+        Assert.Equal(1, localBackend.AppendCalls);
+    }
+
+    [Fact]
+    public void BackendResolver_ShouldThrow_WhenNoBackendsRegistered()
+    {
+        var resolver = new VocabularyDeckBackendResolver([], NullLogger<VocabularyDeckBackendResolver>.Instance);
+
+        var act = () => resolver.Resolve(VocabularyStorageMode.Local);
+
+        var exception = Assert.Throws<InvalidOperationException>(act);
+        Assert.Equal("No vocabulary backends are registered.", exception.Message);
+    }
+
+    private static VocabularyDeckBackendResolver CreateResolver(params IVocabularyDeckBackend[] backends)
+    {
+        return new VocabularyDeckBackendResolver(
+            backends,
+            NullLogger<VocabularyDeckBackendResolver>.Instance);
     }
 
     private sealed class FakeBackend : IVocabularyDeckBackend
@@ -68,6 +137,8 @@ public sealed class VocabularyStorageModeProviderTests
         }
 
         public VocabularyStorageMode Mode { get; }
+
+        public int AppendCalls { get; private set; }
 
         public Task<VocabularyLookupResult> FindInWritableDecksAsync(string word, CancellationToken cancellationToken = default)
         {
@@ -99,9 +170,17 @@ public sealed class VocabularyStorageModeProviderTests
             string? overridePartOfSpeech = null,
             CancellationToken cancellationToken = default)
         {
+            AppendCalls++;
+
             return Task.FromResult(new VocabularyAppendResult(
-                VocabularyAppendStatus.NoWritableDecks,
-                Message: "not used in this test"));
+                VocabularyAppendStatus.Added,
+                Entry: new VocabularyDeckEntry(
+                    _files[0].FileName,
+                    _files[0].FullPath,
+                    1,
+                    requestedWord,
+                    "(n) test",
+                    "Example sentence.")));
         }
     }
 }
