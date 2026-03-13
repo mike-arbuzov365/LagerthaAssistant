@@ -157,7 +157,7 @@ internal static partial class Program
 
         if (command.Equals(ConsoleCommands.GraphLogin, StringComparison.OrdinalIgnoreCase))
         {
-            var login = await graphAuthService.LoginAsync();
+            var login = await graphAuthService.LoginAsync(PrintGraphDeviceCodePromptAsync);
             Console.WriteLine(login.Message);
 
             if (login.Succeeded)
