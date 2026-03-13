@@ -261,14 +261,14 @@ Command catalog endpoints (for external clients):
 - `POST /api/graph/login/start` (start two-phase Graph device-code flow and return device challenge payload)
 - `POST /api/graph/login/complete` (complete two-phase device-code login using returned challenge payload)
 - `POST /api/graph/logout` (clear Graph token cache and return fresh auth status)
-- `GET /api/preferences/save-mode` (get scoped save mode preference: `ask|auto|off`)
-- `PUT /api/preferences/save-mode` (set scoped save mode preference: `ask|auto|off`)
+- `GET /api/preferences/save-mode` (get scoped save mode preference and available values)
+- `PUT /api/preferences/save-mode` (set scoped save mode preference to one of available values)
 - `GET /api/preferences/session` (get combined scoped preferences: save mode + storage mode)
 - `PUT /api/preferences/session` (set one or both scoped preferences: `saveMode`, `storageMode`)
 - `POST /api/vocabulary/analyze` (process one vocabulary item using scoped conversation context)
 - `POST /api/vocabulary/analyze-batch` (process multiple items sequentially in one scope)
 - `GET /api/vocabulary/storage-mode` (get active vocabulary storage mode and supported values)
-- `PUT /api/vocabulary/storage-mode` (switch vocabulary storage mode to `local` or `graph`)
+- `PUT /api/vocabulary/storage-mode` (switch vocabulary storage mode to one of available values)
 - `GET /api/vocabulary/decks` (list writable decks for current storage mode with suggested POS marker)
 - `GET /api/vocabulary/markers` (list supported POS markers for custom save flows)
 - `POST /api/vocabulary/parse-batch` (parse raw batch text and return split hints for clients)
@@ -301,9 +301,9 @@ Use `/help` to see full command reference in the console.
 - `/history`
 - `/memory`
 - `/save`
-- `/save mode ask|auto|off`
+- `/save mode <mode>`
 - `/storage`
-- `/storage mode local|graph`
+- `/storage mode <mode>`
 - `/graph status`
 - `/graph login`
 - `/graph logout`
@@ -323,6 +323,10 @@ Use `/help` to see full command reference in the console.
 - `/prompt reject <id>`
 - `/reset`
 - `/exit`
+
+Mode hints:
+- Save modes are exposed by `GET /api/preferences/save-mode` and currently include `ask`, `auto`, `off`.
+- Storage modes are exposed by `GET /api/vocabulary/storage-mode` and currently include `local`, `graph`.
 
 ## Prompt behavior notes
 
