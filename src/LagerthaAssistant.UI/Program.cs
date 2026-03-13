@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -26,8 +26,7 @@ namespace LagerthaAssistant.UI;
 
 internal static partial class Program
 {
-    private const string SaveModeMemoryKey = "ui.save.mode";
-    private const string StorageModeMemoryKey = "ui.storage.mode";
+    private const string SaveModeMemoryKey = UserPreferenceMemoryKeys.SaveMode;
     private const string UiChannel = "ui";
     private const string UiConversationId = "main";
     private const string UiUserIdEnvironmentVariable = "LAGERTHA_USER_ID";
@@ -139,6 +138,7 @@ internal static partial class Program
         var vocabularyDeckService = services.GetRequiredService<IVocabularyDeckService>();
         var vocabularyPersistenceService = services.GetRequiredService<IVocabularyPersistenceService>();
         var vocabularyStorageModeProvider = services.GetRequiredService<IVocabularyStorageModeProvider>();
+        var vocabularyStoragePreferenceService = services.GetRequiredService<IVocabularyStoragePreferenceService>();
         var graphAuthService = services.GetRequiredService<IGraphAuthService>();
         var userMemoryRepository = services.GetRequiredService<IUserMemoryRepository>();
         var unitOfWork = services.GetRequiredService<IUnitOfWork>();
@@ -157,6 +157,7 @@ internal static partial class Program
             vocabularyDeckService,
             vocabularyPersistenceService,
             vocabularyStorageModeProvider,
+            vocabularyStoragePreferenceService,
             graphAuthService,
             userMemoryRepository,
             unitOfWork,
@@ -170,6 +171,7 @@ internal static partial class Program
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
+        IVocabularyStoragePreferenceService vocabularyStoragePreferenceService,
         IGraphAuthService graphAuthService,
         IUserMemoryRepository userMemoryRepository,
         IUnitOfWork unitOfWork,
@@ -182,7 +184,7 @@ internal static partial class Program
         var saveMode = await LoadSaveModeAsync(userMemoryRepository, uiScope);
         PrintCurrentSaveMode(saveMode);
 
-        var storageMode = await LoadStorageModeAsync(userMemoryRepository, vocabularyStorageModeProvider, uiScope);
+        var storageMode = await LoadStorageModeAsync(vocabularyStoragePreferenceService, uiScope);
         vocabularyStorageModeProvider.SetMode(storageMode);
         PrintCurrentStorageMode(vocabularyStorageModeProvider, storageMode);
 
@@ -210,6 +212,7 @@ internal static partial class Program
                 vocabularyDeckService,
                 vocabularyPersistenceService,
                 vocabularyStorageModeProvider,
+                vocabularyStoragePreferenceService,
                 graphAuthService,
                 userMemoryRepository,
                 unitOfWork);
@@ -307,3 +310,5 @@ internal static partial class Program
         };
     }
 }
+
+

@@ -1,6 +1,7 @@
 using System.Globalization;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
+using LagerthaAssistant.Application.Services.Vocabulary;
 
 namespace LagerthaAssistant.UI;
 
@@ -284,22 +285,21 @@ internal static partial class Program
 
     private static string? AskPartOfSpeechMarker(string? suggestedMarker = null)
     {
+        var options = VocabularyPartOfSpeechCatalog.GetOptions();
+
         Console.WriteLine("Choose POS marker:");
-        WritePosMarkerOption("1", "n", "noun", suggestedMarker);
-        WritePosMarkerOption("2", "v", "verb", suggestedMarker);
-        WritePosMarkerOption("3", "iv", "irregular verb", suggestedMarker);
-        WritePosMarkerOption("4", "pv", "phrasal verb", suggestedMarker);
-        WritePosMarkerOption("5", "adj", "adjective", suggestedMarker);
-        WritePosMarkerOption("6", "adv", "adverb", suggestedMarker);
-        WritePosMarkerOption("7", "prep", "preposition", suggestedMarker);
-        WritePosMarkerOption("8", "conj", "conjunction", suggestedMarker);
-        WritePosMarkerOption("9", "pron", "pronoun", suggestedMarker);
-        WritePosMarkerOption("10", "pe", "persistent expression", suggestedMarker);
+        foreach (var option in options)
+        {
+            WritePosMarkerOption(option, suggestedMarker);
+        }
+
         Console.WriteLine("0) Cancel");
+        var availableNumbers = string.Join('/', options.Select(option => option.Number.ToString(CultureInfo.InvariantCulture)).Append("0"));
+        var supportedMarkers = string.Join(", ", options.Select(option => option.Marker));
 
         while (true)
         {
-            Console.Write("Select [1/2/3/4/5/6/7/8/9/10/0] or type marker: ");
+            Console.Write($"Select [{availableNumbers}] or type marker: ");
             if (!TryReadTrimmedInput(out var answer))
             {
                 return null;
@@ -319,18 +319,20 @@ internal static partial class Program
                 return marker;
             }
 
-            Console.WriteLine("Unsupported marker. Use 1..10 or one of: n, v, iv, pv, adj, adv, prep, conj, pron, pe.");
+            Console.WriteLine($"Unsupported marker. Use 1..{options.Count} or one of: {supportedMarkers}.");
         }
     }
 
-    private static void WritePosMarkerOption(string number, string marker, string label, string? suggestedMarker)
+    private static void WritePosMarkerOption(
+        VocabularyPartOfSpeechOption option,
+        string? suggestedMarker)
     {
         var isSuggested = !string.IsNullOrWhiteSpace(suggestedMarker)
-            && marker.Equals(suggestedMarker, StringComparison.OrdinalIgnoreCase);
+            && option.Marker.Equals(suggestedMarker, StringComparison.OrdinalIgnoreCase);
 
         var optionText = isSuggested
-            ? $"{number}) {marker} ({label}) (suggested)"
-            : $"{number}) {marker} ({label})";
+            ? $"{option.Number}) {option.Marker} ({option.Label}) (suggested)"
+            : $"{option.Number}) {option.Marker} ({option.Label})";
 
         if (isSuggested)
         {
@@ -345,65 +347,7 @@ internal static partial class Program
 
     private static string? GetSuggestedPosMarkerForDeckFileName(string deckFileName)
     {
-        if (string.IsNullOrWhiteSpace(deckFileName))
-        {
-            return null;
-        }
-
-        var name = deckFileName.ToLowerInvariant();
-
-        if ((name.Contains("persistent", StringComparison.Ordinal) || name.Contains("persistant", StringComparison.Ordinal))
-            && name.Contains("expression", StringComparison.Ordinal))
-        {
-            return "pe";
-        }
-
-        if (name.Contains("phrasal", StringComparison.Ordinal))
-        {
-            return "pv";
-        }
-
-        if (name.Contains("irregular", StringComparison.Ordinal) && name.Contains("verb", StringComparison.Ordinal))
-        {
-            return "iv";
-        }
-
-        if (name.Contains("verb", StringComparison.Ordinal))
-        {
-            return "v";
-        }
-
-        if (name.Contains("noun", StringComparison.Ordinal))
-        {
-            return "n";
-        }
-
-        if (name.Contains("adjective", StringComparison.Ordinal))
-        {
-            return "adj";
-        }
-
-        if (name.Contains("adverb", StringComparison.Ordinal))
-        {
-            return "adv";
-        }
-
-        if (name.Contains("preposition", StringComparison.Ordinal))
-        {
-            return "prep";
-        }
-
-        if (name.Contains("conjunction", StringComparison.Ordinal))
-        {
-            return "conj";
-        }
-
-        if (name.Contains("pronoun", StringComparison.Ordinal))
-        {
-            return "pron";
-        }
-
-        return null;
+        return VocabularyDeckMarkerSuggester.SuggestMarker(deckFileName);
     }
 
     private static bool AskYesNo(string question)
@@ -436,67 +380,7 @@ internal static partial class Program
 
     private static bool TryNormalizePartOfSpeechMarker(string value, out string marker)
     {
-        switch (value.Trim().ToLowerInvariant())
-        {
-            case "n":
-            case "1":
-            case "noun":
-                marker = "n";
-                return true;
-            case "v":
-            case "2":
-            case "verb":
-                marker = "v";
-                return true;
-            case "iv":
-            case "3":
-            case "irregular":
-            case "irregular-verb":
-                marker = "iv";
-                return true;
-            case "pv":
-            case "4":
-            case "phrasal":
-            case "phrasal-verb":
-                marker = "pv";
-                return true;
-            case "adj":
-            case "5":
-            case "adjective":
-                marker = "adj";
-                return true;
-            case "adv":
-            case "6":
-            case "adverb":
-                marker = "adv";
-                return true;
-            case "prep":
-            case "7":
-            case "preposition":
-                marker = "prep";
-                return true;
-            case "conj":
-            case "8":
-            case "conjunction":
-                marker = "conj";
-                return true;
-            case "pron":
-            case "9":
-            case "pronoun":
-                marker = "pron";
-                return true;
-            case "pe":
-            case "10":
-            case "persistent":
-            case "persistent-expression":
-            case "persistant-expression":
-            case "expression":
-                marker = "pe";
-                return true;
-            default:
-                marker = string.Empty;
-                return false;
-        }
+        return VocabularyPartOfSpeechCatalog.TryNormalize(value, out marker);
     }
 
     private static bool AskRetrySaveConfirmation(VocabularyAppendPreviewResult preview)

@@ -95,7 +95,7 @@ public static class DependencyInjection
             };
         });
 
-        services.AddSingleton<IVocabularyStorageModeProvider, VocabularyStorageModeProvider>();
+        services.AddScoped<IVocabularyStorageModeProvider, VocabularyStorageModeProvider>();
         services.AddSingleton<IGraphAuthService, GraphAuthService>();
         services.AddSingleton<IGraphDriveClient, GraphDriveClient>();
 
@@ -141,4 +141,3 @@ public static class DependencyInjection
             : fallback;
     }
 }
-

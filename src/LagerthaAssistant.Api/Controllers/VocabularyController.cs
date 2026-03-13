@@ -5,6 +5,7 @@ using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
+using LagerthaAssistant.Application.Services.Vocabulary;
 
 namespace LagerthaAssistant.Api.Controllers;
 
@@ -14,20 +15,35 @@ public sealed class VocabularyController : ControllerBase
 {
     private const string DefaultChannel = "api";
 
+    private static readonly IReadOnlyList<string> SupportedStorageModes =
+    [
+        "local",
+        "graph"
+    ];
+
     private readonly IVocabularyWorkflowService _workflowService;
     private readonly IVocabularyPersistenceService _persistenceService;
     private readonly IVocabularyBatchInputService _batchInputService;
+    private readonly IVocabularyDeckService _deckService;
+    private readonly IVocabularyStorageModeProvider _storageModeProvider;
+    private readonly IVocabularyStoragePreferenceService _storagePreferenceService;
     private readonly IConversationScopeAccessor _scopeAccessor;
 
     public VocabularyController(
         IVocabularyWorkflowService workflowService,
         IVocabularyPersistenceService persistenceService,
         IVocabularyBatchInputService batchInputService,
+        IVocabularyDeckService deckService,
+        IVocabularyStorageModeProvider storageModeProvider,
+        IVocabularyStoragePreferenceService storagePreferenceService,
         IConversationScopeAccessor scopeAccessor)
     {
         _workflowService = workflowService;
         _persistenceService = persistenceService;
         _batchInputService = batchInputService;
+        _deckService = deckService;
+        _storageModeProvider = storageModeProvider;
+        _storagePreferenceService = storagePreferenceService;
         _scopeAccessor = scopeAccessor;
     }
 
@@ -45,6 +61,12 @@ public sealed class VocabularyController : ControllerBase
 
         var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
         _scopeAccessor.Set(scope);
+
+        var applyMode = await TryApplyStorageModeAsync(scope, request.StorageMode, cancellationToken);
+        if (!applyMode.Success)
+        {
+            return applyMode.Error!;
+        }
 
         var result = await _workflowService.ProcessAsync(
             request.Input,
@@ -80,10 +102,15 @@ public sealed class VocabularyController : ControllerBase
         var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
         _scopeAccessor.Set(scope);
 
+        var applyMode = await TryApplyStorageModeAsync(scope, request.StorageMode, cancellationToken);
+        if (!applyMode.Success)
+        {
+            return applyMode.Error!;
+        }
+
         var results = await _workflowService.ProcessBatchAsync(inputs, cancellationToken);
         return Ok(results.Select(MapWorkflowItem).ToList());
     }
-
 
     [HttpPost("parse-batch")]
     [ProducesResponseType(typeof(VocabularyParseBatchResponse), StatusCodes.Status200OK)]
@@ -104,16 +131,114 @@ public sealed class VocabularyController : ControllerBase
             parseResult.SingleItemWithoutSeparators));
     }
 
+    [HttpGet("storage-mode")]
+    [ProducesResponseType(typeof(VocabularyStorageModeResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<VocabularyStorageModeResponse>> GetStorageMode(
+        [FromQuery] string? channel = null,
+        [FromQuery] string? userId = null,
+        [FromQuery] string? conversationId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var scope = BuildScope(channel, userId, conversationId);
+        _scopeAccessor.Set(scope);
+
+        var mode = await _storagePreferenceService.GetModeAsync(scope, cancellationToken);
+        _storageModeProvider.SetMode(mode);
+
+        return Ok(BuildStorageModeResponse(mode));
+    }
+
+    [HttpPut("storage-mode")]
+    [ProducesResponseType(typeof(VocabularyStorageModeResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<VocabularyStorageModeResponse>> SetStorageMode(
+        [FromBody] VocabularySetStorageModeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.Mode))
+        {
+            return BadRequest("Mode is required.");
+        }
+
+        if (!_storageModeProvider.TryParse(request.Mode, out var mode))
+        {
+            return BadRequest($"Unsupported mode '{request.Mode}'. Use local or graph.");
+        }
+
+        var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
+        _scopeAccessor.Set(scope);
+
+        await _storagePreferenceService.SetModeAsync(scope, mode, cancellationToken);
+        _storageModeProvider.SetMode(mode);
+
+        return Ok(BuildStorageModeResponse(mode));
+    }
+
+    [HttpGet("decks")]
+    [ProducesResponseType(typeof(VocabularyDeckCatalogResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<VocabularyDeckCatalogResponse>> GetDecks(
+        [FromQuery] string? channel = null,
+        [FromQuery] string? userId = null,
+        [FromQuery] string? conversationId = null,
+        [FromQuery] string? storageMode = null,
+        CancellationToken cancellationToken = default)
+    {
+        var scope = BuildScope(channel, userId, conversationId);
+        _scopeAccessor.Set(scope);
+
+        var applyMode = await TryApplyStorageModeAsync(scope, storageMode, cancellationToken);
+        if (!applyMode.Success)
+        {
+            return applyMode.Error!;
+        }
+
+        var storageModeText = _storageModeProvider.ToText(_storageModeProvider.CurrentMode);
+        var decks = await _deckService.GetWritableDeckFilesAsync(cancellationToken);
+
+        var mappedDecks = decks
+            .OrderBy(deck => deck.FileName, StringComparer.OrdinalIgnoreCase)
+            .Select(MapDeckInfo)
+            .ToList();
+
+        return Ok(new VocabularyDeckCatalogResponse(storageModeText, mappedDecks));
+    }
+
+    [HttpGet("markers")]
+    [ProducesResponseType(typeof(VocabularyPartOfSpeechCatalogResponse), StatusCodes.Status200OK)]
+    public ActionResult<VocabularyPartOfSpeechCatalogResponse> GetPartOfSpeechMarkers()
+    {
+        var markers = VocabularyPartOfSpeechCatalog.GetOptions()
+            .OrderBy(option => option.Number)
+            .Select(MapPartOfSpeechOption)
+            .ToList();
+
+        return Ok(new VocabularyPartOfSpeechCatalogResponse(markers));
+    }
+
     [HttpPost("save-batch")]
     [ProducesResponseType(typeof(VocabularySaveBatchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<VocabularySaveBatchResponse>> SaveBatch(
         [FromBody] VocabularySaveBatchRequest request,
+        [FromQuery] string? channel = null,
+        [FromQuery] string? userId = null,
+        [FromQuery] string? conversationId = null,
+        [FromQuery] string? storageMode = null,
         CancellationToken cancellationToken = default)
     {
         if (request is null || request.Items is null || request.Items.Count == 0)
         {
             return BadRequest("At least one item is required.");
+        }
+
+        var scope = BuildScope(channel, userId, conversationId);
+        _scopeAccessor.Set(scope);
+
+        var applyMode = await TryApplyStorageModeAsync(scope, storageMode, cancellationToken);
+        if (!applyMode.Success)
+        {
+            return applyMode.Error!;
         }
 
         var items = request.Items.ToList();
@@ -174,11 +299,16 @@ public sealed class VocabularyController : ControllerBase
             failed,
             responses));
     }
+
     [HttpPost("save")]
     [ProducesResponseType(typeof(VocabularyAppendResultResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<VocabularyAppendResultResponse>> Save(
         [FromBody] VocabularySaveRequest request,
+        [FromQuery] string? channel = null,
+        [FromQuery] string? userId = null,
+        [FromQuery] string? conversationId = null,
+        [FromQuery] string? storageMode = null,
         CancellationToken cancellationToken = default)
     {
         if (request is null || string.IsNullOrWhiteSpace(request.RequestedWord))
@@ -189,6 +319,15 @@ public sealed class VocabularyController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.AssistantReply))
         {
             return BadRequest("AssistantReply is required.");
+        }
+
+        var scope = BuildScope(channel, userId, conversationId);
+        _scopeAccessor.Set(scope);
+
+        var applyMode = await TryApplyStorageModeAsync(scope, storageMode, cancellationToken);
+        if (!applyMode.Success)
+        {
+            return applyMode.Error!;
         }
 
         var result = await _persistenceService.AppendFromAssistantReplyAsync(
@@ -209,6 +348,35 @@ public sealed class VocabularyController : ControllerBase
             : normalizedChannel;
 
         return ConversationScope.Create(effectiveChannel, userId, conversationId);
+    }
+
+    private async Task<(bool Success, ActionResult? Error)> TryApplyStorageModeAsync(
+        ConversationScope scope,
+        string? requestedStorageMode,
+        CancellationToken cancellationToken)
+    {
+        VocabularyStorageMode mode;
+
+        if (!string.IsNullOrWhiteSpace(requestedStorageMode))
+        {
+            if (!_storageModeProvider.TryParse(requestedStorageMode, out mode))
+            {
+                return (false, BadRequest($"Unsupported mode '{requestedStorageMode}'. Use local or graph."));
+            }
+        }
+        else
+        {
+            mode = await _storagePreferenceService.GetModeAsync(scope, cancellationToken);
+        }
+
+        _storageModeProvider.SetMode(mode);
+        return (true, null);
+    }
+
+    private VocabularyStorageModeResponse BuildStorageModeResponse(VocabularyStorageMode mode)
+    {
+        var modeText = _storageModeProvider.ToText(mode);
+        return new VocabularyStorageModeResponse(modeText, SupportedStorageModes);
     }
 
     private static VocabularyWorkflowItemResponse MapWorkflowItem(VocabularyWorkflowItemResult result)
@@ -283,5 +451,18 @@ public sealed class VocabularyController : ControllerBase
             entry.Word,
             entry.Meaning,
             entry.Examples);
+    }
+
+    private static VocabularyDeckInfoResponse MapDeckInfo(VocabularyDeckFile deck)
+    {
+        return new VocabularyDeckInfoResponse(
+            deck.FileName,
+            deck.FullPath,
+            VocabularyDeckMarkerSuggester.SuggestMarker(deck.FileName));
+    }
+
+    private static VocabularyPartOfSpeechOptionResponse MapPartOfSpeechOption(VocabularyPartOfSpeechOption option)
+    {
+        return new VocabularyPartOfSpeechOptionResponse(option.Number, option.Marker, option.Label);
     }
 }

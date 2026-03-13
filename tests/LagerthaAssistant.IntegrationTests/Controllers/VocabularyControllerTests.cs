@@ -18,9 +18,9 @@ public sealed class VocabularyControllerTests
         var workflow = new FakeVocabularyWorkflowService();
         var persistence = new FakeVocabularyPersistenceService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), scopeAccessor);
+        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), new FakeVocabularyDeckService(), new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), scopeAccessor);
 
-        var response = await sut.Analyze(new VocabularyAnalyzeRequest("   "), CancellationToken.None);
+        var response = await sut.Analyze(new VocabularyAnalyzeRequest("   "), cancellationToken: CancellationToken.None);
 
         Assert.IsType<BadRequestObjectResult>(response.Result);
         Assert.Null(workflow.LastSingleInput);
@@ -35,7 +35,7 @@ public sealed class VocabularyControllerTests
         };
         var persistence = new FakeVocabularyPersistenceService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), scopeAccessor);
+        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), new FakeVocabularyDeckService(), new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), scopeAccessor);
 
         var response = await sut.Analyze(
             new VocabularyAnalyzeRequest(
@@ -45,7 +45,7 @@ public sealed class VocabularyControllerTests
                 "chat-42",
                 "wm-nouns-ua-en.xlsx",
                 "n"),
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(response.Result);
         var payload = Assert.IsType<VocabularyWorkflowItemResponse>(ok.Value);
@@ -70,9 +70,9 @@ public sealed class VocabularyControllerTests
         var workflow = new FakeVocabularyWorkflowService();
         var persistence = new FakeVocabularyPersistenceService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), scopeAccessor);
+        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), new FakeVocabularyDeckService(), new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), scopeAccessor);
 
-        var response = await sut.AnalyzeBatch(new VocabularyAnalyzeBatchRequest([]), CancellationToken.None);
+        var response = await sut.AnalyzeBatch(new VocabularyAnalyzeBatchRequest([]), cancellationToken: CancellationToken.None);
 
         Assert.IsType<BadRequestObjectResult>(response.Result);
         Assert.Null(workflow.LastBatchInputs);
@@ -91,11 +91,11 @@ public sealed class VocabularyControllerTests
         };
         var persistence = new FakeVocabularyPersistenceService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), scopeAccessor);
+        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), new FakeVocabularyDeckService(), new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), scopeAccessor);
 
         var response = await sut.AnalyzeBatch(
             new VocabularyAnalyzeBatchRequest(["  void  ", " ", "call back"]),
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(response.Result);
         var payload = Assert.IsAssignableFrom<IReadOnlyList<VocabularyWorkflowItemResponse>>(ok.Value);
@@ -115,7 +115,7 @@ public sealed class VocabularyControllerTests
         var persistence = new FakeVocabularyPersistenceService();
         var batchInput = new FakeVocabularyBatchInputService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new VocabularyController(workflow, persistence, batchInput, scopeAccessor);
+        var sut = new VocabularyController(workflow, persistence, batchInput, new FakeVocabularyDeckService(), new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), scopeAccessor);
 
         var response = sut.ParseBatch(new VocabularyParseBatchRequest("   "));
 
@@ -137,7 +137,7 @@ public sealed class VocabularyControllerTests
                 "void prepare")
         };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new VocabularyController(workflow, persistence, batchInput, scopeAccessor);
+        var sut = new VocabularyController(workflow, persistence, batchInput, new FakeVocabularyDeckService(), new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), scopeAccessor);
 
         var response = sut.ParseBatch(new VocabularyParseBatchRequest("void prepare", true));
 
@@ -153,14 +153,159 @@ public sealed class VocabularyControllerTests
         Assert.True(batchInput.LastApplySpaceSplit);
     }
     [Fact]
+    public async Task GetStorageMode_ShouldReturnCurrentMode_AndSupportedModes()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var persistence = new FakeVocabularyPersistenceService();
+        var batchInput = new FakeVocabularyBatchInputService();
+        var storageModeProvider = new FakeVocabularyStorageModeProvider
+        {
+            CurrentMode = VocabularyStorageMode.Graph
+        };
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new VocabularyController(workflow, persistence, batchInput, new FakeVocabularyDeckService(), storageModeProvider, new FakeVocabularyStoragePreferenceService(), scopeAccessor);
+
+        var response = await sut.GetStorageMode(cancellationToken: CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<VocabularyStorageModeResponse>(ok.Value);
+
+        Assert.Equal("graph", payload.Mode);
+        Assert.Equal(["local", "graph"], payload.AvailableModes);
+    }
+
+    [Fact]
+    public async Task SetStorageMode_ShouldReturnBadRequest_WhenModeMissing()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var persistence = new FakeVocabularyPersistenceService();
+        var batchInput = new FakeVocabularyBatchInputService();
+        var storageModeProvider = new FakeVocabularyStorageModeProvider();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new VocabularyController(workflow, persistence, batchInput, new FakeVocabularyDeckService(), storageModeProvider, new FakeVocabularyStoragePreferenceService(), scopeAccessor);
+
+        var response = await sut.SetStorageMode(new VocabularySetStorageModeRequest(" "), cancellationToken: CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal(VocabularyStorageMode.Local, storageModeProvider.CurrentMode);
+    }
+
+    [Fact]
+    public async Task SetStorageMode_ShouldReturnBadRequest_WhenModeUnsupported()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var persistence = new FakeVocabularyPersistenceService();
+        var batchInput = new FakeVocabularyBatchInputService();
+        var storageModeProvider = new FakeVocabularyStorageModeProvider();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new VocabularyController(workflow, persistence, batchInput, new FakeVocabularyDeckService(), storageModeProvider, new FakeVocabularyStoragePreferenceService(), scopeAccessor);
+
+        var response = await sut.SetStorageMode(new VocabularySetStorageModeRequest("cloud"), cancellationToken: CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal(VocabularyStorageMode.Local, storageModeProvider.CurrentMode);
+    }
+
+    [Fact]
+    public async Task SetStorageMode_ShouldUpdateMode_WhenValid()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var persistence = new FakeVocabularyPersistenceService();
+        var batchInput = new FakeVocabularyBatchInputService();
+        var storageModeProvider = new FakeVocabularyStorageModeProvider();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new VocabularyController(workflow, persistence, batchInput, new FakeVocabularyDeckService(), storageModeProvider, new FakeVocabularyStoragePreferenceService(), scopeAccessor);
+
+        var response = await sut.SetStorageMode(new VocabularySetStorageModeRequest("graph"), cancellationToken: CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<VocabularyStorageModeResponse>(ok.Value);
+
+        Assert.Equal("graph", payload.Mode);
+        Assert.Equal(VocabularyStorageMode.Graph, storageModeProvider.CurrentMode);
+        Assert.Equal(["local", "graph"], payload.AvailableModes);
+    }
+
+    [Fact]
+    public async Task GetDecks_ShouldReturnSortedDecks_WithSuggestedMarkers()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var persistence = new FakeVocabularyPersistenceService();
+        var batchInput = new FakeVocabularyBatchInputService();
+        var deckService = new FakeVocabularyDeckService
+        {
+            WritableDecks =
+            [
+                new VocabularyDeckFile("wm-verbs-us-en.xlsx", @"C:\Decks\wm-verbs-us-en.xlsx"),
+                new VocabularyDeckFile("wm-persistant-expressions-ua-en.xlsx", @"C:\Decks\wm-persistant-expressions-ua-en.xlsx"),
+                new VocabularyDeckFile("wm-irregular-verbs-ua-en.xlsx", @"C:\Decks\wm-irregular-verbs-ua-en.xlsx"),
+                new VocabularyDeckFile("wm-nouns-ua-en.xlsx", @"C:\Decks\wm-nouns-ua-en.xlsx")
+            ]
+        };
+        var storageModeProvider = new FakeVocabularyStorageModeProvider
+        {
+            CurrentMode = VocabularyStorageMode.Graph
+        };
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new VocabularyController(workflow, persistence, batchInput, deckService, storageModeProvider, new FakeVocabularyStoragePreferenceService(), scopeAccessor);
+
+        var response = await sut.GetDecks(cancellationToken: CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<VocabularyDeckCatalogResponse>(ok.Value);
+
+        Assert.Equal("graph", payload.StorageMode);
+        Assert.Equal(4, payload.Decks.Count);
+
+        Assert.Equal("wm-irregular-verbs-ua-en.xlsx", payload.Decks[0].FileName);
+        Assert.Equal("iv", payload.Decks[0].SuggestedPartOfSpeech);
+
+        Assert.Equal("wm-nouns-ua-en.xlsx", payload.Decks[1].FileName);
+        Assert.Equal("n", payload.Decks[1].SuggestedPartOfSpeech);
+
+        Assert.Equal("wm-persistant-expressions-ua-en.xlsx", payload.Decks[2].FileName);
+        Assert.Equal("pe", payload.Decks[2].SuggestedPartOfSpeech);
+
+        Assert.Equal("wm-verbs-us-en.xlsx", payload.Decks[3].FileName);
+        Assert.Equal("v", payload.Decks[3].SuggestedPartOfSpeech);
+    }
+    [Fact]
+    public void GetPartOfSpeechMarkers_ShouldReturnOrderedMarkerCatalog()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var persistence = new FakeVocabularyPersistenceService();
+        var batchInput = new FakeVocabularyBatchInputService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new VocabularyController(workflow, persistence, batchInput, new FakeVocabularyDeckService(), new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), scopeAccessor);
+
+        var response = sut.GetPartOfSpeechMarkers();
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<VocabularyPartOfSpeechCatalogResponse>(ok.Value);
+
+        Assert.Equal(10, payload.Markers.Count);
+
+        Assert.Equal(1, payload.Markers[0].Number);
+        Assert.Equal("n", payload.Markers[0].Marker);
+        Assert.Equal("noun", payload.Markers[0].Label);
+
+        Assert.Equal(4, payload.Markers[3].Number);
+        Assert.Equal("pv", payload.Markers[3].Marker);
+        Assert.Equal("phrasal verb", payload.Markers[3].Label);
+
+        Assert.Equal(10, payload.Markers[^1].Number);
+        Assert.Equal("pe", payload.Markers[^1].Marker);
+        Assert.Equal("persistent expression", payload.Markers[^1].Label);
+    }
+    [Fact]
     public async Task SaveBatch_ShouldReturnBadRequest_WhenItemsMissing()
     {
         var workflow = new FakeVocabularyWorkflowService();
         var persistence = new FakeVocabularyPersistenceService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), scopeAccessor);
+        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), new FakeVocabularyDeckService(), new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), scopeAccessor);
 
-        var response = await sut.SaveBatch(new VocabularySaveBatchRequest([]), CancellationToken.None);
+        var response = await sut.SaveBatch(new VocabularySaveBatchRequest([]), cancellationToken: CancellationToken.None);
 
         Assert.IsType<BadRequestObjectResult>(response.Result);
         Assert.Empty(persistence.Calls);
@@ -202,7 +347,7 @@ public sealed class VocabularyControllerTests
             "Locked"));
 
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), scopeAccessor);
+        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), new FakeVocabularyDeckService(), new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), scopeAccessor);
 
         var response = await sut.SaveBatch(
             new VocabularySaveBatchRequest(
@@ -211,7 +356,7 @@ public sealed class VocabularyControllerTests
                 new VocabularySaveBatchItemRequest("prepare", "reply-2", "wm-verbs-us-en.xlsx", "v"),
                 new VocabularySaveBatchItemRequest("call back", "reply-3", "wm-phrasal-verbs-ua-en.xlsx", "pv")
             ]),
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(response.Result);
         var payload = Assert.IsType<VocabularySaveBatchResponse>(ok.Value);
@@ -245,11 +390,11 @@ public sealed class VocabularyControllerTests
         var workflow = new FakeVocabularyWorkflowService();
         var persistence = new FakeVocabularyPersistenceService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), scopeAccessor);
+        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), new FakeVocabularyDeckService(), new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), scopeAccessor);
 
         var response = await sut.Save(
             new VocabularySaveRequest("   ", "assistant reply"),
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         Assert.IsType<BadRequestObjectResult>(response.Result);
         Assert.Null(persistence.LastRequestedWord);
@@ -274,7 +419,7 @@ public sealed class VocabularyControllerTests
                 "Added successfully")
         };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), scopeAccessor);
+        var sut = new VocabularyController(workflow, persistence, new FakeVocabularyBatchInputService(), new FakeVocabularyDeckService(), new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), scopeAccessor);
 
         var response = await sut.Save(
             new VocabularySaveRequest(
@@ -282,7 +427,7 @@ public sealed class VocabularyControllerTests
                 "void\n\n(n) emptiness",
                 "wm-nouns-ua-en.xlsx",
                 "n"),
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(response.Result);
         var payload = Assert.IsType<VocabularyAppendResultResponse>(ok.Value);
@@ -386,6 +531,87 @@ public sealed class VocabularyControllerTests
             LastRawInput = rawInput;
             LastApplySpaceSplit = applySpaceSplitForSingleItem;
             return NextResult;
+        }
+    }
+    private sealed class FakeVocabularyDeckService : IVocabularyDeckService
+    {
+        public IReadOnlyList<VocabularyDeckFile> WritableDecks { get; set; } = [];
+
+        public Task<VocabularyLookupResult> FindInWritableDecksAsync(string word, CancellationToken cancellationToken = default)
+            => Task.FromResult(new VocabularyLookupResult(word, []));
+
+        public Task<IReadOnlyList<VocabularyDeckFile>> GetWritableDeckFilesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(WritableDecks);
+
+        public Task<VocabularyAppendPreviewResult> PreviewAppendFromAssistantReplyAsync(
+            string requestedWord,
+            string assistantReply,
+            string? forcedDeckFileName = null,
+            string? overridePartOfSpeech = null,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new VocabularyAppendPreviewResult(VocabularyAppendPreviewStatus.ParseFailed, requestedWord, Message: "not used"));
+
+        public Task<VocabularyAppendResult> AppendFromAssistantReplyAsync(
+            string requestedWord,
+            string assistantReply,
+            string? forcedDeckFileName = null,
+            string? overridePartOfSpeech = null,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new VocabularyAppendResult(VocabularyAppendStatus.Error, Message: "not used"));
+    }
+
+    private sealed class FakeVocabularyStorageModeProvider : IVocabularyStorageModeProvider
+    {
+        public VocabularyStorageMode CurrentMode { get; set; } = VocabularyStorageMode.Local;
+
+        public void SetMode(VocabularyStorageMode mode)
+        {
+            CurrentMode = mode;
+        }
+
+        public bool TryParse(string? value, out VocabularyStorageMode mode)
+        {
+            if (string.Equals(value, "local", StringComparison.OrdinalIgnoreCase))
+            {
+                mode = VocabularyStorageMode.Local;
+                return true;
+            }
+
+            if (string.Equals(value, "graph", StringComparison.OrdinalIgnoreCase))
+            {
+                mode = VocabularyStorageMode.Graph;
+                return true;
+            }
+
+            mode = default;
+            return false;
+        }
+
+        public string ToText(VocabularyStorageMode mode)
+            => mode.ToString().ToLowerInvariant();
+    }
+    private sealed class FakeVocabularyStoragePreferenceService : IVocabularyStoragePreferenceService
+    {
+        public VocabularyStorageMode CurrentMode { get; set; } = VocabularyStorageMode.Graph;
+
+        public ConversationScope? LastGetScope { get; private set; }
+
+        public ConversationScope? LastSetScope { get; private set; }
+
+        public Task<VocabularyStorageMode> GetModeAsync(ConversationScope scope, CancellationToken cancellationToken = default)
+        {
+            LastGetScope = scope;
+            return Task.FromResult(CurrentMode);
+        }
+
+        public Task<VocabularyStorageMode> SetModeAsync(
+            ConversationScope scope,
+            VocabularyStorageMode mode,
+            CancellationToken cancellationToken = default)
+        {
+            LastSetScope = scope;
+            CurrentMode = mode;
+            return Task.FromResult(mode);
         }
     }
     private sealed class FakeVocabularyPersistenceService : IVocabularyPersistenceService
