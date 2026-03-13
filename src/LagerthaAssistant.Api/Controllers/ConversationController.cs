@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Constants;
+using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
+using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 
@@ -14,10 +16,17 @@ public sealed class ConversationController : ControllerBase
     private const string DefaultChannel = "api";
 
     private readonly IConversationOrchestrator _orchestrator;
+    private readonly IAssistantSessionService _assistantSessionService;
+    private readonly IConversationScopeAccessor _scopeAccessor;
 
-    public ConversationController(IConversationOrchestrator orchestrator)
+    public ConversationController(
+        IConversationOrchestrator orchestrator,
+        IAssistantSessionService assistantSessionService,
+        IConversationScopeAccessor scopeAccessor)
     {
         _orchestrator = orchestrator;
+        _assistantSessionService = assistantSessionService;
+        _scopeAccessor = scopeAccessor;
     }
 
     [HttpGet("commands")]
@@ -34,6 +43,58 @@ public sealed class ConversationController : ControllerBase
         return Ok(BuildCommandGroups());
     }
 
+    [HttpGet("history")]
+    [ProducesResponseType(typeof(IReadOnlyList<ConversationHistoryEntryResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<ConversationHistoryEntryResponse>>> GetHistory(
+        [FromQuery] int take = 20,
+        [FromQuery] string? channel = null,
+        [FromQuery] string? userId = null,
+        [FromQuery] string? conversationId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var scope = BuildScope(channel, userId, conversationId);
+        _scopeAccessor.Set(scope);
+
+        var normalizedTake = Math.Max(1, take);
+        var history = await _assistantSessionService.GetRecentHistoryAsync(normalizedTake, cancellationToken);
+
+        var response = history
+            .Select(item => new ConversationHistoryEntryResponse(
+                item.Role.ToString().ToLowerInvariant(),
+                item.Content,
+                item.CreatedAtUtc))
+            .ToList();
+
+        return Ok(response);
+    }
+
+    [HttpGet("memory")]
+    [ProducesResponseType(typeof(IReadOnlyList<ConversationMemoryEntryResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<ConversationMemoryEntryResponse>>> GetMemory(
+        [FromQuery] int take = 20,
+        [FromQuery] string? channel = null,
+        [FromQuery] string? userId = null,
+        [FromQuery] string? conversationId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var scope = BuildScope(channel, userId, conversationId);
+        _scopeAccessor.Set(scope);
+
+        var normalizedTake = Math.Max(1, take);
+        var memory = await _assistantSessionService.GetActiveMemoryAsync(normalizedTake, cancellationToken);
+
+        var response = memory
+            .Select(item => new ConversationMemoryEntryResponse(
+                item.Key,
+                item.Value,
+                item.Confidence,
+                item.IsActive,
+                item.LastSeenAtUtc))
+            .ToList();
+
+        return Ok(response);
+    }
+
     [HttpPost("messages")]
     [ProducesResponseType(typeof(ConversationMessageResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -46,10 +107,10 @@ public sealed class ConversationController : ControllerBase
             return BadRequest("Input is required.");
         }
 
-        var channel = NormalizeChannel(request.Channel);
+        var channelName = NormalizeChannel(request.Channel);
         var result = await _orchestrator.ProcessAsync(
             request.Input,
-            channel,
+            channelName,
             request.UserId,
             request.ConversationId,
             cancellationToken);
@@ -134,6 +195,14 @@ public sealed class ConversationController : ControllerBase
         return string.Join(" | ", lines);
     }
 
+    private static ConversationScope BuildScope(string? channel, string? userId, string? conversationId)
+    {
+        return ConversationScope.Create(
+            NormalizeChannel(channel),
+            userId,
+            conversationId);
+    }
+
     private static string NormalizeChannel(string? channel)
     {
         var normalized = channel?.Trim().ToLowerInvariant();
@@ -142,3 +211,4 @@ public sealed class ConversationController : ControllerBase
             : normalized;
     }
 }
+

@@ -176,6 +176,8 @@ curl -X POST "http://localhost:5000/api/vocabulary-sync/run?take=25"
 curl "http://localhost:5000/api/telemetry/intents?days=7&top=20&channel=api"
 curl http://localhost:5000/api/conversation/commands
 curl http://localhost:5000/api/conversation/commands/grouped
+curl "http://localhost:5000/api/conversation/history?take=20&channel=api&userId=anonymous&conversationId=default"
+curl "http://localhost:5000/api/conversation/memory?take=20&channel=api&userId=anonymous&conversationId=default"
 ```
 
 On startup both UI and API apply EF migrations automatically.
@@ -209,6 +211,8 @@ Slash command forms are also supported through the same command-agent path, incl
 Command catalog endpoints (for external clients):
 - `GET /api/conversation/commands` (flat list: `category`, `command`, `description`)
 - `GET /api/conversation/commands/grouped` (grouped by category)
+- `GET /api/conversation/history?take=20&channel=api&userId=anonymous&conversationId=default` (recent history for exact scope)
+- `GET /api/conversation/memory?take=20&channel=api&userId=anonymous&conversationId=default` (active memory for exact scope)
 
 Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
 
@@ -266,3 +270,4 @@ Use `/help` to see full command reference in the console.
 dotnet build LagerthaAssistant.slnx
 dotnet test LagerthaAssistant.slnx -v minimal
 ```
+

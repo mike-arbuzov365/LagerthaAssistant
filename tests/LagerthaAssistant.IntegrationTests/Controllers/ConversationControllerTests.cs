@@ -3,8 +3,13 @@ namespace LagerthaAssistant.IntegrationTests.Controllers;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Controllers;
 using LagerthaAssistant.Application.Constants;
+using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
+using LagerthaAssistant.Application.Interfaces.Common;
+using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Models.Agents;
+using LagerthaAssistant.Domain.AI;
+using LagerthaAssistant.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Xunit;
 
@@ -14,7 +19,9 @@ public sealed class ConversationControllerTests
     public void GetCommands_ShouldReturnSlashCommandCatalog()
     {
         var orchestrator = new FakeConversationOrchestrator();
-        var sut = new ConversationController(orchestrator);
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
 
         var response = sut.GetCommands();
 
@@ -32,7 +39,9 @@ public sealed class ConversationControllerTests
     public void GetGroupedCommands_ShouldReturnGroupedCatalog()
     {
         var orchestrator = new FakeConversationOrchestrator();
-        var sut = new ConversationController(orchestrator);
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
 
         var response = sut.GetGroupedCommands();
 
@@ -49,10 +58,75 @@ public sealed class ConversationControllerTests
     }
 
     [Fact]
+    public async Task GetHistory_ShouldSetScopeAndReturnMappedHistory()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService
+        {
+            History =
+            [
+                ConversationMessage.Create(MessageRole.User, "hello", DateTimeOffset.UtcNow)
+            ]
+        };
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.GetHistory(10, "  TeLeGrAm  ", "Mike", "chat-42", CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsAssignableFrom<IReadOnlyList<ConversationHistoryEntryResponse>>(ok.Value);
+
+        var entry = Assert.Single(payload);
+        Assert.Equal("user", entry.Role);
+        Assert.Equal("hello", entry.Content);
+
+        Assert.Equal("telegram", scopeAccessor.Current.Channel);
+        Assert.Equal("mike", scopeAccessor.Current.UserId);
+        Assert.Equal("chat-42", scopeAccessor.Current.ConversationId);
+    }
+
+    [Fact]
+    public async Task GetMemory_ShouldUseDefaults_WhenScopeNotProvided()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService
+        {
+            Memory =
+            [
+                new UserMemoryEntry
+                {
+                    Key = MemoryKeys.UserName,
+                    Value = "Mike",
+                    Confidence = 0.95,
+                    IsActive = true,
+                    LastSeenAtUtc = DateTimeOffset.UtcNow
+                }
+            ]
+        };
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.GetMemory(5, null, null, null, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsAssignableFrom<IReadOnlyList<ConversationMemoryEntryResponse>>(ok.Value);
+
+        var entry = Assert.Single(payload);
+        Assert.Equal(MemoryKeys.UserName, entry.Key);
+        Assert.Equal("Mike", entry.Value);
+
+        Assert.Equal("api", scopeAccessor.Current.Channel);
+        Assert.Equal("anonymous", scopeAccessor.Current.UserId);
+        Assert.Equal("default", scopeAccessor.Current.ConversationId);
+    }
+
+    [Fact]
     public async Task PostMessage_ShouldUseDefaultChannel_WhenNotProvided()
     {
         var orchestrator = new FakeConversationOrchestrator();
-        var sut = new ConversationController(orchestrator);
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
 
         var response = await sut.PostMessage(new ConversationMessageRequest("void"), CancellationToken.None);
 
@@ -67,7 +141,9 @@ public sealed class ConversationControllerTests
     public async Task PostMessage_ShouldNormalizeProvidedChannel()
     {
         var orchestrator = new FakeConversationOrchestrator();
-        var sut = new ConversationController(orchestrator);
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
 
         var response = await sut.PostMessage(new ConversationMessageRequest("void", "  TeLeGrAm  "), CancellationToken.None);
 
@@ -79,7 +155,9 @@ public sealed class ConversationControllerTests
     public async Task PostMessage_ShouldForwardUserAndConversationIds()
     {
         var orchestrator = new FakeConversationOrchestrator();
-        var sut = new ConversationController(orchestrator);
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
 
         var response = await sut.PostMessage(
             new ConversationMessageRequest("void", "api", "Mike", "chat-42"),
@@ -98,7 +176,9 @@ public sealed class ConversationControllerTests
             NextResult = ConversationAgentResult.Empty("command-agent", "command.prompt.set", "System prompt updated and saved.")
         };
 
-        var sut = new ConversationController(orchestrator);
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
 
         var response = await sut.PostMessage(new ConversationMessageRequest("/prompt set Keep replies concise"), CancellationToken.None);
 
@@ -116,7 +196,9 @@ public sealed class ConversationControllerTests
     public async Task PostMessage_ShouldReturnBadRequest_WhenInputIsEmpty()
     {
         var orchestrator = new FakeConversationOrchestrator();
-        var sut = new ConversationController(orchestrator);
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
 
         var response = await sut.PostMessage(new ConversationMessageRequest("   "), CancellationToken.None);
 
@@ -163,4 +245,66 @@ public sealed class ConversationControllerTests
             return Task.FromResult(NextResult);
         }
     }
+
+    private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
+    {
+        public ConversationScope Current { get; private set; } = ConversationScope.Default;
+
+        public void Set(ConversationScope scope)
+        {
+            Current = scope;
+        }
+    }
+
+    private sealed class FakeAssistantSessionService : IAssistantSessionService
+    {
+        public IReadOnlyCollection<ConversationMessage> Messages => [];
+
+        public IReadOnlyCollection<ConversationMessage> History { get; set; } = [];
+
+        public IReadOnlyCollection<UserMemoryEntry> Memory { get; set; } = [];
+
+        public Task<AssistantCompletionResult> AskAsync(string userMessage, CancellationToken cancellationToken = default)
+            => Task.FromResult(new AssistantCompletionResult("ok", "test-model", null));
+
+        public Task<IReadOnlyCollection<ConversationMessage>> GetRecentHistoryAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult(History);
+
+        public Task<IReadOnlyCollection<UserMemoryEntry>> GetActiveMemoryAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult(Memory);
+
+        public Task<string> GetSystemPromptAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult("prompt");
+
+        public Task<IReadOnlyCollection<SystemPromptEntry>> GetSystemPromptHistoryAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyCollection<SystemPromptEntry>>([]);
+
+        public Task<IReadOnlyCollection<SystemPromptProposal>> GetSystemPromptProposalsAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyCollection<SystemPromptProposal>>([]);
+
+        public Task<SystemPromptProposal> CreateSystemPromptProposalAsync(
+            string prompt,
+            string reason,
+            double confidence,
+            string source = "manual",
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new SystemPromptProposal());
+
+        public Task<SystemPromptProposal> GenerateSystemPromptProposalAsync(string goal, CancellationToken cancellationToken = default)
+            => Task.FromResult(new SystemPromptProposal());
+
+        public Task<string> ApplySystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
+            => Task.FromResult("prompt");
+
+        public Task RejectSystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<string> SetSystemPromptAsync(string prompt, string source = "manual", CancellationToken cancellationToken = default)
+            => Task.FromResult(prompt);
+
+        public void Reset()
+        {
+        }
+    }
 }
+
