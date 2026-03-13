@@ -33,7 +33,7 @@ internal static partial class Program
     {
         if (command.Equals(ConsoleCommands.Help, StringComparison.OrdinalIgnoreCase))
         {
-            PrintHelp();
+            PrintHelp(vocabularySaveModePreferenceService, vocabularySessionPreferenceService);
             return CommandHandlingResult.Continue(saveMode);
         }
 

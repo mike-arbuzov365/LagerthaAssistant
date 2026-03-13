@@ -1,5 +1,6 @@
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.Agents;
+using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.UI.Constants;
 
 namespace LagerthaAssistant.UI;
@@ -36,9 +37,14 @@ internal static partial class Program
         Console.WriteLine();
     }
 
-    private static void PrintHelp()
+    private static void PrintHelp(
+        IVocabularySaveModePreferenceService saveModePreferenceService,
+        IVocabularySessionPreferenceService sessionPreferenceService)
     {
         var promptSetWithText = $"{ConsoleCommands.PromptSet} <text>";
+        var saveModes = string.Join("|", saveModePreferenceService.SupportedModes);
+        var storageModes = string.Join("|", sessionPreferenceService.SupportedStorageModes);
+
         var systemPromptExcludedCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             promptSetWithText
@@ -70,19 +76,16 @@ internal static partial class Program
 
         Console.WriteLine();
         Console.WriteLine("Saving");
-        WriteCommandHelp(ConsoleCommands.Save, "Show current save mode (ask|auto|off).");
-        WriteCommandHelp("/save mode ask", "Ask before every save (default). Stored in DB.");
-        WriteCommandHelp("/save mode auto", "Save automatically without confirmation. Stored in DB.");
-        WriteCommandHelp("/save mode off", "Never save automatically. Stored in DB.");
+        WriteCommandHelp(ConsoleCommands.Save, $"Show current save mode ({saveModes}).");
+        WriteCommandHelp($"{ConsoleCommands.SaveMode} <mode>", $"Set save mode. Supported: {saveModes}. Stored in DB.");
         Console.WriteLine("In ask mode, option 4 lets you pick another writable deck and override the POS marker.");
         Console.WriteLine("Custom save quick example: 4 -> choose deck number -> enter marker (e.g. prep) -> confirm.");
         Console.WriteLine("All interactive prompts accept digits and text (example: 1 or yes).");
 
         Console.WriteLine();
         Console.WriteLine("Storage");
-        WriteCommandHelp(ConsoleCommands.Storage, "Show current vocabulary storage mode (local|graph).");
-        WriteCommandHelp("/storage mode local", "Use local OneDrive-synced Excel files.");
-        WriteCommandHelp("/storage mode graph", "Use OneDrive via Microsoft Graph API.");
+        WriteCommandHelp(ConsoleCommands.Storage, $"Show current vocabulary storage mode ({storageModes}).");
+        WriteCommandHelp($"{ConsoleCommands.StorageMode} <mode>", $"Set storage mode. Supported: {storageModes}.");
 
         Console.WriteLine();
         Console.WriteLine("Graph integration");
