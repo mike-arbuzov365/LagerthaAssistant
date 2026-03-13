@@ -12,6 +12,12 @@ public interface IGraphAuthService
         Func<GraphDeviceCodePrompt, CancellationToken, Task> onDeviceCodeReceived,
         CancellationToken cancellationToken = default);
 
+    Task<GraphDeviceLoginStartResult> StartLoginAsync(CancellationToken cancellationToken = default);
+
+    Task<GraphLoginResult> CompleteLoginAsync(
+        GraphDeviceLoginChallenge challenge,
+        CancellationToken cancellationToken = default);
+
     Task LogoutAsync(CancellationToken cancellationToken = default);
 
     Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default);

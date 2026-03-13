@@ -190,6 +190,8 @@ curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/reject
 curl -X POST "http://localhost:5000/api/conversation/reset?channel=api&userId=anonymous&conversationId=default"
 curl http://localhost:5000/api/graph/status
 curl -X POST http://localhost:5000/api/graph/login
+curl -X POST http://localhost:5000/api/graph/login/start
+curl -X POST http://localhost:5000/api/graph/login/complete -H "Content-Type: application/json" -d "{\"challenge\":{\"deviceCode\":\"<device-code>\",\"userCode\":\"<user-code>\",\"verificationUri\":\"https://www.microsoft.com/link\",\"expiresInSeconds\":900,\"intervalSeconds\":5,\"expiresAtUtc\":\"2026-03-20T10:15:00Z\"}}"
 curl -X POST http://localhost:5000/api/graph/logout
 curl -X POST http://localhost:5000/api/vocabulary/analyze -H "Content-Type: application/json" -d "{\"input\":\"void\",\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\",\"storageMode\":\"local\"}"
 curl -X POST http://localhost:5000/api/vocabulary/analyze-batch -H "Content-Type: application/json" -d "{\"inputs\":[\"void\",\"call back\"],\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\",\"storageMode\":\"graph\"}"
@@ -247,6 +249,8 @@ Command catalog endpoints (for external clients):
 - `POST /api/conversation/reset?channel=api&userId=anonymous&conversationId=default` (reset conversation for exact scope)
 - `GET /api/graph/status` (get Graph authentication status)
 - `POST /api/graph/login` (start Graph device-code login and return fresh auth status)
+- `POST /api/graph/login/start` (start two-phase Graph device-code flow and return device challenge payload)
+- `POST /api/graph/login/complete` (complete two-phase device-code login using returned challenge payload)
 - `POST /api/graph/logout` (clear Graph token cache and return fresh auth status)
 - `POST /api/vocabulary/analyze` (process one vocabulary item using scoped conversation context)
 - `POST /api/vocabulary/analyze-batch` (process multiple items sequentially in one scope)

@@ -1,5 +1,6 @@
 namespace LagerthaAssistant.IntegrationTests.Services;
 
+using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Infrastructure.Options;
 using LagerthaAssistant.Infrastructure.Services.Vocabulary;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -47,5 +48,48 @@ public sealed class GraphAuthServiceTests
         Assert.False(result.Succeeded);
         Assert.Contains("not configured", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.False(callbackInvoked);
+    }
+
+    [Fact]
+    public async Task StartLoginAsync_ShouldReportNotConfigured_WhenClientIdIsMissing()
+    {
+        var sut = new GraphAuthService(
+            new GraphOptions
+            {
+                ClientId = string.Empty,
+                TenantId = "common"
+            },
+            NullLogger<GraphAuthService>.Instance);
+
+        var result = await sut.StartLoginAsync();
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("not configured", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(result.Challenge);
+    }
+
+    [Fact]
+    public async Task CompleteLoginAsync_ShouldReportNotConfigured_WhenClientIdIsMissing()
+    {
+        var sut = new GraphAuthService(
+            new GraphOptions
+            {
+                ClientId = string.Empty,
+                TenantId = "common"
+            },
+            NullLogger<GraphAuthService>.Instance);
+
+        var result = await sut.CompleteLoginAsync(
+            new GraphDeviceLoginChallenge(
+                DeviceCode: "device-code",
+                UserCode: "ABCD-EFGH",
+                VerificationUri: "https://www.microsoft.com/link",
+                ExpiresInSeconds: 900,
+                IntervalSeconds: 5,
+                ExpiresAtUtc: DateTimeOffset.UtcNow.AddMinutes(10),
+                Message: null));
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("not configured", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 }
