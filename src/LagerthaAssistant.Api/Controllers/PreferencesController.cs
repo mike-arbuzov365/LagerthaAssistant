@@ -1,4 +1,4 @@
-﻿using LagerthaAssistant.Api.Contracts;
+using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
@@ -36,8 +36,7 @@ public sealed class PreferencesController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
 
         var mode = await _saveModePreferenceService.GetModeAsync(scope, cancellationToken);
         return Ok(BuildSaveModeResponse(mode));
@@ -60,8 +59,7 @@ public sealed class PreferencesController : ControllerBase
             return BadRequest($"Unsupported mode '{request.Mode}'. Use ask, auto, or off.");
         }
 
-        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, request.Channel, request.UserId, request.ConversationId);
 
         await _saveModePreferenceService.SetModeAsync(scope, mode, cancellationToken);
         return Ok(BuildSaveModeResponse(mode));
@@ -75,8 +73,7 @@ public sealed class PreferencesController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
 
         var session = await _sessionPreferenceService.GetAsync(scope, cancellationToken);
         _storageModeProvider.SetMode(session.StorageMode);
@@ -125,8 +122,7 @@ public sealed class PreferencesController : ControllerBase
             parsedStorageMode = storageMode;
         }
 
-        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, request.Channel, request.UserId, request.ConversationId);
 
         var session = await _sessionPreferenceService.SetAsync(scope, parsedSaveMode, parsedStorageMode, cancellationToken);
         _storageModeProvider.SetMode(session.StorageMode);

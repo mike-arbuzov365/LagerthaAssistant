@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
@@ -32,8 +32,7 @@ public sealed class SessionController : ControllerBase
         [FromQuery] bool includeDecks = false,
         CancellationToken cancellationToken = default)
     {
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
 
         var options = new ConversationBootstrapOptions(
             IncludeCommandGroups: includeCommands,

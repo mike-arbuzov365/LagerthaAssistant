@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.AI;
@@ -62,8 +62,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
 
         var normalizedTake = Math.Max(1, take);
         var history = await _assistantSessionService.GetRecentHistoryAsync(normalizedTake, cancellationToken);
@@ -87,8 +86,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
 
         var normalizedTake = Math.Max(1, take);
         var memory = await _assistantSessionService.GetActiveMemoryAsync(normalizedTake, cancellationToken);
@@ -278,8 +276,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? userId = null,
         [FromQuery] string? conversationId = null)
     {
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
         _assistantSessionService.Reset();
 
         return Ok(new ConversationActionResponse(
@@ -298,8 +295,7 @@ public sealed class ConversationController : ControllerBase
             return BadRequest("Input is required.");
         }
 
-        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, request.Channel, request.UserId, request.ConversationId);
 
         var applyMode = await ApiVocabularyStorageModeApplier.TryApplyAsync(
             _storageModeProvider,

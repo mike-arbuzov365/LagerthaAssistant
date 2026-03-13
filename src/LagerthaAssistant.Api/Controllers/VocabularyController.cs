@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
@@ -57,8 +57,7 @@ public sealed class VocabularyController : ControllerBase
             return BadRequest("Input is required.");
         }
 
-        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, request.Channel, request.UserId, request.ConversationId);
 
         var applyMode = await ApiVocabularyStorageModeApplier.TryApplyAsync(
             _storageModeProvider,
@@ -102,8 +101,7 @@ public sealed class VocabularyController : ControllerBase
             return BadRequest("At least one non-empty input is required.");
         }
 
-        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, request.Channel, request.UserId, request.ConversationId);
 
         var applyMode = await ApiVocabularyStorageModeApplier.TryApplyAsync(
             _storageModeProvider,
@@ -147,8 +145,7 @@ public sealed class VocabularyController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
 
         var mode = await _storagePreferenceService.GetModeAsync(scope, cancellationToken);
         _storageModeProvider.SetMode(mode);
@@ -173,8 +170,7 @@ public sealed class VocabularyController : ControllerBase
             return BadRequest($"Unsupported mode '{request.Mode}'. Use local or graph.");
         }
 
-        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, request.Channel, request.UserId, request.ConversationId);
 
         await _storagePreferenceService.SetModeAsync(scope, mode, cancellationToken);
         _storageModeProvider.SetMode(mode);
@@ -192,8 +188,7 @@ public sealed class VocabularyController : ControllerBase
         [FromQuery] string? storageMode = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
 
         var applyMode = await ApiVocabularyStorageModeApplier.TryApplyAsync(
             _storageModeProvider,
@@ -238,8 +233,7 @@ public sealed class VocabularyController : ControllerBase
             return BadRequest("At least one item is required.");
         }
 
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
 
         var applyMode = await ApiVocabularyStorageModeApplier.TryApplyAsync(
             _storageModeProvider,
@@ -332,8 +326,7 @@ public sealed class VocabularyController : ControllerBase
             return BadRequest("AssistantReply is required.");
         }
 
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
 
         var applyMode = await ApiVocabularyStorageModeApplier.TryApplyAsync(
             _storageModeProvider,
