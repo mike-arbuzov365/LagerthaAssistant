@@ -37,6 +37,7 @@ Batch smart-paste mode:
 - Parser auto-detects entries by line, tab, `;`, and sentence boundaries (`.`, `!`, `?`) for single-line paste.
 - For one-line space-separated text without separators, app can ask whether to keep one phrase or split by spaces.
 - Items are processed sequentially.
+- Duplicate items inside one batch are computed once and reused for repeated entries in the same request/session step.
 - In `ask` mode app prompts once at the end to save all, review targets, or skip.
 
 Irregular verbs are supported via a dedicated deck (for example `beat - beat - beaten`). Duplicate lookup matches by any form (base/past/participle).
