@@ -51,21 +51,35 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
             .Select(input => input.Trim())
             .ToList();
 
+        if (normalizedInputs.Count == 0)
+        {
+            return [];
+        }
+
         var indexedLookups = _vocabularyIndexService is null
             ? null
             : await _vocabularyIndexService.FindByInputsAsync(normalizedInputs, cancellationToken);
 
         var results = new List<VocabularyWorkflowItemResult>(normalizedInputs.Count);
+        var perInputCache = new Dictionary<string, VocabularyWorkflowItemResult>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var input in normalizedInputs)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            if (perInputCache.TryGetValue(input, out var cached))
+            {
+                results.Add(CloneForInput(cached, input));
+                continue;
+            }
+
             if (indexedLookups is not null
                 && indexedLookups.TryGetValue(input, out var indexedLookup)
                 && indexedLookup.Found)
             {
-                results.Add(new VocabularyWorkflowItemResult(input, indexedLookup));
+                var indexedResult = new VocabularyWorkflowItemResult(input, indexedLookup);
+                perInputCache[input] = indexedResult;
+                results.Add(indexedResult);
                 continue;
             }
 
@@ -75,6 +89,7 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
                 overridePartOfSpeech: null,
                 skipIndexLookup: indexedLookups is not null,
                 cancellationToken);
+            perInputCache[input] = result;
             results.Add(result);
         }
 
@@ -124,5 +139,26 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
             cancellationToken);
 
         return new VocabularyWorkflowItemResult(normalizedInput, lookup, completion, preview);
+    }
+
+    private static VocabularyWorkflowItemResult CloneForInput(
+        VocabularyWorkflowItemResult source,
+        string input)
+    {
+        if (source.Input.Equals(input, StringComparison.Ordinal)
+            && source.Lookup.Query.Equals(input, StringComparison.Ordinal))
+        {
+            return source;
+        }
+
+        var lookup = source.Lookup.Query.Equals(input, StringComparison.Ordinal)
+            ? source.Lookup
+            : source.Lookup with { Query = input };
+
+        return source with
+        {
+            Input = input,
+            Lookup = lookup
+        };
     }
 }
