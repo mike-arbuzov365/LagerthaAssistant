@@ -90,7 +90,7 @@ internal static partial class Program
 
         if (command.Equals(ConsoleCommands.SaveMode, StringComparison.OrdinalIgnoreCase))
         {
-            Console.WriteLine("Usage: /save mode ask|auto|off");
+            Console.WriteLine(BuildSaveModeUsage(vocabularySaveModePreferenceService));
             PrintCurrentSaveMode(vocabularySaveModePreferenceService, saveMode);
             return CommandHandlingResult.Continue(saveMode);
         }
@@ -100,7 +100,7 @@ internal static partial class Program
             var modeText = command[ConsoleCommands.SaveMode.Length..].Trim();
             if (!vocabularySaveModePreferenceService.TryParse(modeText, out var updatedSaveMode))
             {
-                Console.WriteLine("Usage: /save mode ask|auto|off");
+                Console.WriteLine(BuildSaveModeUsage(vocabularySaveModePreferenceService));
                 return CommandHandlingResult.Continue(saveMode);
             }
 
@@ -120,7 +120,7 @@ internal static partial class Program
 
         if (command.Equals(ConsoleCommands.StorageMode, StringComparison.OrdinalIgnoreCase))
         {
-            Console.WriteLine("Usage: /storage mode local|graph");
+            Console.WriteLine(BuildStorageModeUsage(vocabularySessionPreferenceService));
             PrintCurrentStorageMode(vocabularyStorageModeProvider, vocabularyStorageModeProvider.CurrentMode);
             return CommandHandlingResult.Continue(saveMode);
         }
@@ -130,7 +130,7 @@ internal static partial class Program
             var modeText = command[ConsoleCommands.StorageMode.Length..].Trim();
             if (!vocabularyStorageModeProvider.TryParse(modeText, out var updatedStorageMode))
             {
-                Console.WriteLine("Usage: /storage mode local|graph");
+                Console.WriteLine(BuildStorageModeUsage(vocabularySessionPreferenceService));
                 return CommandHandlingResult.Continue(saveMode);
             }
 
@@ -223,5 +223,17 @@ internal static partial class Program
         }
 
         return CommandHandlingResult.NotHandled(saveMode);
+    }
+
+    private static string BuildSaveModeUsage(IVocabularySaveModePreferenceService saveModePreferenceService)
+    {
+        var modes = saveModePreferenceService.SupportedModes;
+        return $"Usage: {ConsoleCommands.SaveMode} {string.Join("|", modes)}";
+    }
+
+    private static string BuildStorageModeUsage(IVocabularySessionPreferenceService sessionPreferenceService)
+    {
+        var modes = sessionPreferenceService.SupportedStorageModes;
+        return $"Usage: {ConsoleCommands.StorageMode} {string.Join("|", modes)}";
     }
 }
