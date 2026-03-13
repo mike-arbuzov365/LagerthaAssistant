@@ -4,7 +4,7 @@ using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 
-public sealed class VocabularyConversationAgent : IConversationAgent
+public sealed class VocabularyConversationAgent : IConversationAgent, IConversationAgentProfile
 {
     private readonly IVocabularyWorkflowService _workflowService;
 
@@ -16,6 +16,12 @@ public sealed class VocabularyConversationAgent : IConversationAgent
     public string Name => "vocabulary-agent";
 
     public int Order => 100;
+
+    public ConversationAgentRole Role => ConversationAgentRole.Vocabulary;
+
+    public bool SupportsSlashCommands => false;
+
+    public bool SupportsBatchInputs => true;
 
     public bool CanHandle(ConversationAgentContext context)
         => true;

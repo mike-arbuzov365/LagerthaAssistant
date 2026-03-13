@@ -32,6 +32,7 @@ public static class ApplicationServiceCollectionExtensions
 
         services.AddSingleton<IConversationIntentRouter, ConversationIntentRouter>();
         services.AddSingleton<IConversationCommandCatalogService, ConversationCommandCatalogService>();
+        services.AddSingleton<IConversationAgentBoundaryPolicy, ConversationAgentBoundaryPolicy>();
         services.AddScoped<IConversationOrchestrator, ConversationOrchestrator>();
         services.AddScoped<IConversationBootstrapService, ConversationBootstrapService>();
         services.AddScoped<IConversationMetricsService, ConversationMetricsService>();

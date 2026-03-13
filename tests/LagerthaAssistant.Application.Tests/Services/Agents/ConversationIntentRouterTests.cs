@@ -30,7 +30,9 @@ public sealed class ConversationIntentRouterTests
             { ConversationSlashCommands.PromptProposals, ConversationCommandIntentType.PromptProposals },
             { ConversationSlashCommands.Sync, ConversationCommandIntentType.SyncStatus },
             { ConversationSlashCommands.SyncStatus, ConversationCommandIntentType.SyncStatus },
+            { ConversationSlashCommands.SyncFailed, ConversationCommandIntentType.SyncFailed },
             { ConversationSlashCommands.SyncRun, ConversationCommandIntentType.SyncRun },
+            { ConversationSlashCommands.SyncRetryFailed, ConversationCommandIntentType.SyncRetryFailed },
             { ConversationSlashCommands.Reset, ConversationCommandIntentType.ResetConversation }
         };
 
@@ -48,6 +50,16 @@ public sealed class ConversationIntentRouterTests
         if (expectedType == ConversationCommandIntentType.SyncRun)
         {
             Assert.Equal(ConversationCommandDefaults.SyncRunTake, intent.Number);
+        }
+
+        if (expectedType == ConversationCommandIntentType.SyncFailed)
+        {
+            Assert.Equal(ConversationCommandDefaults.SyncFailedPreviewTake, intent.Number);
+        }
+
+        if (expectedType == ConversationCommandIntentType.SyncRetryFailed)
+        {
+            Assert.Equal(ConversationCommandDefaults.SyncRetryFailedTake, intent.Number);
         }
     }
 
@@ -161,6 +173,42 @@ public sealed class ConversationIntentRouterTests
         Assert.True(handled);
         Assert.Equal(ConversationCommandIntentType.SyncRun, intent.Type);
         Assert.Equal(15, intent.Number);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseNaturalSyncFailedIntent()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("show failed sync jobs", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.SyncFailed, intent.Type);
+        Assert.Equal(ConversationCommandDefaults.SyncFailedPreviewTake, intent.Number);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseNaturalSyncRetryFailedIntentWithNumber()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("retry failed sync 12", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.SyncRetryFailed, intent.Type);
+        Assert.Equal(12, intent.Number);
+    }
+
+    [Fact]
+    public void TryResolve_ShouldParseSlashSyncRetryFailedWithNumber()
+    {
+        var sut = new ConversationIntentRouter();
+
+        var handled = sut.TryResolve("/sync retry failed 8", out var intent);
+
+        Assert.True(handled);
+        Assert.Equal(ConversationCommandIntentType.SyncRetryFailed, intent.Type);
+        Assert.Equal(8, intent.Number);
     }
 
     [Fact]

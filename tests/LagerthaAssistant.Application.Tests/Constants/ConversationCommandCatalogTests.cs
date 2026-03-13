@@ -22,8 +22,11 @@ public sealed class ConversationCommandCatalogTests
             { $"{ConversationSlashCommands.PromptReject} <id>", ConversationCommandCategories.PromptProposals },
             { ConversationSlashCommands.Sync, ConversationCommandCategories.SyncQueue },
             { ConversationSlashCommands.SyncStatus, ConversationCommandCategories.SyncQueue },
+            { ConversationSlashCommands.SyncFailed, ConversationCommandCategories.SyncQueue },
             { ConversationSlashCommands.SyncRun, ConversationCommandCategories.SyncQueue },
             { $"{ConversationSlashCommands.SyncRun} <n>", ConversationCommandCategories.SyncQueue },
+            { ConversationSlashCommands.SyncRetryFailed, ConversationCommandCategories.SyncQueue },
+            { $"{ConversationSlashCommands.SyncRetryFailed} <n>", ConversationCommandCategories.SyncQueue },
             { ConversationSlashCommands.Reset, ConversationCommandCategories.Session }
         };
 
@@ -87,8 +90,11 @@ public sealed class ConversationCommandCatalogTests
             $"{ConversationSlashCommands.PromptReject} <id>",
             ConversationSlashCommands.Sync,
             ConversationSlashCommands.SyncStatus,
+            ConversationSlashCommands.SyncFailed,
             ConversationSlashCommands.SyncRun,
             $"{ConversationSlashCommands.SyncRun} <n>",
+            ConversationSlashCommands.SyncRetryFailed,
+            $"{ConversationSlashCommands.SyncRetryFailed} <n>",
             ConversationSlashCommands.Reset
         };
 

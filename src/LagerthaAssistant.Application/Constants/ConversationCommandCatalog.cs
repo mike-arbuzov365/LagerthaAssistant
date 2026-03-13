@@ -20,8 +20,11 @@ public static class ConversationCommandCatalog
         new($"{ConversationSlashCommands.PromptReject} <id>", "Reject a prompt proposal.", ConversationCommandCategories.PromptProposals),
         new(ConversationSlashCommands.Sync, "Show pending sync jobs.", ConversationCommandCategories.SyncQueue),
         new(ConversationSlashCommands.SyncStatus, "Alias for sync status.", ConversationCommandCategories.SyncQueue),
+        new(ConversationSlashCommands.SyncFailed, "Show recent failed sync jobs.", ConversationCommandCategories.SyncQueue),
         new(ConversationSlashCommands.SyncRun, "Run pending sync jobs with default batch size.", ConversationCommandCategories.SyncQueue),
         new($"{ConversationSlashCommands.SyncRun} <n>", "Run up to <n> pending sync jobs.", ConversationCommandCategories.SyncQueue),
+        new(ConversationSlashCommands.SyncRetryFailed, "Requeue failed sync jobs with default batch size.", ConversationCommandCategories.SyncQueue),
+        new($"{ConversationSlashCommands.SyncRetryFailed} <n>", "Requeue up to <n> failed sync jobs.", ConversationCommandCategories.SyncQueue),
         new(ConversationSlashCommands.Reset, "Reset conversation context.", ConversationCommandCategories.Session)
     ];
 

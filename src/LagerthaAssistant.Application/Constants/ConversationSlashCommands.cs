@@ -18,7 +18,9 @@ public static class ConversationSlashCommands
 
     public const string Sync = "/sync";
     public const string SyncStatus = "/sync status";
+    public const string SyncFailed = "/sync failed";
     public const string SyncRun = "/sync run";
+    public const string SyncRetryFailed = "/sync retry failed";
 
     public const string Reset = "/reset";
 }

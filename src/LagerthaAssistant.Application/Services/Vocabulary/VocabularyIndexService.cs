@@ -177,7 +177,8 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
             return;
         }
 
-        if (appendResult.Status == VocabularyAppendStatus.Error && IsRecoverableWriteFailure(appendResult.Message))
+        if (appendResult.Status == VocabularyAppendStatus.Error
+            && VocabularyWriteFailurePolicy.ShouldQueueAfterInitialAppendError(appendResult.Message))
         {
             var targetDeck = !string.IsNullOrWhiteSpace(targetDeckFileName)
                 ? targetDeckFileName.Trim()
@@ -185,21 +186,43 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
 
             if (!string.IsNullOrWhiteSpace(targetDeck))
             {
-                await _syncJobRepository.AddAsync(new VocabularySyncJob
+                var normalizedRequestedWord = requestedWord.Trim();
+                var normalizedOverridePartOfSpeech = NormalizeOptionalPartOfSpeech(overridePartOfSpeech);
+
+                var existingActiveJob = await _syncJobRepository.FindActiveDuplicateAsync(
+                    normalizedRequestedWord,
+                    assistantReply.Trim(),
+                    targetDeck,
+                    storageModeText,
+                    normalizedOverridePartOfSpeech,
+                    cancellationToken);
+
+                if (existingActiveJob is null)
                 {
-                    RequestedWord = requestedWord.Trim(),
-                    AssistantReply = assistantReply,
-                    TargetDeckFileName = targetDeck,
-                    TargetDeckPath = appendResult.Entry?.DeckPath,
-                    OverridePartOfSpeech = overridePartOfSpeech,
-                    StorageMode = storageModeText,
-                    Status = VocabularySyncJobStatus.Pending,
-                    AttemptCount = 0,
-                    LastError = appendResult.Message,
-                    CreatedAtUtc = now,
-                    LastAttemptAtUtc = null,
-                    CompletedAtUtc = null
-                }, cancellationToken);
+                    await _syncJobRepository.AddAsync(new VocabularySyncJob
+                    {
+                        RequestedWord = normalizedRequestedWord,
+                        AssistantReply = assistantReply.Trim(),
+                        TargetDeckFileName = targetDeck,
+                        TargetDeckPath = appendResult.Entry?.DeckPath,
+                        OverridePartOfSpeech = normalizedOverridePartOfSpeech,
+                        StorageMode = storageModeText,
+                        Status = VocabularySyncJobStatus.Pending,
+                        AttemptCount = 0,
+                        LastError = appendResult.Message,
+                        CreatedAtUtc = now,
+                        LastAttemptAtUtc = null,
+                        CompletedAtUtc = null
+                    }, cancellationToken);
+                }
+                else
+                {
+                    existingActiveJob.LastError = appendResult.Message;
+                    if (string.IsNullOrWhiteSpace(existingActiveJob.TargetDeckPath))
+                    {
+                        existingActiveJob.TargetDeckPath = appendResult.Entry?.DeckPath;
+                    }
+                }
 
                 if (_replyParser.TryParse(assistantReply, out var parsed) && parsed is not null)
                 {
@@ -233,7 +256,7 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
         if (appendResult.Status == VocabularyAppendStatus.Error)
         {
             _logger.LogWarning(
-                "Vocabulary append failed and will not be queued because error is not recoverable. Message: {Message}",
+                "Vocabulary append failed and will not be queued by policy. Message: {Message}",
                 appendResult.Message);
         }
     }
@@ -430,18 +453,17 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
         return null;
     }
 
-    private static bool IsRecoverableWriteFailure(string? message)
+    private static string? NormalizeOptionalPartOfSpeech(string? overridePartOfSpeech)
     {
-        if (string.IsNullOrWhiteSpace(message))
+        if (string.IsNullOrWhiteSpace(overridePartOfSpeech))
         {
-            return false;
+            return null;
         }
 
-        return message.Contains("open in another app", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("currently in use", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("file is locked", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("locked right now", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("version conflict", StringComparison.OrdinalIgnoreCase);
+        var normalized = NormalizeToken(overridePartOfSpeech);
+        return string.IsNullOrWhiteSpace(normalized)
+            ? null
+            : normalized;
     }
 
     private static IReadOnlyList<string> BuildTokens(params string?[] values)

@@ -267,6 +267,45 @@ The function returns void when there is no value to return
         Assert.Equal(1, unitOfWork.SaveCalls);
     }
 
+    [Fact]
+    public async Task HandleAppendResultAsync_ShouldReuseActivePendingJob_WhenDuplicateQueuedJobExists()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        syncRepo.Jobs.Add(new VocabularySyncJob
+        {
+            RequestedWord = "void",
+            AssistantReply = "void\n\n(n) emptiness",
+            TargetDeckFileName = "wm-nouns-ua-en.xlsx",
+            StorageMode = "local",
+            OverridePartOfSpeech = null,
+            Status = VocabularySyncJobStatus.Pending,
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-3)
+        });
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var errorResult = new VocabularyAppendResult(
+            VocabularyAppendStatus.Error,
+            Message: "Failed to append vocabulary card: file is open in another app.");
+
+        await sut.HandleAppendResultAsync(
+            "void",
+            "void\n\n(n) emptiness",
+            "wm-nouns-ua-en.xlsx",
+            null,
+            errorResult,
+            VocabularyStorageMode.Local);
+
+        Assert.Single(syncRepo.Jobs);
+        var job = syncRepo.Jobs[0];
+        Assert.Equal(VocabularySyncJobStatus.Pending, job.Status);
+        Assert.Contains("open in another app", job.LastError ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class FakeVocabularyCardRepository : IVocabularyCardRepository
     {
         public List<VocabularyCard> Cards { get; } = [];
@@ -327,10 +366,84 @@ The function returns void when there is no value to return
             return Task.FromResult<IReadOnlyList<VocabularySyncJob>>(pending);
         }
 
+        public Task<IReadOnlyList<VocabularySyncJob>> ClaimPendingAsync(
+            int take,
+            DateTimeOffset claimedAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            var pending = Jobs
+                .Where(job => job.Status == VocabularySyncJobStatus.Pending)
+                .OrderBy(job => job.CreatedAtUtc)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            foreach (var job in pending)
+            {
+                job.Status = VocabularySyncJobStatus.Processing;
+                job.AttemptCount += 1;
+                job.LastAttemptAtUtc = claimedAtUtc;
+            }
+
+            return Task.FromResult<IReadOnlyList<VocabularySyncJob>>(pending);
+        }
+
+        public Task<VocabularySyncJob?> FindActiveDuplicateAsync(
+            string requestedWord,
+            string assistantReply,
+            string targetDeckFileName,
+            string storageMode,
+            string? overridePartOfSpeech,
+            CancellationToken cancellationToken = default)
+        {
+            var job = Jobs.FirstOrDefault(x =>
+                (x.Status == VocabularySyncJobStatus.Pending || x.Status == VocabularySyncJobStatus.Processing)
+                && x.RequestedWord == requestedWord
+                && x.AssistantReply == assistantReply
+                && x.TargetDeckFileName == targetDeckFileName
+                && x.StorageMode == storageMode
+                && x.OverridePartOfSpeech == overridePartOfSpeech);
+
+            return Task.FromResult(job);
+        }
+
         public Task<int> CountPendingAsync(CancellationToken cancellationToken = default)
         {
             var count = Jobs.Count(job => job.Status == VocabularySyncJobStatus.Pending);
             return Task.FromResult(count);
+        }
+
+        public Task<IReadOnlyList<VocabularySyncJob>> GetFailedAsync(int take, CancellationToken cancellationToken = default)
+        {
+            var failed = Jobs
+                .Where(job => job.Status == VocabularySyncJobStatus.Failed)
+                .OrderByDescending(job => job.LastAttemptAtUtc ?? job.CreatedAtUtc)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            return Task.FromResult<IReadOnlyList<VocabularySyncJob>>(failed);
+        }
+
+        public Task<int> RequeueFailedAsync(
+            int take,
+            DateTimeOffset requeuedAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            var failed = Jobs
+                .Where(job => job.Status == VocabularySyncJobStatus.Failed)
+                .OrderByDescending(job => job.LastAttemptAtUtc ?? job.CreatedAtUtc)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            foreach (var job in failed)
+            {
+                job.Status = VocabularySyncJobStatus.Pending;
+                job.AttemptCount = 0;
+                job.LastError = null;
+                job.LastAttemptAtUtc = null;
+                job.CompletedAtUtc = null;
+            }
+
+            return Task.FromResult(failed.Count);
         }
     }
 

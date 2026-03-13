@@ -20,6 +20,10 @@ Console AI assistant prototype built with Clean Architecture and SQL Server pers
 - Vocabulary workflow with Excel (`.xlsx`) decks in two storage modes:
   - `local` (direct filesystem access)
   - `graph` (OneDrive via Microsoft Graph)
+- Agent orchestration boundaries:
+  - command intent is resolved once in orchestrator and reused by agents,
+  - boundary policy blocks vocabulary agent from slash commands and command intents,
+  - command agent is marked as non-batch to keep tool responsibilities isolated.
 
 ## Vocabulary workflow
 
@@ -56,6 +60,9 @@ SQL index + sync queue:
 - App stores indexed vocabulary records in SQL Server (`VocabularyCards`, `VocabularyCardTokens`) for fast duplicate lookup before Excel scan.
 - Excel/OneDrive remains the final export source for your mobile app workflow.
 - If write to Excel fails due lock/conflict, app stores a pending sync job in SQL (`VocabularySyncJobs`) so data is not lost and can be retried by worker flow.
+- Pending sync jobs are deduplicated by payload for active states (`pending`/`processing`) to reduce queue spam from repeated save attempts.
+- Sync processors claim pending jobs before execution to avoid double-processing when UI/API/manual runs overlap.
+- Recoverable failures are retried up to 8 attempts; after the limit the job is marked `failed` with terminal error details.
 
 ## Configuration
 
@@ -125,6 +132,7 @@ Notes:
 - Keep `Enabled=false` by default; turn on when you want automatic retry of pending sync jobs.
 - Worker applies exponential backoff on runtime failures up to `MaxBackoffSeconds` (`BackoffFactor` controls growth).
 - Manual processing is available from UI commands (`/sync`, `/sync run`) and API endpoints.
+- Worker/manual runs use the same queue claim logic, so concurrent runs do not process the same pending job twice.
 
 ### Microsoft Entra quick setup
 
@@ -175,6 +183,8 @@ curl http://localhost:5000/health
 curl -X POST http://localhost:5000/api/conversation/messages -H "Content-Type: application/json" -d "{\"input\":\"void\"}"
 curl http://localhost:5000/api/vocabulary-sync/status
 curl -X POST "http://localhost:5000/api/vocabulary-sync/run?take=25"
+curl "http://localhost:5000/api/vocabulary-sync/failed?take=20"
+curl -X POST "http://localhost:5000/api/vocabulary-sync/retry-failed?take=25"
 curl "http://localhost:5000/api/telemetry/intents?days=7&top=20&channel=api"
 curl http://localhost:5000/api/conversation/commands
 curl http://localhost:5000/api/conversation/commands/grouped
@@ -229,7 +239,9 @@ For `POST /api/conversation/messages`, you can send natural language command-lik
 - `show system prompt`
 - `reset prompt to default`
 - `sync status`
+- `show failed sync jobs`
 - `run sync 25`
+- `retry failed sync 10`
 - `reset conversation`
 
 Slash command forms are also supported through the same command-agent path, including:
@@ -263,6 +275,8 @@ Command catalog endpoints (for external clients):
 - `POST /api/graph/login/start` (start two-phase Graph device-code flow and return device challenge payload)
 - `POST /api/graph/login/complete` (complete two-phase device-code login using returned challenge payload)
 - `POST /api/graph/logout` (clear Graph token cache and return fresh auth status)
+- `GET /api/vocabulary-sync/failed?take=20` (list recent failed sync jobs)
+- `POST /api/vocabulary-sync/retry-failed?take=25` (move failed jobs back to pending with reset attempts)
 - `GET /api/preferences/save-mode` (get scoped save mode preference and available values)
 - `PUT /api/preferences/save-mode` (set scoped save mode preference to one of available values)
 - `GET /api/preferences/session` (get combined scoped preferences: save mode + storage mode)
@@ -311,8 +325,11 @@ Use `/help` to see full command reference in the console.
 - `/graph logout`
 - `/sync`
 - `/sync status`
+- `/sync failed`
 - `/sync run`
 - `/sync run <n>`
+- `/sync retry failed`
+- `/sync retry failed <n>`
 - `/prompt`
 - `/prompt default`
 - `/prompt history`

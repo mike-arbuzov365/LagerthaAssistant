@@ -15,7 +15,9 @@ public enum ConversationCommandIntentType
     PromptApply,
     PromptReject,
     SyncStatus,
+    SyncFailed,
     SyncRun,
+    SyncRetryFailed,
     ResetConversation,
     Unsupported
 }

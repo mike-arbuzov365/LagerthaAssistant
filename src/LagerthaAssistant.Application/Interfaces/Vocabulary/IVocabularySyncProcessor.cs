@@ -7,4 +7,8 @@ public interface IVocabularySyncProcessor
     Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default);
 
     Task<VocabularySyncRunSummary> ProcessPendingAsync(int take, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<VocabularySyncFailedJob>> GetFailedJobsAsync(int take, CancellationToken cancellationToken = default);
+
+    Task<int> RequeueFailedAsync(int take, CancellationToken cancellationToken = default);
 }

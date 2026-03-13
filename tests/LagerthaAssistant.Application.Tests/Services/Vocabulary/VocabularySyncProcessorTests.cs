@@ -70,7 +70,7 @@ public sealed class VocabularySyncProcessorTests
         Assert.Equal(1, deckModeService.Calls);
         Assert.Equal(VocabularyStorageMode.Local, deckModeService.LastMode);
         Assert.Equal(1, indexService.Calls);
-        Assert.Equal(2, unitOfWork.SaveCalls);
+        Assert.Equal(1, unitOfWork.SaveCalls);
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public sealed class VocabularySyncProcessorTests
         Assert.Equal(1, deckModeService.Calls);
         Assert.Equal(VocabularyStorageMode.Graph, deckModeService.LastMode);
         Assert.Equal(0, indexService.Calls);
-        Assert.Equal(2, unitOfWork.SaveCalls);
+        Assert.Equal(1, unitOfWork.SaveCalls);
     }
 
     [Fact]
@@ -165,13 +165,142 @@ public sealed class VocabularySyncProcessorTests
 
         var job = Assert.Single(repository.Jobs);
         Assert.Equal(VocabularySyncJobStatus.Failed, job.Status);
-        Assert.Equal(0, job.AttemptCount);
+        Assert.Equal(1, job.AttemptCount);
         Assert.NotNull(job.LastAttemptAtUtc);
         Assert.Contains("Unknown storage mode", job.LastError ?? string.Empty, StringComparison.Ordinal);
 
         Assert.Equal(0, deckModeService.Calls);
         Assert.Equal(0, indexService.Calls);
         Assert.Equal(1, unitOfWork.SaveCalls);
+    }
+
+    [Fact]
+    public async Task ProcessPendingAsync_ShouldFailJob_WhenRecoverableErrorReachedRetryLimit()
+    {
+        var repository = new FakeVocabularySyncJobRepository();
+        var deckModeService = new FakeVocabularyDeckModeService
+        {
+            AppendResult = new VocabularyAppendResult(
+                VocabularyAppendStatus.Error,
+                Message: "Failed to append vocabulary card: file is open in another app.")
+        };
+
+        var indexService = new FakeVocabularyIndexService();
+        var storageModeProvider = new FakeStorageModeProvider();
+        var unitOfWork = new FakeUnitOfWork();
+
+        repository.Jobs.Add(new VocabularySyncJob
+        {
+            RequestedWord = "void",
+            AssistantReply = "void",
+            TargetDeckFileName = "wm-nouns-ua-en.xlsx",
+            StorageMode = "local",
+            Status = VocabularySyncJobStatus.Pending,
+            AttemptCount = 7,
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        });
+
+        var sut = new VocabularySyncProcessor(
+            repository,
+            deckModeService,
+            indexService,
+            storageModeProvider,
+            unitOfWork,
+            NullLogger<VocabularySyncProcessor>.Instance);
+
+        var summary = await sut.ProcessPendingAsync(10);
+
+        Assert.Equal(1, summary.Requested);
+        Assert.Equal(1, summary.Processed);
+        Assert.Equal(0, summary.Completed);
+        Assert.Equal(0, summary.Requeued);
+        Assert.Equal(1, summary.Failed);
+        Assert.Equal(0, summary.PendingAfterRun);
+
+        var job = Assert.Single(repository.Jobs);
+        Assert.Equal(VocabularySyncJobStatus.Failed, job.Status);
+        Assert.Equal(8, job.AttemptCount);
+        Assert.Contains("Retry limit reached", job.LastError ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetFailedJobsAsync_ShouldReturnMappedFailedJobs()
+    {
+        var repository = new FakeVocabularySyncJobRepository();
+        var deckModeService = new FakeVocabularyDeckModeService();
+        var indexService = new FakeVocabularyIndexService();
+        var storageModeProvider = new FakeStorageModeProvider();
+        var unitOfWork = new FakeUnitOfWork();
+
+        repository.Jobs.Add(new VocabularySyncJob
+        {
+            Id = 11,
+            RequestedWord = "void",
+            AssistantReply = "void",
+            TargetDeckFileName = "wm-nouns-ua-en.xlsx",
+            StorageMode = "local",
+            Status = VocabularySyncJobStatus.Failed,
+            AttemptCount = 8,
+            LastError = "Retry limit reached",
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-2),
+            LastAttemptAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1)
+        });
+
+        var sut = new VocabularySyncProcessor(
+            repository,
+            deckModeService,
+            indexService,
+            storageModeProvider,
+            unitOfWork,
+            NullLogger<VocabularySyncProcessor>.Instance);
+
+        var failed = await sut.GetFailedJobsAsync(25);
+
+        var item = Assert.Single(failed);
+        Assert.Equal(11, item.Id);
+        Assert.Equal("void", item.RequestedWord);
+        Assert.Equal("wm-nouns-ua-en.xlsx", item.TargetDeckFileName);
+        Assert.Equal("local", item.StorageMode);
+        Assert.Equal(8, item.AttemptCount);
+    }
+
+    [Fact]
+    public async Task RequeueFailedAsync_ShouldResetFailedJobsToPending()
+    {
+        var repository = new FakeVocabularySyncJobRepository();
+        var deckModeService = new FakeVocabularyDeckModeService();
+        var indexService = new FakeVocabularyIndexService();
+        var storageModeProvider = new FakeStorageModeProvider();
+        var unitOfWork = new FakeUnitOfWork();
+
+        repository.Jobs.Add(new VocabularySyncJob
+        {
+            RequestedWord = "void",
+            AssistantReply = "void",
+            TargetDeckFileName = "wm-nouns-ua-en.xlsx",
+            StorageMode = "local",
+            Status = VocabularySyncJobStatus.Failed,
+            AttemptCount = 8,
+            LastError = "Retry limit reached",
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        });
+
+        var sut = new VocabularySyncProcessor(
+            repository,
+            deckModeService,
+            indexService,
+            storageModeProvider,
+            unitOfWork,
+            NullLogger<VocabularySyncProcessor>.Instance);
+
+        var requeued = await sut.RequeueFailedAsync(10);
+
+        Assert.Equal(1, requeued);
+        Assert.Equal(1, unitOfWork.SaveCalls);
+        var job = Assert.Single(repository.Jobs);
+        Assert.Equal(VocabularySyncJobStatus.Pending, job.Status);
+        Assert.Equal(0, job.AttemptCount);
+        Assert.Null(job.LastError);
     }
 
     private sealed class FakeVocabularySyncJobRepository : IVocabularySyncJobRepository
@@ -195,10 +324,84 @@ public sealed class VocabularySyncProcessorTests
             return Task.FromResult<IReadOnlyList<VocabularySyncJob>>(pending);
         }
 
+        public Task<IReadOnlyList<VocabularySyncJob>> ClaimPendingAsync(
+            int take,
+            DateTimeOffset claimedAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            var pending = Jobs
+                .Where(job => job.Status == VocabularySyncJobStatus.Pending)
+                .OrderBy(job => job.CreatedAtUtc)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            foreach (var job in pending)
+            {
+                job.Status = VocabularySyncJobStatus.Processing;
+                job.AttemptCount += 1;
+                job.LastAttemptAtUtc = claimedAtUtc;
+            }
+
+            return Task.FromResult<IReadOnlyList<VocabularySyncJob>>(pending);
+        }
+
+        public Task<VocabularySyncJob?> FindActiveDuplicateAsync(
+            string requestedWord,
+            string assistantReply,
+            string targetDeckFileName,
+            string storageMode,
+            string? overridePartOfSpeech,
+            CancellationToken cancellationToken = default)
+        {
+            var job = Jobs.FirstOrDefault(x =>
+                (x.Status == VocabularySyncJobStatus.Pending || x.Status == VocabularySyncJobStatus.Processing)
+                && x.RequestedWord == requestedWord
+                && x.AssistantReply == assistantReply
+                && x.TargetDeckFileName == targetDeckFileName
+                && x.StorageMode == storageMode
+                && x.OverridePartOfSpeech == overridePartOfSpeech);
+
+            return Task.FromResult(job);
+        }
+
         public Task<int> CountPendingAsync(CancellationToken cancellationToken = default)
         {
             var count = Jobs.Count(job => job.Status == VocabularySyncJobStatus.Pending);
             return Task.FromResult(count);
+        }
+
+        public Task<IReadOnlyList<VocabularySyncJob>> GetFailedAsync(int take, CancellationToken cancellationToken = default)
+        {
+            var failed = Jobs
+                .Where(job => job.Status == VocabularySyncJobStatus.Failed)
+                .OrderByDescending(job => job.LastAttemptAtUtc ?? job.CreatedAtUtc)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            return Task.FromResult<IReadOnlyList<VocabularySyncJob>>(failed);
+        }
+
+        public Task<int> RequeueFailedAsync(
+            int take,
+            DateTimeOffset requeuedAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            var failed = Jobs
+                .Where(job => job.Status == VocabularySyncJobStatus.Failed)
+                .OrderByDescending(job => job.LastAttemptAtUtc ?? job.CreatedAtUtc)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            foreach (var job in failed)
+            {
+                job.Status = VocabularySyncJobStatus.Pending;
+                job.AttemptCount = 0;
+                job.LastError = null;
+                job.LastAttemptAtUtc = null;
+                job.CompletedAtUtc = null;
+            }
+
+            return Task.FromResult(failed.Count);
         }
     }
 
