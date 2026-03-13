@@ -1,8 +1,10 @@
 namespace LagerthaAssistant.UI.Constants;
 
+using LagerthaAssistant.Application.Constants;
+
 public static class ConsoleCommands
 {
-    public const string Help = "/help";
+    public const string Help = ConversationSlashCommands.Help;
     public const string Batch = "/batch";
 
     public const string Save = "/save";
@@ -15,20 +17,25 @@ public static class ConsoleCommands
     public const string GraphLogin = "/graph login";
     public const string GraphLogout = "/graph logout";
 
-    public const string Sync = "/sync";
-    public const string SyncStatus = "/sync status";
-    public const string SyncRun = "/sync run";
+    public const string Sync = ConversationSlashCommands.Sync;
+    public const string SyncStatus = ConversationSlashCommands.SyncStatus;
+    public const string SyncRun = ConversationSlashCommands.SyncRun;
 
     public const string Exit = "/exit";
-    public const string Reset = "/reset";
+    public const string Reset = ConversationSlashCommands.Reset;
 
-    public const string History = "/history";
-    public const string Memory = "/memory";
+    public const string History = ConversationSlashCommands.History;
+    public const string Memory = ConversationSlashCommands.Memory;
 
-    public const string Prompt = "/prompt";
-    public const string PromptDefault = "/prompt default";
-    public const string PromptHistory = "/prompt history";
-    public const string PromptProposals = "/prompt proposals";
+    public const string Prompt = ConversationSlashCommands.Prompt;
+    public const string PromptDefault = ConversationSlashCommands.PromptDefault;
+    public const string PromptHistory = ConversationSlashCommands.PromptHistory;
+    public const string PromptProposals = ConversationSlashCommands.PromptProposals;
+    public const string PromptSet = ConversationSlashCommands.PromptSet;
+    public const string PromptPropose = ConversationSlashCommands.PromptPropose;
+    public const string PromptImprove = ConversationSlashCommands.PromptImprove;
+    public const string PromptApply = ConversationSlashCommands.PromptApply;
+    public const string PromptReject = ConversationSlashCommands.PromptReject;
 
     public const int HistoryPreviewTake = 20;
     public const int MemoryPreviewTake = 20;

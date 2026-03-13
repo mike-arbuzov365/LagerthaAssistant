@@ -1,6 +1,7 @@
 namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
 using LagerthaAssistant.Application.Interfaces.Agents;
+using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Models.Agents;
@@ -21,7 +22,10 @@ public sealed class ConversationOrchestratorTests
             new VocabularyConversationAgent(workflow)
         };
 
-        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor());
 
         var result = await sut.ProcessAsync("/help");
 
@@ -46,7 +50,10 @@ public sealed class ConversationOrchestratorTests
             new VocabularyConversationAgent(workflow)
         };
 
-        var sut = new ConversationOrchestrator(agents, NullLogger<ConversationOrchestrator>.Instance);
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor());
 
         var result = await sut.ProcessAsync("void");
 
@@ -72,6 +79,7 @@ public sealed class ConversationOrchestratorTests
         var sut = new ConversationOrchestrator(
             agents,
             NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor(),
             metrics);
 
         var result = await sut.ProcessAsync("void", "ui");
@@ -97,12 +105,37 @@ public sealed class ConversationOrchestratorTests
         var sut = new ConversationOrchestrator(
             agents,
             NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor(),
             metrics);
 
         _ = await sut.ProcessAsync("void");
 
         var tracked = Assert.Single(metrics.Tracked);
         Assert.Equal("unknown", tracked.Channel);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ShouldSetScopeAccessor_WhenUserAndConversationProvided()
+    {
+        var workflow = new FakeVocabularyWorkflowService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+
+        var agents = new IConversationAgent[]
+        {
+            new FakeSlashCommandAgent(),
+            new VocabularyConversationAgent(workflow)
+        };
+
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            scopeAccessor);
+
+        _ = await sut.ProcessAsync("void", "api", "Mike", "chat-42");
+
+        Assert.Equal("api", scopeAccessor.Current.Channel);
+        Assert.Equal("mike", scopeAccessor.Current.UserId);
+        Assert.Equal("chat-42", scopeAccessor.Current.ConversationId);
     }
 
     private static VocabularyWorkflowItemResult BuildSingle(string input)
@@ -181,5 +214,15 @@ public sealed class ConversationOrchestratorTests
             => Task.FromResult<IReadOnlyList<ConversationIntentMetricSummary>>([]);
 
         public sealed record TrackedRow(string Channel, ConversationAgentResult Result);
+    }
+
+    private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
+    {
+        public ConversationScope Current { get; private set; } = ConversationScope.Default;
+
+        public void Set(ConversationScope scope)
+        {
+            Current = scope;
+        }
     }
 }

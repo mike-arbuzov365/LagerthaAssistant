@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 public static class VocabularyBatchInputParser
 {
     private static readonly Regex SentenceBoundaryRegex = new(@"(?<=[.!?])\s+", RegexOptions.Compiled);
-    private static readonly Regex ListPrefixRegex = new(@"^(?:[-*ï¿½]\s+|\d+[\.)]\s+)", RegexOptions.Compiled);
+    private static readonly Regex ListPrefixRegex = new(@"^(?:[-*\u2022]\s+|\d+[\.)]\s+)", RegexOptions.Compiled);
 
     public static IReadOnlyList<string> Parse(string rawInput)
     {

@@ -15,6 +15,18 @@ public sealed class ConversationSessionConfiguration : IEntityTypeConfiguration<
         builder.HasIndex(x => x.SessionKey)
             .IsUnique();
 
+        builder.Property(x => x.Channel)
+            .HasMaxLength(64)
+            .IsRequired();
+
+        builder.Property(x => x.UserId)
+            .HasMaxLength(128)
+            .IsRequired();
+
+        builder.Property(x => x.ConversationId)
+            .HasMaxLength(128)
+            .IsRequired();
+
         builder.Property(x => x.Title)
             .HasMaxLength(200);
 
@@ -24,10 +36,11 @@ public sealed class ConversationSessionConfiguration : IEntityTypeConfiguration<
         builder.Property(x => x.UpdatedAt)
             .IsRequired();
 
+        builder.HasIndex(x => new { x.Channel, x.UserId, x.ConversationId, x.UpdatedAt });
+
         builder.HasMany(x => x.Messages)
             .WithOne(x => x.ConversationSession)
             .HasForeignKey(x => x.ConversationSessionId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }
-

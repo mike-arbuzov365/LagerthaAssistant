@@ -7,6 +7,7 @@ using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Memory;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Models.AI;
+using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Memory;
 using LagerthaAssistant.Application.Services;
 using LagerthaAssistant.Domain.AI;
@@ -46,6 +47,36 @@ public sealed class AssistantSessionServiceTests
         Assert.Equal(1, fx.Uow.SaveCount);
         Assert.Equal(1, fx.Uow.CommitCount);
         Assert.Equal(0, fx.Uow.RollbackCount);
+    }
+
+    [Fact]
+    public async Task AskAsync_ShouldIsolateSessionAndMemoryByScope()
+    {
+        var fx = new Fixture();
+        fx.MemoryExtractor.Facts =
+        [
+            new MemoryFactCandidate(MemoryKeys.UserName, "Mike", 0.95)
+        ];
+
+        var sut = fx.CreateSut();
+
+        fx.ScopeAccessor.Set(ConversationScope.Create("api", "user-a", "chat-a"));
+        await sut.AskAsync("my name is Mike");
+
+        fx.MemoryExtractor.Facts =
+        [
+            new MemoryFactCandidate(MemoryKeys.UserName, "John", 0.95)
+        ];
+
+        fx.ScopeAccessor.Set(ConversationScope.Create("api", "user-b", "chat-b"));
+        await sut.AskAsync("my name is John");
+
+        Assert.Equal(2, fx.SessionRepo.Added.Count);
+        Assert.Contains(fx.SessionRepo.Added, x => x.Channel == "api" && x.UserId == "user-a" && x.ConversationId == "chat-a");
+        Assert.Contains(fx.SessionRepo.Added, x => x.Channel == "api" && x.UserId == "user-b" && x.ConversationId == "chat-b");
+
+        Assert.Contains(fx.MemoryRepo.Active, x => x.Channel == "api" && x.UserId == "user-a" && x.Key == MemoryKeys.UserName && x.Value == "Mike");
+        Assert.Contains(fx.MemoryRepo.Active, x => x.Channel == "api" && x.UserId == "user-b" && x.Key == MemoryKeys.UserName && x.Value == "John");
     }
 
     [Fact]
@@ -120,7 +151,7 @@ public sealed class AssistantSessionServiceTests
         fx.AiClient.NextContent = """
 undertake - undertook - undertaken
 
-(v) ??????? ?? ????, ???????? ??????????
+(v) take on something, begin executing
 
 The developer undertook the task of refactoring the legacy code.
 
@@ -132,8 +163,8 @@ She has undertaken to deliver the project by the end of the month.
         var result = await sut.AskAsync("undertake");
 
         Assert.StartsWith("undertake - undertook - undertaken", result.Content, StringComparison.Ordinal);
-        Assert.Contains("(iv) ??????? ?? ????, ???????? ??????????", result.Content, StringComparison.Ordinal);
-        Assert.DoesNotContain("(v) ??????? ?? ????", result.Content, StringComparison.Ordinal);
+        Assert.Contains("(iv) take on something, begin executing", result.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain("(v) take on something", result.Content, StringComparison.Ordinal);
 
         var nonEmptyLines = result.Content
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -171,7 +202,7 @@ We prepare the deployment scripts before the release.
         fx.AiClient.NextContent = """
 on the same page
 
-(v) мати спільне розуміння
+(v) share the same understanding
 
 We are on the same page about the release.
 """;
@@ -181,7 +212,7 @@ We are on the same page about the release.
         var result = await sut.AskAsync("on the same page");
 
         Assert.StartsWith("On the same page", result.Content, StringComparison.Ordinal);
-        Assert.Contains("(pe) мати спільне розуміння", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("(pe) share the same understanding", result.Content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("(pv)", result.Content, StringComparison.OrdinalIgnoreCase);
 
         var nonEmptyLines = result.Content
@@ -262,6 +293,7 @@ Please call back the client after the meeting.
         public FakeConversationMemoryExtractor MemoryExtractor { get; } = new();
         public FakeUnitOfWork Uow { get; } = new();
         public FakeClock Clock { get; } = new();
+        public FakeConversationScopeAccessor ScopeAccessor { get; } = new();
 
         public Fixture()
         {
@@ -291,6 +323,7 @@ Please call back the client after the meeting.
                 Uow,
                 new AssistantSessionOptions { SystemPrompt = "system prompt", MaxHistoryMessages = 20 },
                 Clock,
+                ScopeAccessor,
                 NullLogger<AssistantSessionService>.Instance);
         }
     }
@@ -327,17 +360,31 @@ Please call back the client after the meeting.
             return Task.FromResult(Latest);
         }
 
+        public Task<ConversationSession?> GetLatestAsync(
+            string channel,
+            string userId,
+            string conversationId,
+            CancellationToken cancellationToken = default)
+        {
+            var scoped = Added
+                .Where(x => x.Channel == channel && x.UserId == userId && x.ConversationId == conversationId)
+                .OrderByDescending(x => x.UpdatedAt)
+                .FirstOrDefault();
+
+            return Task.FromResult(scoped ?? Latest);
+        }
+
         public Task AddAsync(ConversationSession session, CancellationToken cancellationToken = default)
         {
             if (session.Id == 0)
             {
                 session.Id = Added.Count + 1;
             }
+
             Added.Add(session);
             return Task.CompletedTask;
         }
     }
-
     private sealed class FakeConversationHistoryRepository : IConversationHistoryRepository
     {
         public bool ThrowOnAdd { get; set; }
@@ -372,13 +419,31 @@ Please call back the client after the meeting.
         public readonly List<UserMemoryEntry> Active = [];
 
         public Task<UserMemoryEntry?> GetByKeyAsync(string key, CancellationToken cancellationToken = default)
+            => GetByKeyAsync(key, "unknown", "anonymous", cancellationToken);
+
+        public Task<UserMemoryEntry?> GetByKeyAsync(
+            string key,
+            string channel,
+            string userId,
+            CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(Active.FirstOrDefault(x => x.Key == key));
+            return Task.FromResult(Active.FirstOrDefault(x => x.Key == key && x.Channel == channel && x.UserId == userId));
         }
 
         public Task<IReadOnlyList<UserMemoryEntry>> GetActiveAsync(int take, CancellationToken cancellationToken = default)
+            => GetActiveAsync(take, "unknown", "anonymous", cancellationToken);
+
+        public Task<IReadOnlyList<UserMemoryEntry>> GetActiveAsync(
+            int take,
+            string channel,
+            string userId,
+            CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<IReadOnlyList<UserMemoryEntry>>(Active.Where(x => x.IsActive).Take(take).ToList());
+            return Task.FromResult<IReadOnlyList<UserMemoryEntry>>(
+                Active
+                    .Where(x => x.IsActive && x.Channel == channel && x.UserId == userId)
+                    .Take(take)
+                    .ToList());
         }
 
         public Task AddAsync(UserMemoryEntry entry, CancellationToken cancellationToken = default)
@@ -388,11 +453,20 @@ Please call back the client after the meeting.
                 entry.Id = Active.Count + 1;
             }
 
+            if (string.IsNullOrWhiteSpace(entry.Channel))
+            {
+                entry.Channel = "unknown";
+            }
+
+            if (string.IsNullOrWhiteSpace(entry.UserId))
+            {
+                entry.UserId = "anonymous";
+            }
+
             Active.Add(entry);
             return Task.CompletedTask;
         }
     }
-
     private sealed class FakeSystemPromptRepository : ISystemPromptRepository
     {
         public readonly List<SystemPromptEntry> Entries = [];
@@ -468,6 +542,15 @@ Please call back the client after the meeting.
         }
     }
 
+    private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
+    {
+        public ConversationScope Current { get; private set; } = ConversationScope.Default;
+
+        public void Set(ConversationScope scope)
+        {
+            Current = scope;
+        }
+    }
     private sealed class FakeUnitOfWork : IUnitOfWork
     {
         public int BeginCount { get; private set; }
@@ -504,6 +587,13 @@ Please call back the client after the meeting.
         }
     }
 }
+
+
+
+
+
+
+
 
 
 

@@ -100,6 +100,11 @@ Notes:
 - Run `/graph login` again only if `/graph status` says `Not authenticated` (or after `/graph logout`).
 - Open the exact sign-in URL printed by the app (in some tenants it is `https://www.microsoft.com/link`).
 
+UI scope overrides (optional):
+
+- `LAGERTHA_USER_ID` - override default UI user identity (otherwise OS username is used).
+- `LAGERTHA_CONVERSATION_ID` - override default UI conversation id (`main`).
+
 ### Background sync worker (API only)
 
 ```json
@@ -169,6 +174,25 @@ curl -X POST http://localhost:5000/api/conversation/messages -H "Content-Type: a
 curl http://localhost:5000/api/vocabulary-sync/status
 curl -X POST "http://localhost:5000/api/vocabulary-sync/run?take=25"
 curl "http://localhost:5000/api/telemetry/intents?days=7&top=20&channel=api"
+curl http://localhost:5000/api/conversation/commands
+curl http://localhost:5000/api/conversation/commands/grouped
+curl "http://localhost:5000/api/conversation/history?take=20&channel=api&userId=anonymous&conversationId=default"
+curl "http://localhost:5000/api/conversation/memory?take=20&channel=api&userId=anonymous&conversationId=default"
+curl http://localhost:5000/api/conversation/prompt
+curl "http://localhost:5000/api/conversation/prompt/history?take=20"
+curl "http://localhost:5000/api/conversation/prompt/proposals?take=20"
+curl -X PUT http://localhost:5000/api/conversation/prompt -H "Content-Type: application/json" -d "{\"prompt\":\"Keep replies concise\",\"source\":\"manual-api\"}"
+curl -X POST http://localhost:5000/api/conversation/prompt/default
+curl -X POST http://localhost:5000/api/conversation/prompt/proposals -H "Content-Type: application/json" -d "{\"prompt\":\"Focus on practical outputs\",\"reason\":\"reduce verbosity\"}"
+curl -X POST http://localhost:5000/api/conversation/prompt/proposals/improve -H "Content-Type: application/json" -d "{\"goal\":\"make outputs more practical\"}"
+curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/apply
+curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/reject
+curl -X POST "http://localhost:5000/api/conversation/reset?channel=api&userId=anonymous&conversationId=default"
+curl -X POST http://localhost:5000/api/vocabulary/analyze -H "Content-Type: application/json" -d "{\"input\":\"void\",\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
+curl -X POST http://localhost:5000/api/vocabulary/analyze-batch -H "Content-Type: application/json" -d "{\"inputs\":[\"void\",\"call back\"],\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
+curl -X POST http://localhost:5000/api/vocabulary/parse-batch -H "Content-Type: application/json" -d "{\"input\":\"void prepare\",\"applySpaceSplit\":false}"
+curl -X POST http://localhost:5000/api/vocabulary/save -H "Content-Type: application/json" -d "{\"requestedWord\":\"void\",\"assistantReply\":\"void\\n\\n(n) emptiness\"}"
+curl -X POST http://localhost:5000/api/vocabulary/save-batch -H "Content-Type: application/json" -d "{\"items\":[{\"requestedWord\":\"void\",\"assistantReply\":\"void\\n\\n(n) emptiness\"},{\"requestedWord\":\"prepare\",\"assistantReply\":\"prepare\\n\\n(v) готувати\"}]}"
 ```
 
 On startup both UI and API apply EF migrations automatically.
@@ -177,8 +201,9 @@ On startup both UI and API apply EF migrations automatically.
 
 For `POST /api/conversation/messages`, you can send natural language command-like requests (no slash required), for example:
 
-- Optional request field `channel` can be used for multi-channel clients (`api` by default).
-- Example request body: `{"input":"void","channel":"telegram"}`
+- Optional request fields: `channel`, `userId`, `conversationId`.
+- Defaults when omitted: `channel=api`, `userId=anonymous`, `conversationId=default`.
+- Example request body: `{"input":"void","channel":"telegram","userId":"mike","conversationId":"chat-42"}`
 
 - `show conversation history`
 - `show active memory`
@@ -187,6 +212,37 @@ For `POST /api/conversation/messages`, you can send natural language command-lik
 - `sync status`
 - `run sync 25`
 - `reset conversation`
+
+Slash command forms are also supported through the same command-agent path, including:
+
+- `/prompt history`
+- `/prompt proposals`
+- `/prompt set <text>`
+- `/prompt propose <reason> || <text>`
+- `/prompt improve <goal>`
+- `/prompt apply <id>`
+- `/prompt reject <id>`
+
+Command catalog endpoints (for external clients):
+- `GET /api/conversation/commands` (flat list: `category`, `command`, `description`)
+- `GET /api/conversation/commands/grouped` (grouped by category)
+- `GET /api/conversation/history?take=20&channel=api&userId=anonymous&conversationId=default` (recent history for exact scope)
+- `GET /api/conversation/memory?take=20&channel=api&userId=anonymous&conversationId=default` (active memory for exact scope)
+- `GET /api/conversation/prompt` (active system prompt)
+- `GET /api/conversation/prompt/history?take=20` (system prompt versions)
+- `GET /api/conversation/prompt/proposals?take=20` (pending/reviewed prompt proposals)
+- `PUT /api/conversation/prompt` (set active system prompt)
+- `POST /api/conversation/prompt/default` (reset system prompt to default)
+- `POST /api/conversation/prompt/proposals` (create manual prompt proposal)
+- `POST /api/conversation/prompt/proposals/improve` (generate AI prompt proposal)
+- `POST /api/conversation/prompt/proposals/{id}/apply` (apply proposal)
+- `POST /api/conversation/prompt/proposals/{id}/reject` (reject proposal)
+- `POST /api/conversation/reset?channel=api&userId=anonymous&conversationId=default` (reset conversation for exact scope)
+- `POST /api/vocabulary/analyze` (process one vocabulary item using scoped conversation context)
+- `POST /api/vocabulary/analyze-batch` (process multiple items sequentially in one scope)
+- `POST /api/vocabulary/parse-batch` (parse raw batch text and return split hints for clients)
+- `POST /api/vocabulary/save` (append parsed assistant reply to selected deck)
+- `POST /api/vocabulary/save-batch` (append multiple assistant replies in one request with per-item result)
 
 Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
 

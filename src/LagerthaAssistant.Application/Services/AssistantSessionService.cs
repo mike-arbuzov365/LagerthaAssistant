@@ -8,6 +8,7 @@ using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Memory;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Models.AI;
+using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Domain.AI;
 using LagerthaAssistant.Domain.Abstractions;
 using LagerthaAssistant.Domain.Constants;
@@ -44,12 +45,14 @@ public sealed class AssistantSessionService : IAssistantSessionService
     private readonly IUnitOfWork _unitOfWork;
     private readonly AssistantSessionOptions _options;
     private readonly IClock _clock;
+    private readonly IConversationScopeAccessor _scopeAccessor;
     private readonly ILogger<AssistantSessionService> _logger;
 
     private readonly Conversation _conversation;
     private string _currentSystemPrompt;
     private Guid _sessionKey = Guid.NewGuid();
     private ConversationSession? _session;
+    private ConversationScope _activeScope = ConversationScope.Default;
     private bool _isInitialized;
     private bool _isSystemPromptLoaded;
 
@@ -64,6 +67,7 @@ public sealed class AssistantSessionService : IAssistantSessionService
         IUnitOfWork unitOfWork,
         AssistantSessionOptions options,
         IClock clock,
+        IConversationScopeAccessor scopeAccessor,
         ILogger<AssistantSessionService> logger)
     {
         _aiChatClient = aiChatClient;
@@ -76,6 +80,7 @@ public sealed class AssistantSessionService : IAssistantSessionService
         _unitOfWork = unitOfWork;
         _options = options;
         _clock = clock;
+        _scopeAccessor = scopeAccessor;
         _logger = logger;
         _currentSystemPrompt = _options.SystemPrompt;
         _conversation = new Conversation(_currentSystemPrompt, _clock);
@@ -85,6 +90,7 @@ public sealed class AssistantSessionService : IAssistantSessionService
 
     public async Task<AssistantCompletionResult> AskAsync(string userMessage, CancellationToken cancellationToken = default)
     {
+        EnsureScope();
         await EnsureInitializedAsync(_options.MaxHistoryMessages, cancellationToken);
 
         _conversation.AddUserMessage(userMessage, _clock);
@@ -138,6 +144,7 @@ public sealed class AssistantSessionService : IAssistantSessionService
         int take,
         CancellationToken cancellationToken = default)
     {
+        EnsureScope();
         var normalizedTake = Math.Max(ConversationRules.MinMessagesToKeep, take);
         await EnsureInitializedAsync(normalizedTake, cancellationToken);
 
@@ -157,8 +164,9 @@ public sealed class AssistantSessionService : IAssistantSessionService
         int take,
         CancellationToken cancellationToken = default)
     {
+        EnsureScope();
         var normalizedTake = Math.Max(1, take);
-        var memories = await _userMemoryRepository.GetActiveAsync(normalizedTake, cancellationToken);
+        var memories = await _userMemoryRepository.GetActiveAsync(normalizedTake, _activeScope.Channel, _activeScope.UserId, cancellationToken);
         return memories;
     }
 
@@ -909,6 +917,21 @@ public sealed class AssistantSessionService : IAssistantSessionService
             .ToList();
     }
 
+    private void EnsureScope()
+    {
+        var requestedScope = _scopeAccessor.Current;
+        if (_activeScope == requestedScope)
+        {
+            return;
+        }
+
+        _activeScope = requestedScope;
+        _conversation.Reset(_currentSystemPrompt, _clock);
+        _sessionKey = Guid.NewGuid();
+        _session = null;
+        _isInitialized = false;
+    }
+
     private async Task EnsureInitializedAsync(int historyBootstrapTake, CancellationToken cancellationToken)
     {
         await EnsureSystemPromptLoadedAsync(cancellationToken);
@@ -918,7 +941,7 @@ public sealed class AssistantSessionService : IAssistantSessionService
             return;
         }
 
-        _session = await _sessionRepository.GetLatestAsync(cancellationToken);
+        _session = await _sessionRepository.GetLatestAsync(_activeScope.Channel, _activeScope.UserId, _activeScope.ConversationId, cancellationToken);
         if (_session is null)
         {
             _isInitialized = true;
@@ -1008,7 +1031,12 @@ public sealed class AssistantSessionService : IAssistantSessionService
             return _session;
         }
 
-        _session = ConversationSession.Create(_sessionKey, $"Session {_clock.UtcNow:yyyy-MM-dd HH:mm:ss}");
+        _session = ConversationSession.Create(
+            _sessionKey,
+            $"Session {_clock.UtcNow:yyyy-MM-dd HH:mm:ss}",
+            _activeScope.Channel,
+            _activeScope.UserId,
+            _activeScope.ConversationId);
         await _sessionRepository.AddAsync(_session, cancellationToken);
 
         return _session;
@@ -1020,7 +1048,7 @@ public sealed class AssistantSessionService : IAssistantSessionService
 
         foreach (var fact in facts)
         {
-            var existing = await _userMemoryRepository.GetByKeyAsync(fact.Key, cancellationToken);
+            var existing = await _userMemoryRepository.GetByKeyAsync(fact.Key, _activeScope.Channel, _activeScope.UserId, cancellationToken);
 
             if (existing is null)
             {
@@ -1030,7 +1058,9 @@ public sealed class AssistantSessionService : IAssistantSessionService
                     Value = fact.Value,
                     Confidence = fact.Confidence,
                     IsActive = true,
-                    LastSeenAtUtc = _clock.UtcNow
+                    LastSeenAtUtc = _clock.UtcNow,
+                    Channel = _activeScope.Channel,
+                    UserId = _activeScope.UserId
                 }, cancellationToken);
 
                 continue;
@@ -1045,7 +1075,7 @@ public sealed class AssistantSessionService : IAssistantSessionService
 
     private async Task<IReadOnlyCollection<ConversationMessage>> BuildContextMessagesAsync(CancellationToken cancellationToken)
     {
-        var memories = await _userMemoryRepository.GetActiveAsync(MemoryContextConstants.MemoryContextTake, cancellationToken);
+        var memories = await _userMemoryRepository.GetActiveAsync(MemoryContextConstants.MemoryContextTake, _activeScope.Channel, _activeScope.UserId, cancellationToken);
         if (memories.Count == 0)
         {
             return _conversation.Messages;
@@ -1063,4 +1093,5 @@ public sealed class AssistantSessionService : IAssistantSessionService
         return messages;
     }
 }
+
 

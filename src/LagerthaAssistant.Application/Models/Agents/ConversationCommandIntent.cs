@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.Application.Models.Agents;
+namespace LagerthaAssistant.Application.Models.Agents;
 
 public enum ConversationCommandIntentType
 {
@@ -7,6 +7,13 @@ public enum ConversationCommandIntentType
     Memory,
     PromptShow,
     PromptResetDefault,
+    PromptHistory,
+    PromptProposals,
+    PromptSet,
+    PromptPropose,
+    PromptImprove,
+    PromptApply,
+    PromptReject,
     SyncStatus,
     SyncRun,
     ResetConversation,
@@ -16,4 +23,6 @@ public enum ConversationCommandIntentType
 public sealed record ConversationCommandIntent(
     ConversationCommandIntentType Type,
     int? Number = null,
-    string? Raw = null);
+    string? Raw = null,
+    string? Argument = null,
+    string? Argument2 = null);

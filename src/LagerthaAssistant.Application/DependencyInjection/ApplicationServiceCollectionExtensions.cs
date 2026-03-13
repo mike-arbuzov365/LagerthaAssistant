@@ -2,6 +2,7 @@ namespace LagerthaAssistant.Application.DependencyInjection;
 
 using Microsoft.Extensions.DependencyInjection;
 using LagerthaAssistant.Application.Interfaces.AI;
+using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Memory;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Interfaces.Agents;
@@ -16,9 +17,11 @@ public static class ApplicationServiceCollectionExtensions
     public static IServiceCollection AddApplication(this IServiceCollection services, AssistantSessionOptions options)
     {
         services.AddSingleton(options);
+        services.AddScoped<IConversationScopeAccessor, ConversationScopeAccessor>();
         services.AddScoped<IAssistantSessionService, AssistantSessionService>();
         services.AddSingleton<IConversationMemoryExtractor, ConversationMemoryExtractor>();
         services.AddSingleton<IVocabularyReplyParser, VocabularyReplyParser>();
+        services.AddSingleton<IVocabularyBatchInputService, VocabularyBatchInputService>();
         services.AddScoped<IVocabularyIndexService, VocabularyIndexService>();
         services.AddScoped<IVocabularyWorkflowService, VocabularyWorkflowService>();
         services.AddScoped<IVocabularyPersistenceService, VocabularyPersistenceService>();
@@ -33,4 +36,3 @@ public static class ApplicationServiceCollectionExtensions
         return services;
     }
 }
-

@@ -12,6 +12,14 @@ public sealed class UserMemoryEntryConfiguration : IEntityTypeConfiguration<User
 
         builder.HasKey(x => x.Id);
 
+        builder.Property(x => x.Channel)
+            .HasMaxLength(64)
+            .IsRequired();
+
+        builder.Property(x => x.UserId)
+            .HasMaxLength(128)
+            .IsRequired();
+
         builder.Property(x => x.Key)
             .HasMaxLength(128)
             .IsRequired();
@@ -35,10 +43,9 @@ public sealed class UserMemoryEntryConfiguration : IEntityTypeConfiguration<User
         builder.Property(x => x.UpdatedAt)
             .IsRequired();
 
-        builder.HasIndex(x => x.Key)
+        builder.HasIndex(x => new { x.Channel, x.UserId, x.Key })
             .IsUnique();
 
-        builder.HasIndex(x => new { x.IsActive, x.UpdatedAt });
+        builder.HasIndex(x => new { x.Channel, x.UserId, x.IsActive, x.UpdatedAt });
     }
 }
-

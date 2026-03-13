@@ -60,4 +60,24 @@ public sealed class VocabularyBatchInputParserTests
 
         Assert.Equal(["void", "prepare", "call back"], items);
     }
+
+    [Fact]
+    public void Parse_ShouldStripUnicodeBulletPrefix()
+    {
+        const string raw = "\u2022 void\n\u2022 prepare\n\u2022 call back";
+
+        var items = VocabularyBatchInputParser.Parse(raw);
+
+        Assert.Equal(["void", "prepare", "call back"], items);
+    }
+
+    [Fact]
+    public void Parse_ShouldStripOrderedListPrefixWithDot()
+    {
+        const string raw = "1. void\n2. prepare\n3. call back";
+
+        var items = VocabularyBatchInputParser.Parse(raw);
+
+        Assert.Equal(["void", "prepare", "call back"], items);
+    }
 }

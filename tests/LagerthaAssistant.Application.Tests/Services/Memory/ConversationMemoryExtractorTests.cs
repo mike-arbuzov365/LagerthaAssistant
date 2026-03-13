@@ -52,7 +52,7 @@ public sealed class ConversationMemoryExtractorTests
     [Fact]
     public void ExtractFromUserMessage_ShouldNotThrowOnRandomUnicode()
     {
-        var message = "\u30c6\u30b9\u30c8 \u043f\u0440\u0438\u0432\u0435\u0442 ????? ??";
+        var message = "\u30c6\u30b9\u30c8 \u043f\u0440\u0438\u0432\u0435\u0442 \u0441\u0432\u0456\u0442 \u2705";
 
         var exception = Record.Exception(() => _sut.ExtractFromUserMessage(message));
 
