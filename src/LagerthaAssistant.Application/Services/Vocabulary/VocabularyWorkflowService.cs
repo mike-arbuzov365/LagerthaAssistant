@@ -60,8 +60,23 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
             ? null
             : await _vocabularyIndexService.FindByInputsAsync(normalizedInputs, cancellationToken);
 
+        var unresolvedInputs = normalizedInputs
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(input => indexedLookups is null
+                || !indexedLookups.TryGetValue(input, out var indexedLookup)
+                || !indexedLookup.Found)
+            .ToList();
+
+        IReadOnlyDictionary<string, VocabularyLookupResult>? deckLookups = null;
+        if (unresolvedInputs.Count > 0
+            && _vocabularyDeckService is IVocabularyBatchDeckLookupService batchDeckLookupService)
+        {
+            deckLookups = await batchDeckLookupService.FindInWritableDecksBatchAsync(unresolvedInputs, cancellationToken);
+        }
+
         var results = new List<VocabularyWorkflowItemResult>(normalizedInputs.Count);
         var perInputCache = new Dictionary<string, VocabularyWorkflowItemResult>(StringComparer.OrdinalIgnoreCase);
+        var mode = _storageModeProvider?.CurrentMode ?? VocabularyStorageMode.Local;
 
         foreach (var input in normalizedInputs)
         {
@@ -80,6 +95,28 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
                 var indexedResult = new VocabularyWorkflowItemResult(input, indexedLookup);
                 perInputCache[input] = indexedResult;
                 results.Add(indexedResult);
+                continue;
+            }
+
+            if (deckLookups is not null
+                && deckLookups.TryGetValue(input, out var deckLookup))
+            {
+                if (deckLookup.Found)
+                {
+                    if (_vocabularyIndexService is not null)
+                    {
+                        await _vocabularyIndexService.IndexLookupResultAsync(deckLookup, mode, cancellationToken);
+                    }
+
+                    var deckResult = new VocabularyWorkflowItemResult(input, deckLookup);
+                    perInputCache[input] = deckResult;
+                    results.Add(deckResult);
+                    continue;
+                }
+
+                var aiResult = await BuildAiResultAsync(input, cancellationToken);
+                perInputCache[input] = aiResult;
+                results.Add(aiResult);
                 continue;
             }
 
@@ -136,6 +173,22 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
             completion.Content,
             forcedDeckFileName,
             overridePartOfSpeech,
+            cancellationToken);
+
+        return new VocabularyWorkflowItemResult(normalizedInput, lookup, completion, preview);
+    }
+
+    private async Task<VocabularyWorkflowItemResult> BuildAiResultAsync(
+        string normalizedInput,
+        CancellationToken cancellationToken)
+    {
+        var lookup = new VocabularyLookupResult(normalizedInput, []);
+        var completion = await _assistantSessionService.AskAsync(normalizedInput, cancellationToken);
+        var preview = await _vocabularyDeckService.PreviewAppendFromAssistantReplyAsync(
+            normalizedInput,
+            completion.Content,
+            forcedDeckFileName: null,
+            overridePartOfSpeech: null,
             cancellationToken);
 
         return new VocabularyWorkflowItemResult(normalizedInput, lookup, completion, preview);

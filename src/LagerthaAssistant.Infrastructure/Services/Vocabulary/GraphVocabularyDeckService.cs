@@ -6,7 +6,7 @@ using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Infrastructure.Options;
 using Microsoft.Extensions.Logging;
 
-public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IAsyncDisposable
+public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IVocabularyBatchDeckLookupBackend, IAsyncDisposable
 {
     private readonly VocabularyDeckOptions _options;
     private readonly IVocabularyReplyParser _replyParser;
@@ -56,6 +56,44 @@ public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IAsyncD
         {
             _logger.LogWarning(ex, "Graph lookup failed. Returning empty result.");
             return new VocabularyLookupResult(normalizedWord, []);
+        }
+        finally
+        {
+            _operationSync.Release();
+        }
+    }
+
+    public async Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindInWritableDecksBatchAsync(
+        IReadOnlyList<string> words,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(words);
+
+        var batchWords = words
+            .Where(word => !string.IsNullOrWhiteSpace(word))
+            .Select(word => word.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (batchWords.Count == 0)
+        {
+            return new Dictionary<string, VocabularyLookupResult>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        await _operationSync.WaitAsync(cancellationToken);
+        try
+        {
+            var mirror = await GetOrCreateMirrorAsync(cancellationToken);
+            return await mirror.LocalService.FindInWritableDecksBatchAsync(batchWords, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Graph batch lookup failed. Returning empty results.");
+
+            return batchWords.ToDictionary(
+                word => word,
+                word => new VocabularyLookupResult(word, []),
+                StringComparer.OrdinalIgnoreCase);
         }
         finally
         {

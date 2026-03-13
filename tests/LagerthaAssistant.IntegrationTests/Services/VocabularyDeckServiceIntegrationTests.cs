@@ -111,6 +111,99 @@ public sealed class VocabularyDeckServiceIntegrationTests
     }
 
     [Fact]
+    public async Task FindInWritableDecksBatchAsync_ShouldReturnMatchesForMultipleInputs()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var irregularPath = Path.Combine(tempDir, "wm-irregular-verbs-ua-en.xlsx");
+            var verbsPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
+            CreateTemplateWorkbook(irregularPath, "be - was, were - been", "(iv) be", "We were online all day.");
+            CreateTemplateWorkbook(verbsPath, "prepare", "(v) prepare", "We prepare the release checklist.");
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                VerbDeckFileName = "wm-verbs-us-en.xlsx",
+                IrregularVerbDeckFileName = "wm-irregular-verbs-ua-en.xlsx",
+                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+            var batchLookup = (IVocabularyBatchDeckLookupBackend)sut;
+
+            var results = await batchLookup.FindInWritableDecksBatchAsync(["were", "prepare", "nonexistent"]);
+
+            Assert.Equal(3, results.Count);
+            Assert.True(results["were"].Found);
+            Assert.True(results["prepare"].Found);
+            Assert.False(results["nonexistent"].Found);
+
+            var irregular = Assert.Single(results["were"].Matches);
+            var verb = Assert.Single(results["prepare"].Matches);
+            Assert.Equal("be - was, were - been", irregular.Word);
+            Assert.Equal("prepare", verb.Word);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task FindInWritableDecksBatchAsync_ShouldPreserveOriginalInputKey_WithDashVariants()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var irregularPath = Path.Combine(tempDir, "wm-irregular-verbs-ua-en.xlsx");
+            CreateTemplateWorkbook(
+                irregularPath,
+                "undertake - undertook - undertaken",
+                "(iv) take on something",
+                "The team undertook a redesign.");
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                IrregularVerbDeckFileName = "wm-irregular-verbs-ua-en.xlsx",
+                FallbackDeckFileName = "wm-irregular-verbs-ua-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+            var batchLookup = (IVocabularyBatchDeckLookupBackend)sut;
+
+            const string input = "undertake \u2013 undertook \u2014 undertaken";
+            var results = await batchLookup.FindInWritableDecksBatchAsync([input]);
+
+            Assert.Single(results);
+            Assert.True(results.TryGetValue(input, out var lookup));
+            Assert.NotNull(lookup);
+            Assert.True(lookup.Found);
+            var match = Assert.Single(lookup.Matches);
+            Assert.Equal("undertake - undertook - undertaken", match.Word);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task AppendFromAssistantReplyAsync_ShouldRouteIrregularVerbToIrregularDeck()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
@@ -690,6 +783,7 @@ on the same page
         writer.Write(content);
     }
 }
+
 
 
 

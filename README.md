@@ -38,6 +38,7 @@ Batch smart-paste mode:
 - For one-line space-separated text without separators, app can ask whether to keep one phrase or split by spaces.
 - Items are processed sequentially.
 - Duplicate items inside one batch are computed once and reused for repeated entries in the same request/session step.
+- For unresolved inputs, writable-deck duplicate lookup runs in one batch pass (single deck scan) in both `local` and `graph` storage modes.
 - In `ask` mode app prompts once at the end to save all, review targets, or skip.
 
 Irregular verbs are supported via a dedicated deck (for example `beat - beat - beaten`). Duplicate lookup matches by any form (base/past/participle).
