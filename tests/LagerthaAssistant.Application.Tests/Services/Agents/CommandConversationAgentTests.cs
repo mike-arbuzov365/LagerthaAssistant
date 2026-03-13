@@ -18,7 +18,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService();
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext(ConversationSlashCommands.Help, [ConversationSlashCommands.Help]));
 
@@ -39,7 +39,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService();
         var sync = new FakeVocabularySyncProcessor { PendingCount = 7 };
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var context = new ConversationAgentContext("/sync", ["/sync"]);
 
@@ -62,7 +62,7 @@ public sealed class CommandConversationAgentTests
         };
 
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var context = new ConversationAgentContext("show conversation history", ["show conversation history"]);
 
@@ -93,7 +93,7 @@ public sealed class CommandConversationAgentTests
         };
 
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext("/prompt history", ["/prompt history"]));
 
@@ -124,7 +124,7 @@ public sealed class CommandConversationAgentTests
         };
 
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext("/prompt proposals", ["/prompt proposals"]));
 
@@ -139,7 +139,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService();
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext("/prompt set Keep replies concise", ["/prompt set Keep replies concise"]));
 
@@ -155,7 +155,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService();
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext("/prompt propose Too verbose || Keep replies concise", ["/prompt propose Too verbose || Keep replies concise"]));
 
@@ -170,7 +170,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService();
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext("/prompt improve improve vocabulary examples", ["/prompt improve improve vocabulary examples"]));
 
@@ -184,7 +184,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService { Prompt = "applied prompt" };
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext("/prompt apply 12", ["/prompt apply 12"]));
 
@@ -199,7 +199,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService();
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext("/prompt reject 6", ["/prompt reject 6"]));
 
@@ -213,7 +213,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService();
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext("/prompt apply", ["/prompt apply"]));
 
@@ -226,7 +226,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService();
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext("/prompt reject xyz", ["/prompt reject xyz"]));
 
@@ -239,7 +239,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService();
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext("/prompt propose", ["/prompt propose"]));
 
@@ -252,7 +252,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService();
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var result = await sut.HandleAsync(new ConversationAgentContext("/prompt improve", ["/prompt improve"]));
 
@@ -265,7 +265,7 @@ public sealed class CommandConversationAgentTests
     {
         var session = new FakeAssistantSessionService();
         var sync = new FakeVocabularySyncProcessor();
-        var sut = new CommandConversationAgent(new ConversationIntentRouter(), session, sync);
+        var sut = CreateSut(session, sync);
 
         var context = new ConversationAgentContext("/exit", ["/exit"]);
 
@@ -273,6 +273,17 @@ public sealed class CommandConversationAgentTests
 
         Assert.Equal("command.unsupported", result.Intent);
         Assert.Contains("Unsupported command", result.Message);
+    }
+
+    private static CommandConversationAgent CreateSut(
+        FakeAssistantSessionService session,
+        FakeVocabularySyncProcessor sync)
+    {
+        return new CommandConversationAgent(
+            new ConversationIntentRouter(),
+            new ConversationCommandCatalogService(),
+            session,
+            sync);
     }
 
     private sealed class FakeVocabularySyncProcessor : IVocabularySyncProcessor

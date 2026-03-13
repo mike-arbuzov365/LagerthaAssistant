@@ -28,7 +28,7 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         IConversationAgent[] agents =
         [
-            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            CreateCommandAgent(session, sync),
             new VocabularyConversationAgent(workflow)
         ];
 
@@ -54,7 +54,7 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         IConversationAgent[] agents =
         [
-            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            CreateCommandAgent(session, sync),
             new VocabularyConversationAgent(workflow)
         ];
 
@@ -81,7 +81,7 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         IConversationAgent[] agents =
         [
-            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            CreateCommandAgent(session, sync),
             new VocabularyConversationAgent(workflow)
         ];
 
@@ -109,7 +109,7 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         IConversationAgent[] agents =
         [
-            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            CreateCommandAgent(session, sync),
             new VocabularyConversationAgent(workflow)
         ];
 
@@ -137,7 +137,7 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         IConversationAgent[] agents =
         [
-            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            CreateCommandAgent(session, sync),
             new VocabularyConversationAgent(workflow)
         ];
 
@@ -164,7 +164,7 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         IConversationAgent[] agents =
         [
-            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            CreateCommandAgent(session, sync),
             new VocabularyConversationAgent(workflow)
         ];
 
@@ -191,7 +191,7 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         IConversationAgent[] agents =
         [
-            new CommandConversationAgent(new ConversationIntentRouter(), session, sync),
+            CreateCommandAgent(session, sync),
             new VocabularyConversationAgent(workflow)
         ];
 
@@ -206,6 +206,17 @@ public sealed class ConversationOrchestratorIntentRoutingTests
         Assert.Equal("vocabulary.single", result.Intent);
         Assert.Equal(1, workflow.SingleCalls);
         Assert.Equal(0, workflow.BatchCalls);
+    }
+
+    private static CommandConversationAgent CreateCommandAgent(
+        FakeAssistantSessionService session,
+        FakeVocabularySyncProcessor sync)
+    {
+        return new CommandConversationAgent(
+            new ConversationIntentRouter(),
+            new ConversationCommandCatalogService(),
+            session,
+            sync);
     }
 
     private sealed class FakeVocabularyWorkflowService : IVocabularyWorkflowService

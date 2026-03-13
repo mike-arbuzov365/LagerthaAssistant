@@ -7,6 +7,7 @@ using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
+using LagerthaAssistant.Application.Services.Vocabulary;
 using LagerthaAssistant.Domain.Entities;
 
 namespace LagerthaAssistant.Api.Controllers;
@@ -15,40 +16,41 @@ namespace LagerthaAssistant.Api.Controllers;
 [Route("api/conversation")]
 public sealed class ConversationController : ControllerBase
 {
-    private const string DefaultChannel = "api";
-
     private readonly IConversationOrchestrator _orchestrator;
     private readonly IAssistantSessionService _assistantSessionService;
     private readonly IConversationScopeAccessor _scopeAccessor;
     private readonly IVocabularyStorageModeProvider _storageModeProvider;
     private readonly IVocabularyStoragePreferenceService _storagePreferenceService;
+    private readonly IConversationCommandCatalogService _commandCatalogService;
 
     public ConversationController(
         IConversationOrchestrator orchestrator,
         IAssistantSessionService assistantSessionService,
         IConversationScopeAccessor scopeAccessor,
         IVocabularyStorageModeProvider storageModeProvider,
-        IVocabularyStoragePreferenceService storagePreferenceService)
+        IVocabularyStoragePreferenceService storagePreferenceService,
+        IConversationCommandCatalogService commandCatalogService)
     {
         _orchestrator = orchestrator;
         _assistantSessionService = assistantSessionService;
         _scopeAccessor = scopeAccessor;
         _storageModeProvider = storageModeProvider;
         _storagePreferenceService = storagePreferenceService;
+        _commandCatalogService = commandCatalogService;
     }
 
     [HttpGet("commands")]
     [ProducesResponseType(typeof(IReadOnlyList<ConversationCommandItemResponse>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<ConversationCommandItemResponse>> GetCommands()
     {
-        return Ok(BuildCommandItems());
+        return Ok(ApiConversationCommandCatalogMapper.MapFlatItems(_commandCatalogService.GetCommands()));
     }
 
     [HttpGet("commands/grouped")]
     [ProducesResponseType(typeof(IReadOnlyList<ConversationCommandGroupResponse>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<ConversationCommandGroupResponse>> GetGroupedCommands()
     {
-        return Ok(BuildCommandGroups());
+        return Ok(ApiConversationCommandCatalogMapper.MapGroupedItems(_commandCatalogService.GetGroups()));
     }
 
     [HttpGet("history")]
@@ -60,7 +62,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
         var normalizedTake = Math.Max(1, take);
@@ -85,7 +87,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
         var normalizedTake = Math.Max(1, take);
@@ -276,7 +278,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? userId = null,
         [FromQuery] string? conversationId = null)
     {
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
         _assistantSessionService.Reset();
 
@@ -296,7 +298,7 @@ public sealed class ConversationController : ControllerBase
             return BadRequest("Input is required.");
         }
 
-        var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
+        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
         _scopeAccessor.Set(scope);
 
         var applyMode = await TryApplyStorageModeAsync(scope, request.StorageMode, cancellationToken);
@@ -336,26 +338,6 @@ public sealed class ConversationController : ControllerBase
         _storageModeProvider.SetMode(mode);
         return (true, null);
     }
-
-    private static IReadOnlyList<ConversationCommandItemResponse> BuildCommandItems()
-    {
-        return ConversationCommandCatalog.SlashCommands
-            .Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description))
-            .ToList();
-    }
-
-    private static IReadOnlyList<ConversationCommandGroupResponse> BuildCommandGroups()
-    {
-        return ConversationCommandCatalog.SlashCommandGroups
-            .Select(group =>
-                new ConversationCommandGroupResponse(
-                    group.Category,
-                    group.Commands
-                        .Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description))
-                        .ToList()))
-            .ToList();
-    }
-
     private static ConversationMessageResponse Map(ConversationAgentResult result)
     {
         var items = result.Items
@@ -410,7 +392,10 @@ public sealed class ConversationController : ControllerBase
             preview?.TargetDeckFileName,
             preview?.TargetDeckPath,
             BuildExistingEntriesPreview(item.Lookup),
-            warning);
+            warning,
+            preview?.Status == VocabularyAppendPreviewStatus.ReadyToAppend,
+            BuildSuggestedPartOfSpeech(item),
+            preview?.DuplicateMatches?.Select(MapDeckEntry).ToList());
     }
 
     private static string? BuildWarning(VocabularyAppendPreviewResult preview)
@@ -439,20 +424,76 @@ public sealed class ConversationController : ControllerBase
         return string.Join(" | ", lines);
     }
 
-    private static ConversationScope BuildScope(string? channel, string? userId, string? conversationId)
+    private static string? BuildSuggestedPartOfSpeech(ConversationAgentItemResult item)
     {
-        return ConversationScope.Create(
-            NormalizeChannel(channel),
-            userId,
-            conversationId);
+        if (item.AppendPreview is null)
+        {
+            return null;
+        }
+
+        if (TryExtractPartOfSpeechMarker(item.AssistantCompletion?.Content, out var markerFromReply))
+        {
+            return markerFromReply;
+        }
+
+        if (string.IsNullOrWhiteSpace(item.AppendPreview.TargetDeckFileName))
+        {
+            return null;
+        }
+
+        return VocabularyDeckMarkerSuggester.SuggestMarker(item.AppendPreview.TargetDeckFileName);
     }
 
-    private static string NormalizeChannel(string? channel)
+    private static bool TryExtractPartOfSpeechMarker(string? assistantReply, out string marker)
     {
-        var normalized = channel?.Trim().ToLowerInvariant();
-        return string.IsNullOrWhiteSpace(normalized)
-            ? DefaultChannel
-            : normalized;
+        marker = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(assistantReply))
+        {
+            return false;
+        }
+
+        var lines = assistantReply
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var line in lines)
+        {
+            if (!line.StartsWith("(", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var closeIndex = line.IndexOf(')');
+            if (closeIndex <= 1)
+            {
+                continue;
+            }
+
+            var candidate = line[1..closeIndex].Trim();
+            if (VocabularyPartOfSpeechCatalog.TryNormalize(candidate, out marker))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
+
+    private static ConversationDeckEntryResponse MapDeckEntry(VocabularyDeckEntry entry)
+    {
+        return new ConversationDeckEntryResponse(
+            entry.DeckFileName,
+            entry.DeckPath,
+            entry.RowNumber,
+            entry.Word,
+            entry.Meaning,
+            entry.Examples);
+    }
+
 }
+
+
+
+
 

@@ -82,66 +82,84 @@ public sealed class GraphAuthService : IGraphAuthService
                 return new GraphLoginResult(false, "Failed to start device-code login flow.");
             }
 
+            var challenge = BuildDeviceLoginChallenge(deviceCode);
+
             if (onDeviceCodeReceived is not null)
             {
-                var prompt = BuildDeviceCodePrompt(deviceCode);
+                var prompt = BuildDeviceCodePrompt(challenge);
                 await onDeviceCodeReceived(prompt, cancellationToken);
             }
 
-            var intervalSeconds = Math.Max(3, deviceCode.Interval);
-            var expiresAt = DateTimeOffset.UtcNow.AddSeconds(deviceCode.ExpiresIn);
-
-            while (DateTimeOffset.UtcNow < expiresAt)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
-
-                var tokenResponse = await RequestTokenByDeviceCodeAsync(deviceCode.DeviceCode, cancellationToken);
-                if (tokenResponse is null)
-                {
-                    continue;
-                }
-
-                if (!string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
-                {
-                    await SaveTokenCacheAsync(tokenResponse, cancellationToken);
-                    return new GraphLoginResult(true, "Graph login completed successfully.");
-                }
-
-                var errorCode = tokenResponse.Error?.Trim();
-                if (string.Equals(errorCode, "authorization_pending", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (string.Equals(errorCode, "slow_down", StringComparison.OrdinalIgnoreCase))
-                {
-                    intervalSeconds += 2;
-                    continue;
-                }
-
-                if (string.Equals(errorCode, "authorization_declined", StringComparison.OrdinalIgnoreCase))
-                {
-                    return new GraphLoginResult(false, "Graph login was declined by the user.");
-                }
-
-                if (string.Equals(errorCode, "expired_token", StringComparison.OrdinalIgnoreCase))
-                {
-                    return new GraphLoginResult(false, "Graph login code expired. Run /graph login again.");
-                }
-
-                var errorMessage = string.IsNullOrWhiteSpace(tokenResponse.ErrorDescription)
-                    ? "Graph login failed."
-                    : $"Graph login failed: {tokenResponse.ErrorDescription}";
-
-                return new GraphLoginResult(false, errorMessage);
-            }
-
-            return new GraphLoginResult(false, "Graph login timed out. Run /graph login again.");
+            return await CompleteLoginCoreAsync(challenge, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Graph login failed due to an unexpected error.");
+            return new GraphLoginResult(false, $"Graph login failed: {ex.Message}");
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
+    public async Task<GraphDeviceLoginStartResult> StartLoginAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured())
+        {
+            return new GraphDeviceLoginStartResult(
+                false,
+                "Graph login is not available because Graph.ClientId is not configured.");
+        }
+
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            var deviceCode = await RequestDeviceCodeAsync(cancellationToken);
+            if (deviceCode is null)
+            {
+                return new GraphDeviceLoginStartResult(false, "Failed to start device-code login flow.");
+            }
+
+            var challenge = BuildDeviceLoginChallenge(deviceCode);
+            return new GraphDeviceLoginStartResult(
+                true,
+                "Device code generated. Open verification URI and then call complete login.",
+                challenge);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to start Graph device-code login flow.");
+            return new GraphDeviceLoginStartResult(false, $"Graph login failed: {ex.Message}");
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
+    public async Task<GraphLoginResult> CompleteLoginAsync(
+        GraphDeviceLoginChallenge challenge,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured())
+        {
+            return new GraphLoginResult(false, "Graph login is not available because Graph.ClientId is not configured.");
+        }
+
+        if (string.IsNullOrWhiteSpace(challenge.DeviceCode))
+        {
+            return new GraphLoginResult(false, "Graph login failed: device code is required.");
+        }
+
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            return await CompleteLoginCoreAsync(challenge, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Graph complete-login failed due to an unexpected error.");
             return new GraphLoginResult(false, $"Graph login failed: {ex.Message}");
         }
         finally
@@ -246,14 +264,89 @@ public sealed class GraphAuthService : IGraphAuthService
         return model;
     }
 
-    private static GraphDeviceCodePrompt BuildDeviceCodePrompt(DeviceCodeResponse deviceCode)
+    private static GraphDeviceCodePrompt BuildDeviceCodePrompt(GraphDeviceLoginChallenge challenge)
     {
         return new GraphDeviceCodePrompt(
+            challenge.UserCode.Trim(),
+            NormalizeVerificationUri(challenge.VerificationUri),
+            string.IsNullOrWhiteSpace(challenge.Message)
+                ? null
+                : challenge.Message.Trim());
+    }
+
+    private static GraphDeviceLoginChallenge BuildDeviceLoginChallenge(DeviceCodeResponse deviceCode)
+    {
+        var intervalSeconds = Math.Max(3, deviceCode.Interval);
+        var expiresInSeconds = Math.Max(15, deviceCode.ExpiresIn);
+
+        return new GraphDeviceLoginChallenge(
+            deviceCode.DeviceCode.Trim(),
             deviceCode.UserCode.Trim(),
             NormalizeVerificationUri(deviceCode.VerificationUri),
+            expiresInSeconds,
+            intervalSeconds,
+            DateTimeOffset.UtcNow.AddSeconds(expiresInSeconds),
             string.IsNullOrWhiteSpace(deviceCode.Message)
                 ? null
                 : deviceCode.Message.Trim());
+    }
+
+    private async Task<GraphLoginResult> CompleteLoginCoreAsync(
+        GraphDeviceLoginChallenge challenge,
+        CancellationToken cancellationToken)
+    {
+        var intervalSeconds = Math.Max(3, challenge.IntervalSeconds);
+        var expiresAt = challenge.ExpiresAtUtc > DateTimeOffset.UtcNow
+            ? challenge.ExpiresAtUtc
+            : DateTimeOffset.UtcNow.AddSeconds(Math.Max(15, challenge.ExpiresInSeconds));
+
+        while (DateTimeOffset.UtcNow < expiresAt)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
+
+            var tokenResponse = await RequestTokenByDeviceCodeAsync(challenge.DeviceCode, cancellationToken);
+            if (tokenResponse is null)
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+            {
+                await SaveTokenCacheAsync(tokenResponse, cancellationToken);
+                return new GraphLoginResult(true, "Graph login completed successfully.");
+            }
+
+            var errorCode = tokenResponse.Error?.Trim();
+            if (string.Equals(errorCode, "authorization_pending", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (string.Equals(errorCode, "slow_down", StringComparison.OrdinalIgnoreCase))
+            {
+                intervalSeconds += 2;
+                continue;
+            }
+
+            if (string.Equals(errorCode, "authorization_declined", StringComparison.OrdinalIgnoreCase))
+            {
+                return new GraphLoginResult(false, "Graph login was declined by the user.");
+            }
+
+            if (string.Equals(errorCode, "expired_token", StringComparison.OrdinalIgnoreCase))
+            {
+                return new GraphLoginResult(false, "Graph login code expired. Run /graph login again.");
+            }
+
+            var errorMessage = string.IsNullOrWhiteSpace(tokenResponse.ErrorDescription)
+                ? "Graph login failed."
+                : $"Graph login failed: {tokenResponse.ErrorDescription}";
+
+            return new GraphLoginResult(false, errorMessage);
+        }
+
+        return new GraphLoginResult(false, "Graph login timed out. Run /graph login again.");
     }
 
     private static string NormalizeVerificationUri(string? verificationUri)

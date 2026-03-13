@@ -16,4 +16,15 @@ public sealed record ConversationMessageItemResponse(
     string? TargetDeckFileName,
     string? TargetDeckPath,
     string? ExistingEntriesPreview,
-    string? Warning);
+    string? Warning,
+    bool? ReadyToAppend,
+    string? SuggestedPartOfSpeech,
+    IReadOnlyList<ConversationDeckEntryResponse>? DuplicateMatches);
+
+public sealed record ConversationDeckEntryResponse(
+    string DeckFileName,
+    string DeckPath,
+    int RowNumber,
+    string Word,
+    string Meaning,
+    string Examples);

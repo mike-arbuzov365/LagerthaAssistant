@@ -59,6 +59,69 @@ public sealed class GraphControllerTests
     }
 
     [Fact]
+    public async Task StartLogin_ShouldReturnDeviceCodeChallenge()
+    {
+        var challenge = new GraphDeviceLoginChallenge(
+            DeviceCode: "device-code",
+            UserCode: "ABCD-EFGH",
+            VerificationUri: "https://www.microsoft.com/link",
+            ExpiresInSeconds: 900,
+            IntervalSeconds: 5,
+            ExpiresAtUtc: new DateTimeOffset(2026, 3, 20, 10, 15, 0, TimeSpan.Zero),
+            Message: "Use the code in your browser.");
+
+        var graphAuth = new FakeGraphAuthService
+        {
+            NextStartResult = new GraphDeviceLoginStartResult(true, "Device code generated.", challenge)
+        };
+        var sut = new GraphController(graphAuth);
+
+        var response = await sut.StartLogin(CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<GraphDeviceLoginStartResponse>(ok.Value);
+
+        Assert.True(payload.Succeeded);
+        Assert.NotNull(payload.Challenge);
+        Assert.Equal("ABCD-EFGH", payload.Challenge!.UserCode);
+        Assert.Equal("https://www.microsoft.com/link", payload.Challenge.VerificationUri);
+        Assert.Equal(1, graphAuth.StartLoginCalls);
+    }
+
+    [Fact]
+    public async Task CompleteLogin_ShouldReturnLoginResult_AndFreshStatus()
+    {
+        var graphAuth = new FakeGraphAuthService
+        {
+            NextLoginResult = new GraphLoginResult(true, "Graph login completed successfully."),
+            StatusSequence = new Queue<GraphAuthStatus>([
+                new GraphAuthStatus(true, true, "Authenticated", new DateTimeOffset(2026, 3, 20, 10, 0, 0, TimeSpan.Zero))
+            ])
+        };
+        var sut = new GraphController(graphAuth);
+
+        var request = new GraphDeviceLoginCompleteRequest(
+            new GraphDeviceLoginChallengeResponse(
+                DeviceCode: "device-code",
+                UserCode: "ABCD-EFGH",
+                VerificationUri: "https://www.microsoft.com/link",
+                ExpiresInSeconds: 900,
+                IntervalSeconds: 5,
+                ExpiresAtUtc: new DateTimeOffset(2026, 3, 20, 10, 15, 0, TimeSpan.Zero),
+                Message: "Use the code in your browser."));
+
+        var response = await sut.CompleteLogin(request, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<GraphLoginResponse>(ok.Value);
+
+        Assert.True(payload.Succeeded);
+        Assert.True(payload.Status.IsAuthenticated);
+        Assert.Equal(1, graphAuth.CompleteLoginCalls);
+        Assert.Equal(1, graphAuth.StatusCalls);
+    }
+
+    [Fact]
     public async Task Logout_ShouldClearToken_AndReturnUpdatedStatus()
     {
         var graphAuth = new FakeGraphAuthService
@@ -85,9 +148,16 @@ public sealed class GraphControllerTests
 
         public GraphLoginResult NextLoginResult { get; set; } = new(false, "Not configured.");
 
+        public GraphDeviceLoginStartResult NextStartResult { get; set; } =
+            new(false, "Not configured.", null);
+
         public bool LogoutCalled { get; private set; }
 
         public int LoginCalls { get; private set; }
+
+        public int StartLoginCalls { get; private set; }
+
+        public int CompleteLoginCalls { get; private set; }
 
         public int StatusCalls { get; private set; }
 
@@ -115,6 +185,20 @@ public sealed class GraphControllerTests
         {
             ArgumentNullException.ThrowIfNull(onDeviceCodeReceived);
             LoginCalls++;
+            return Task.FromResult(NextLoginResult);
+        }
+
+        public Task<GraphDeviceLoginStartResult> StartLoginAsync(CancellationToken cancellationToken = default)
+        {
+            StartLoginCalls++;
+            return Task.FromResult(NextStartResult);
+        }
+
+        public Task<GraphLoginResult> CompleteLoginAsync(
+            GraphDeviceLoginChallenge challenge,
+            CancellationToken cancellationToken = default)
+        {
+            CompleteLoginCalls++;
             return Task.FromResult(NextLoginResult);
         }
 

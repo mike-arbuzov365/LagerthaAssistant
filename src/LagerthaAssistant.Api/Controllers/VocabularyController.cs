@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
@@ -13,8 +13,6 @@ namespace LagerthaAssistant.Api.Controllers;
 [Route("api/vocabulary")]
 public sealed class VocabularyController : ControllerBase
 {
-    private const string DefaultChannel = "api";
-
     private static readonly IReadOnlyList<string> SupportedStorageModes =
     [
         "local",
@@ -59,7 +57,7 @@ public sealed class VocabularyController : ControllerBase
             return BadRequest("Input is required.");
         }
 
-        var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
+        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
         _scopeAccessor.Set(scope);
 
         var applyMode = await TryApplyStorageModeAsync(scope, request.StorageMode, cancellationToken);
@@ -99,7 +97,7 @@ public sealed class VocabularyController : ControllerBase
             return BadRequest("At least one non-empty input is required.");
         }
 
-        var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
+        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
         _scopeAccessor.Set(scope);
 
         var applyMode = await TryApplyStorageModeAsync(scope, request.StorageMode, cancellationToken);
@@ -139,7 +137,7 @@ public sealed class VocabularyController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
         var mode = await _storagePreferenceService.GetModeAsync(scope, cancellationToken);
@@ -165,7 +163,7 @@ public sealed class VocabularyController : ControllerBase
             return BadRequest($"Unsupported mode '{request.Mode}'. Use local or graph.");
         }
 
-        var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
+        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
         _scopeAccessor.Set(scope);
 
         await _storagePreferenceService.SetModeAsync(scope, mode, cancellationToken);
@@ -184,7 +182,7 @@ public sealed class VocabularyController : ControllerBase
         [FromQuery] string? storageMode = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
         var applyMode = await TryApplyStorageModeAsync(scope, storageMode, cancellationToken);
@@ -195,11 +193,7 @@ public sealed class VocabularyController : ControllerBase
 
         var storageModeText = _storageModeProvider.ToText(_storageModeProvider.CurrentMode);
         var decks = await _deckService.GetWritableDeckFilesAsync(cancellationToken);
-
-        var mappedDecks = decks
-            .OrderBy(deck => deck.FileName, StringComparer.OrdinalIgnoreCase)
-            .Select(MapDeckInfo)
-            .ToList();
+        var mappedDecks = ApiVocabularyDeckMapper.MapDecks(decks);
 
         return Ok(new VocabularyDeckCatalogResponse(storageModeText, mappedDecks));
     }
@@ -208,10 +202,7 @@ public sealed class VocabularyController : ControllerBase
     [ProducesResponseType(typeof(VocabularyPartOfSpeechCatalogResponse), StatusCodes.Status200OK)]
     public ActionResult<VocabularyPartOfSpeechCatalogResponse> GetPartOfSpeechMarkers()
     {
-        var markers = VocabularyPartOfSpeechCatalog.GetOptions()
-            .OrderBy(option => option.Number)
-            .Select(MapPartOfSpeechOption)
-            .ToList();
+        var markers = ApiVocabularyPartOfSpeechMapper.BuildOptions();
 
         return Ok(new VocabularyPartOfSpeechCatalogResponse(markers));
     }
@@ -232,7 +223,7 @@ public sealed class VocabularyController : ControllerBase
             return BadRequest("At least one item is required.");
         }
 
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
         var applyMode = await TryApplyStorageModeAsync(scope, storageMode, cancellationToken);
@@ -321,7 +312,7 @@ public sealed class VocabularyController : ControllerBase
             return BadRequest("AssistantReply is required.");
         }
 
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
         var applyMode = await TryApplyStorageModeAsync(scope, storageMode, cancellationToken);
@@ -338,16 +329,6 @@ public sealed class VocabularyController : ControllerBase
             cancellationToken);
 
         return Ok(MapAppendResult(result));
-    }
-
-    private static ConversationScope BuildScope(string? channel, string? userId, string? conversationId)
-    {
-        var normalizedChannel = channel?.Trim().ToLowerInvariant();
-        var effectiveChannel = string.IsNullOrWhiteSpace(normalizedChannel)
-            ? DefaultChannel
-            : normalizedChannel;
-
-        return ConversationScope.Create(effectiveChannel, userId, conversationId);
     }
 
     private async Task<(bool Success, ActionResult? Error)> TryApplyStorageModeAsync(
@@ -453,16 +434,11 @@ public sealed class VocabularyController : ControllerBase
             entry.Examples);
     }
 
-    private static VocabularyDeckInfoResponse MapDeckInfo(VocabularyDeckFile deck)
-    {
-        return new VocabularyDeckInfoResponse(
-            deck.FileName,
-            deck.FullPath,
-            VocabularyDeckMarkerSuggester.SuggestMarker(deck.FileName));
-    }
-
-    private static VocabularyPartOfSpeechOptionResponse MapPartOfSpeechOption(VocabularyPartOfSpeechOption option)
-    {
-        return new VocabularyPartOfSpeechOptionResponse(option.Number, option.Marker, option.Label);
-    }
 }
+
+
+
+
+
+
+

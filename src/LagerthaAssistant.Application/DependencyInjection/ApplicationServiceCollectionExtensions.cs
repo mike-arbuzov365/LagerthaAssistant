@@ -27,9 +27,13 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IVocabularyPersistenceService, VocabularyPersistenceService>();
         services.AddScoped<IVocabularySyncProcessor, VocabularySyncProcessor>();
         services.AddScoped<IVocabularyStoragePreferenceService, VocabularyStoragePreferenceService>();
+        services.AddScoped<IVocabularySaveModePreferenceService, VocabularySaveModePreferenceService>();
+        services.AddScoped<IVocabularySessionPreferenceService, VocabularySessionPreferenceService>();
 
         services.AddSingleton<IConversationIntentRouter, ConversationIntentRouter>();
+        services.AddSingleton<IConversationCommandCatalogService, ConversationCommandCatalogService>();
         services.AddScoped<IConversationOrchestrator, ConversationOrchestrator>();
+        services.AddScoped<IConversationBootstrapService, ConversationBootstrapService>();
         services.AddScoped<IConversationMetricsService, ConversationMetricsService>();
         services.AddScoped<IConversationAgent, CommandConversationAgent>();
         services.AddScoped<IConversationAgent, VocabularyConversationAgent>();

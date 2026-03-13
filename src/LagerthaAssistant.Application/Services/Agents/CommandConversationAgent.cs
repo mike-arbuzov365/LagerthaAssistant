@@ -13,15 +13,18 @@ public sealed class CommandConversationAgent : IConversationAgent
     private const int DefaultSyncRunTake = ConversationCommandDefaults.SyncRunTake;
 
     private readonly IConversationIntentRouter _intentRouter;
+    private readonly IConversationCommandCatalogService _commandCatalogService;
     private readonly IAssistantSessionService _assistantSessionService;
     private readonly IVocabularySyncProcessor _vocabularySyncProcessor;
 
     public CommandConversationAgent(
         IConversationIntentRouter intentRouter,
+        IConversationCommandCatalogService commandCatalogService,
         IAssistantSessionService assistantSessionService,
         IVocabularySyncProcessor vocabularySyncProcessor)
     {
         _intentRouter = intentRouter;
+        _commandCatalogService = commandCatalogService;
         _assistantSessionService = assistantSessionService;
         _vocabularySyncProcessor = vocabularySyncProcessor;
     }
@@ -256,14 +259,14 @@ public sealed class CommandConversationAgent : IConversationAgent
         return ConversationAgentResult.Empty(Name, "command.reset", "Conversation has been reset.");
     }
 
-    private static string BuildHelpMessage()
+    private string BuildHelpMessage()
     {
         var lines = new List<string>
         {
             "Available slash commands:"
         };
 
-        var groups = ConversationCommandCatalog.SlashCommandGroups;
+        var groups = _commandCatalogService.GetGroups();
 
         foreach (var group in groups)
         {

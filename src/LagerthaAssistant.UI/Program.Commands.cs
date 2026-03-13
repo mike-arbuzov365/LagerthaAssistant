@@ -1,39 +1,35 @@
 ﻿using LagerthaAssistant.Application.Interfaces.Agents;
-using LagerthaAssistant.Application.Interfaces.Common;
-using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
-using LagerthaAssistant.Infrastructure.Constants;
 using LagerthaAssistant.UI.Constants;
 
 namespace LagerthaAssistant.UI;
 
 internal static partial class Program
 {
-    private readonly record struct CommandHandlingResult(bool Handled, bool ShouldExit, SaveMode SaveMode)
+    private readonly record struct CommandHandlingResult(bool Handled, bool ShouldExit, VocabularySaveMode SaveMode)
     {
-        public static CommandHandlingResult NotHandled(SaveMode saveMode) => new(false, false, saveMode);
+        public static CommandHandlingResult NotHandled(VocabularySaveMode saveMode) => new(false, false, saveMode);
 
-        public static CommandHandlingResult Continue(SaveMode saveMode) => new(true, false, saveMode);
+        public static CommandHandlingResult Continue(VocabularySaveMode saveMode) => new(true, false, saveMode);
 
-        public static CommandHandlingResult Exit(SaveMode saveMode) => new(true, true, saveMode);
+        public static CommandHandlingResult Exit(VocabularySaveMode saveMode) => new(true, true, saveMode);
     }
 
     private static async Task<CommandHandlingResult> TryHandleCommandAsync(
         string command,
-        SaveMode saveMode,
+        VocabularySaveMode saveMode,
         ConversationScope uiScope,
         IConversationOrchestrator conversationOrchestrator,
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyBatchInputService vocabularyBatchInputService,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
+        IVocabularySaveModePreferenceService vocabularySaveModePreferenceService,
+        IVocabularySessionPreferenceService vocabularySessionPreferenceService,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
-        IVocabularyStoragePreferenceService vocabularyStoragePreferenceService,
-        IGraphAuthService graphAuthService,
-        IUserMemoryRepository userMemoryRepository,
-        IUnitOfWork unitOfWork)
+        IGraphAuthService graphAuthService)
     {
         if (command.Equals(ConsoleCommands.Help, StringComparison.OrdinalIgnoreCase))
         {
@@ -88,29 +84,31 @@ internal static partial class Program
 
         if (command.Equals(ConsoleCommands.Save, StringComparison.OrdinalIgnoreCase))
         {
-            PrintCurrentSaveMode(saveMode);
+            PrintCurrentSaveMode(vocabularySaveModePreferenceService, saveMode);
             return CommandHandlingResult.Continue(saveMode);
         }
 
         if (command.Equals(ConsoleCommands.SaveMode, StringComparison.OrdinalIgnoreCase))
         {
             Console.WriteLine("Usage: /save mode ask|auto|off");
-            PrintCurrentSaveMode(saveMode);
+            PrintCurrentSaveMode(vocabularySaveModePreferenceService, saveMode);
             return CommandHandlingResult.Continue(saveMode);
         }
 
         if (command.StartsWith(ConsoleCommands.SaveMode + " ", StringComparison.OrdinalIgnoreCase))
         {
             var modeText = command[ConsoleCommands.SaveMode.Length..].Trim();
-            if (!TryParseSaveMode(modeText, out var updatedSaveMode))
+            if (!vocabularySaveModePreferenceService.TryParse(modeText, out var updatedSaveMode))
             {
                 Console.WriteLine("Usage: /save mode ask|auto|off");
                 return CommandHandlingResult.Continue(saveMode);
             }
 
-            saveMode = updatedSaveMode;
-            await PersistSaveModeAsync(userMemoryRepository, unitOfWork, saveMode, uiScope);
-            PrintCurrentSaveMode(saveMode);
+            var session = await vocabularySessionPreferenceService.SetAsync(
+                uiScope,
+                saveMode: updatedSaveMode);
+            saveMode = session.SaveMode;
+            PrintCurrentSaveMode(vocabularySaveModePreferenceService, session.SaveMode);
             return CommandHandlingResult.Continue(saveMode);
         }
 
@@ -136,10 +134,13 @@ internal static partial class Program
                 return CommandHandlingResult.Continue(saveMode);
             }
 
-            await PersistStorageModeAsync(vocabularyStoragePreferenceService, updatedStorageMode, vocabularyStorageModeProvider, uiScope);
-            PrintCurrentStorageMode(vocabularyStorageModeProvider, updatedStorageMode);
+            var session = await vocabularySessionPreferenceService.SetAsync(
+                uiScope,
+                storageMode: updatedStorageMode);
+            saveMode = session.SaveMode;
+            PrintCurrentStorageMode(vocabularyStorageModeProvider, session.StorageMode);
 
-            if (updatedStorageMode == VocabularyStorageMode.Graph)
+            if (session.StorageMode == VocabularyStorageMode.Graph)
             {
                 var status = await graphAuthService.GetStatusAsync();
                 PrintGraphStatus(status);
@@ -165,11 +166,10 @@ internal static partial class Program
                 if (vocabularyStorageModeProvider.CurrentMode != VocabularyStorageMode.Graph
                     && AskYesNo("Switch storage mode to graph now?"))
                 {
-                    await PersistStorageModeAsync(
-                        vocabularyStoragePreferenceService,
-                        VocabularyStorageMode.Graph,
-                        vocabularyStorageModeProvider,
-                        uiScope);
+                    var session = await vocabularySessionPreferenceService.SetAsync(
+                        uiScope,
+                        storageMode: VocabularyStorageMode.Graph);
+                    saveMode = session.SaveMode;
                     PrintCurrentStorageMode(vocabularyStorageModeProvider, VocabularyStorageMode.Graph);
                 }
 
@@ -225,4 +225,3 @@ internal static partial class Program
         return CommandHandlingResult.NotHandled(saveMode);
     }
 }
-

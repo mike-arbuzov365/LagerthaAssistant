@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.IntegrationTests.Controllers;
+namespace LagerthaAssistant.IntegrationTests.Controllers;
 
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Controllers;
@@ -23,7 +23,7 @@ public sealed class ConversationControllerTests
         var orchestrator = new FakeConversationOrchestrator();
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = sut.GetCommands();
 
@@ -43,7 +43,7 @@ public sealed class ConversationControllerTests
         var orchestrator = new FakeConversationOrchestrator();
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = sut.GetGroupedCommands();
 
@@ -71,7 +71,7 @@ public sealed class ConversationControllerTests
             ]
         };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.GetHistory(10, "  TeLeGrAm  ", "Mike", "chat-42", CancellationToken.None);
 
@@ -106,7 +106,7 @@ public sealed class ConversationControllerTests
             ]
         };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.GetMemory(5, null, null, null, CancellationToken.None);
 
@@ -131,7 +131,7 @@ public sealed class ConversationControllerTests
             SystemPrompt = "You are a concise assistant."
         };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.GetPrompt(CancellationToken.None);
 
@@ -147,7 +147,7 @@ public sealed class ConversationControllerTests
         var orchestrator = new FakeConversationOrchestrator();
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.SetPrompt(new ConversationSetSystemPromptRequest("   "), CancellationToken.None);
 
@@ -161,7 +161,7 @@ public sealed class ConversationControllerTests
         var orchestrator = new FakeConversationOrchestrator();
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.SetPrompt(
             new ConversationSetSystemPromptRequest("Keep replies practical.", "manual-api"),
@@ -181,7 +181,7 @@ public sealed class ConversationControllerTests
         var orchestrator = new FakeConversationOrchestrator();
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.ResetPromptToDefault(CancellationToken.None);
 
@@ -212,7 +212,7 @@ public sealed class ConversationControllerTests
             ]
         };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.GetPromptHistory(10, CancellationToken.None);
 
@@ -249,7 +249,7 @@ public sealed class ConversationControllerTests
             ]
         };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.GetPromptProposals(10, CancellationToken.None);
 
@@ -281,7 +281,7 @@ public sealed class ConversationControllerTests
             }
         };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.CreatePromptProposal(
             new ConversationCreatePromptProposalRequest("Use concise outputs", "Reduce noise", 0.9, "manual"),
@@ -315,7 +315,7 @@ public sealed class ConversationControllerTests
             }
         };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.ImprovePromptProposal(
             new ConversationPromptImproveRequest("Focus on examples"),
@@ -337,7 +337,7 @@ public sealed class ConversationControllerTests
             ApplyPromptResult = "Applied prompt"
         };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.ApplyPromptProposal(5, CancellationToken.None);
 
@@ -357,7 +357,7 @@ public sealed class ConversationControllerTests
             ThrowOnApply = true
         };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.ApplyPromptProposal(99, CancellationToken.None);
 
@@ -370,7 +370,7 @@ public sealed class ConversationControllerTests
         var orchestrator = new FakeConversationOrchestrator();
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.RejectPromptProposal(7, CancellationToken.None);
 
@@ -387,7 +387,7 @@ public sealed class ConversationControllerTests
         var orchestrator = new FakeConversationOrchestrator();
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = sut.ResetConversation("telegram", "Mike", "chat-42");
 
@@ -409,7 +409,7 @@ public sealed class ConversationControllerTests
         var orchestrator = new FakeConversationOrchestrator();
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.PostMessage(new ConversationMessageRequest("void"), CancellationToken.None);
 
@@ -426,7 +426,7 @@ public sealed class ConversationControllerTests
         var orchestrator = new FakeConversationOrchestrator();
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.PostMessage(new ConversationMessageRequest("void", "  TeLeGrAm  "), CancellationToken.None);
 
@@ -440,7 +440,7 @@ public sealed class ConversationControllerTests
         var orchestrator = new FakeConversationOrchestrator();
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.PostMessage(
             new ConversationMessageRequest("void", "api", "Mike", "chat-42"),
@@ -462,7 +462,7 @@ public sealed class ConversationControllerTests
         {
             CurrentMode = VocabularyStorageMode.Graph
         };
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, storageModeProvider, storagePreferenceService);
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, storageModeProvider, storagePreferenceService, new FakeConversationCommandCatalogService());
 
         var response = await sut.PostMessage(
             new ConversationMessageRequest("void", "api", "Mike", "chat-42"),
@@ -486,7 +486,7 @@ public sealed class ConversationControllerTests
         {
             CurrentMode = VocabularyStorageMode.Local
         };
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, storageModeProvider, storagePreferenceService);
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, storageModeProvider, storagePreferenceService, new FakeConversationCommandCatalogService());
 
         var response = await sut.PostMessage(
             new ConversationMessageRequest("void", "api", "Mike", "chat-42", "graph"),
@@ -505,7 +505,7 @@ public sealed class ConversationControllerTests
         var scopeAccessor = new FakeConversationScopeAccessor();
         var storageModeProvider = new FakeVocabularyStorageModeProvider();
         var storagePreferenceService = new FakeVocabularyStoragePreferenceService();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, storageModeProvider, storagePreferenceService);
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, storageModeProvider, storagePreferenceService, new FakeConversationCommandCatalogService());
 
         var response = await sut.PostMessage(
             new ConversationMessageRequest("void", "api", "Mike", "chat-42", "cloud"),
@@ -525,7 +525,7 @@ public sealed class ConversationControllerTests
 
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.PostMessage(new ConversationMessageRequest("/prompt set Keep replies concise"), CancellationToken.None);
 
@@ -540,17 +540,87 @@ public sealed class ConversationControllerTests
     }
 
     [Fact]
+    public async Task PostMessage_ShouldExposeSuggestedPartOfSpeechAndDuplicateMatches()
+    {
+        var duplicate = new VocabularyDeckEntry(
+            DeckFileName: "wm-verbs-us-en.xlsx",
+            DeckPath: "C:\\Decks\\wm-verbs-us-en.xlsx",
+            RowNumber: 42,
+            Word: "prepare",
+            Meaning: "(v) готувати",
+            Examples: "We prepare release notes.");
+
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = new ConversationAgentResult(
+                AgentName: "vocabulary-agent",
+                Intent: "vocabulary.single",
+                IsBatch: false,
+                Items:
+                [
+                    new ConversationAgentItemResult(
+                        Input: "prepare",
+                        Lookup: new VocabularyLookupResult("prepare", []),
+                        AssistantCompletion: new AssistantCompletionResult(
+                            Content: "prepare\n\n(v) готувати\n\nWe prepare release notes.",
+                            Model: "gpt-4.1-mini",
+                            Usage: null),
+                        AppendPreview: new VocabularyAppendPreviewResult(
+                            Status: VocabularyAppendPreviewStatus.ReadyToAppend,
+                            Word: "prepare",
+                            TargetDeckFileName: "wm-verbs-us-en.xlsx",
+                            TargetDeckPath: "C:\\Decks\\wm-verbs-us-en.xlsx",
+                            DuplicateMatches: [duplicate],
+                            Message: null))
+                ])
+        };
+
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(
+            orchestrator,
+            sessionService,
+            scopeAccessor,
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeConversationCommandCatalogService());
+
+        var response = await sut.PostMessage(new ConversationMessageRequest("prepare"), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<ConversationMessageResponse>(ok.Value);
+        var item = Assert.Single(payload.Items);
+
+        Assert.True(item.ReadyToAppend);
+        Assert.Equal("v", item.SuggestedPartOfSpeech);
+
+        var duplicatePayload = Assert.Single(item.DuplicateMatches!);
+        Assert.Equal("wm-verbs-us-en.xlsx", duplicatePayload.DeckFileName);
+        Assert.Equal(42, duplicatePayload.RowNumber);
+        Assert.Equal("prepare", duplicatePayload.Word);
+    }
+
+    [Fact]
     public async Task PostMessage_ShouldReturnBadRequest_WhenInputIsEmpty()
     {
         var orchestrator = new FakeConversationOrchestrator();
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService());
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, new FakeVocabularyStorageModeProvider(), new FakeVocabularyStoragePreferenceService(), new FakeConversationCommandCatalogService());
 
         var response = await sut.PostMessage(new ConversationMessageRequest("   "), CancellationToken.None);
 
         Assert.IsType<BadRequestObjectResult>(response.Result);
         Assert.Equal(0, orchestrator.Calls);
+    }
+
+    private sealed class FakeConversationCommandCatalogService : IConversationCommandCatalogService
+    {
+        public IReadOnlyList<ConversationCommandCatalogItem> GetCommands()
+            => ConversationCommandCatalog.SlashCommands;
+
+        public IReadOnlyList<ConversationCommandCatalogGroup> GetGroups()
+            => ConversationCommandCatalog.SlashCommandGroups;
     }
 
     private sealed class FakeConversationOrchestrator : IConversationOrchestrator
