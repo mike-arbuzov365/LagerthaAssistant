@@ -301,10 +301,15 @@ public sealed class ConversationController : ControllerBase
         var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
         _scopeAccessor.Set(scope);
 
-        var applyMode = await TryApplyStorageModeAsync(scope, request.StorageMode, cancellationToken);
+        var applyMode = await ApiVocabularyStorageModeApplier.TryApplyAsync(
+            _storageModeProvider,
+            _storagePreferenceService,
+            scope,
+            request.StorageMode,
+            cancellationToken);
         if (!applyMode.Success)
         {
-            return applyMode.Error!;
+            return BadRequest(applyMode.Error);
         }
 
         var result = await _orchestrator.ProcessAsync(
@@ -316,28 +321,6 @@ public sealed class ConversationController : ControllerBase
         return Ok(Map(result));
     }
 
-    private async Task<(bool Success, ActionResult? Error)> TryApplyStorageModeAsync(
-        ConversationScope scope,
-        string? requestedStorageMode,
-        CancellationToken cancellationToken)
-    {
-        VocabularyStorageMode mode;
-
-        if (!string.IsNullOrWhiteSpace(requestedStorageMode))
-        {
-            if (!_storageModeProvider.TryParse(requestedStorageMode, out mode))
-            {
-                return (false, BadRequest($"Unsupported mode '{requestedStorageMode}'. Use local or graph."));
-            }
-        }
-        else
-        {
-            mode = await _storagePreferenceService.GetModeAsync(scope, cancellationToken);
-        }
-
-        _storageModeProvider.SetMode(mode);
-        return (true, null);
-    }
     private static ConversationMessageResponse Map(ConversationAgentResult result)
     {
         var items = result.Items
