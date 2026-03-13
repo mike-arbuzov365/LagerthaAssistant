@@ -10,4 +10,5 @@ public sealed record SessionBootstrapResponse(
     PreferenceSessionResponse Preferences,
     GraphAuthStatusResponse Graph,
     IReadOnlyList<ConversationCommandGroupResponse> CommandGroups,
-    IReadOnlyList<VocabularyPartOfSpeechOptionResponse> PartOfSpeechOptions);
+    IReadOnlyList<VocabularyPartOfSpeechOptionResponse> PartOfSpeechOptions,
+    IReadOnlyList<VocabularyDeckInfoResponse>? WritableDecks);

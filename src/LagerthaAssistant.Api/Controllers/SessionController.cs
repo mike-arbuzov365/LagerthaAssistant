@@ -26,12 +26,13 @@ public sealed class SessionController : ControllerBase
         [FromQuery] string? channel = null,
         [FromQuery] string? userId = null,
         [FromQuery] string? conversationId = null,
+        [FromQuery] bool includeDecks = false,
         CancellationToken cancellationToken = default)
     {
         var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
-        var bootstrap = await _conversationBootstrapService.BuildAsync(scope, cancellationToken);
+        var bootstrap = await _conversationBootstrapService.BuildAsync(scope, includeDecks, cancellationToken);
 
         var preferences = new PreferenceSessionResponse(
             bootstrap.SaveMode,
@@ -48,6 +49,9 @@ public sealed class SessionController : ControllerBase
                 bootstrap.Graph.Message,
                 bootstrap.Graph.AccessTokenExpiresAtUtc),
             ApiConversationCommandCatalogMapper.MapGroupedItems(bootstrap.CommandGroups),
-            ApiVocabularyPartOfSpeechMapper.MapOptions(bootstrap.PartOfSpeechOptions)));
+            ApiVocabularyPartOfSpeechMapper.MapOptions(bootstrap.PartOfSpeechOptions),
+            bootstrap.WritableDecks is null
+                ? null
+                : ApiVocabularyDeckMapper.MapDecks(bootstrap.WritableDecks)));
     }
 }

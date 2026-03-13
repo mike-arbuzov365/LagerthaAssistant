@@ -12,22 +12,26 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
     private readonly IVocabularySessionPreferenceService _sessionPreferenceService;
     private readonly IVocabularySaveModePreferenceService _saveModePreferenceService;
     private readonly IVocabularyStorageModeProvider _storageModeProvider;
+    private readonly IVocabularyDeckService _deckService;
     private readonly IGraphAuthService _graphAuthService;
 
     public ConversationBootstrapService(
         IVocabularySessionPreferenceService sessionPreferenceService,
         IVocabularySaveModePreferenceService saveModePreferenceService,
         IVocabularyStorageModeProvider storageModeProvider,
+        IVocabularyDeckService deckService,
         IGraphAuthService graphAuthService)
     {
         _sessionPreferenceService = sessionPreferenceService;
         _saveModePreferenceService = saveModePreferenceService;
         _storageModeProvider = storageModeProvider;
+        _deckService = deckService;
         _graphAuthService = graphAuthService;
     }
 
     public async Task<ConversationBootstrapSnapshot> BuildAsync(
         ConversationScope scope,
+        bool includeDecks = false,
         CancellationToken cancellationToken = default)
     {
         var session = await _sessionPreferenceService.GetAsync(scope, cancellationToken);
@@ -39,6 +43,11 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
         var markerOptions = VocabularyPartOfSpeechCatalog.GetOptions()
             .OrderBy(option => option.Number)
             .ToList();
+        IReadOnlyList<VocabularyDeckFile>? writableDecks = null;
+        if (includeDecks)
+        {
+            writableDecks = await _deckService.GetWritableDeckFilesAsync(cancellationToken);
+        }
 
         return new ConversationBootstrapSnapshot(
             scope,
@@ -48,6 +57,7 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
             _sessionPreferenceService.SupportedStorageModes,
             graph,
             ConversationCommandCatalog.SlashCommandGroups,
-            markerOptions);
+            markerOptions,
+            writableDecks);
     }
 }

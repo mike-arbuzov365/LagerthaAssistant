@@ -193,11 +193,7 @@ public sealed class VocabularyController : ControllerBase
 
         var storageModeText = _storageModeProvider.ToText(_storageModeProvider.CurrentMode);
         var decks = await _deckService.GetWritableDeckFilesAsync(cancellationToken);
-
-        var mappedDecks = decks
-            .OrderBy(deck => deck.FileName, StringComparer.OrdinalIgnoreCase)
-            .Select(MapDeckInfo)
-            .ToList();
+        var mappedDecks = ApiVocabularyDeckMapper.MapDecks(decks);
 
         return Ok(new VocabularyDeckCatalogResponse(storageModeText, mappedDecks));
     }
@@ -438,13 +434,6 @@ public sealed class VocabularyController : ControllerBase
             entry.Examples);
     }
 
-    private static VocabularyDeckInfoResponse MapDeckInfo(VocabularyDeckFile deck)
-    {
-        return new VocabularyDeckInfoResponse(
-            deck.FileName,
-            deck.FullPath,
-            VocabularyDeckMarkerSuggester.SuggestMarker(deck.FileName));
-    }
 }
 
 

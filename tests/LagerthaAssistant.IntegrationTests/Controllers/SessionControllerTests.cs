@@ -57,6 +57,7 @@ public sealed class SessionControllerTests
         Assert.Contains(payload.CommandGroups, g => g.Category == "Session");
         Assert.NotEmpty(payload.PartOfSpeechOptions);
         Assert.Contains(payload.PartOfSpeechOptions, option => option.Marker == "n");
+        Assert.Null(payload.WritableDecks);
     }
 
     [Fact]
@@ -67,7 +68,12 @@ public sealed class SessionControllerTests
 
         var sut = new SessionController(scopeAccessor, bootstrapService);
 
-        var response = await sut.GetBootstrap(" TeLeGrAm ", "Mike", "chat-42", CancellationToken.None);
+        var response = await sut.GetBootstrap(
+            " TeLeGrAm ",
+            "Mike",
+            "chat-42",
+            includeDecks: true,
+            cancellationToken: CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(response.Result);
         var payload = Assert.IsType<SessionBootstrapResponse>(ok.Value);
@@ -76,6 +82,7 @@ public sealed class SessionControllerTests
         Assert.Equal("mike", payload.Scope.UserId);
         Assert.Equal("chat-42", payload.Scope.ConversationId);
         Assert.Equal(scopeAccessor.Current, bootstrapService.LastScope);
+        Assert.True(bootstrapService.LastIncludeDecks);
     }
 
     private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
@@ -105,12 +112,15 @@ public sealed class SessionControllerTests
         public IReadOnlyList<VocabularyPartOfSpeechOption> PartOfSpeechOptions { get; set; } = [];
 
         public ConversationScope? LastScope { get; private set; }
+        public bool LastIncludeDecks { get; private set; }
 
         public Task<ConversationBootstrapSnapshot> BuildAsync(
             ConversationScope scope,
+            bool includeDecks = false,
             CancellationToken cancellationToken = default)
         {
             LastScope = scope;
+            LastIncludeDecks = includeDecks;
             return Task.FromResult(new ConversationBootstrapSnapshot(
                 scope,
                 SaveMode,
@@ -119,7 +129,8 @@ public sealed class SessionControllerTests
                 AvailableStorageModes,
                 Graph,
                 CommandGroups,
-                PartOfSpeechOptions));
+                PartOfSpeechOptions,
+                null));
         }
     }
 }

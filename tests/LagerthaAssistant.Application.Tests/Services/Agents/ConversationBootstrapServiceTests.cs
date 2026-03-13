@@ -18,6 +18,13 @@ public sealed class ConversationBootstrapServiceTests
         };
         var saveModePreferenceService = new FakeSaveModePreferenceService();
         var storageModeProvider = new FakeStorageModeProvider();
+        var deckService = new FakeDeckService
+        {
+            WritableDecks =
+            [
+                new VocabularyDeckFile("wm-verbs-us-en.xlsx", "C:\\Decks\\wm-verbs-us-en.xlsx")
+            ]
+        };
         var graphAuthService = new FakeGraphAuthService
         {
             CurrentStatus = new GraphAuthStatus(true, true, "Authenticated.", DateTimeOffset.UtcNow.AddHours(1))
@@ -27,10 +34,11 @@ public sealed class ConversationBootstrapServiceTests
             sessionPreferenceService,
             saveModePreferenceService,
             storageModeProvider,
+            deckService,
             graphAuthService);
 
         var scope = ConversationScope.Create("telegram", "mike", "chat-42");
-        var snapshot = await sut.BuildAsync(scope, CancellationToken.None);
+        var snapshot = await sut.BuildAsync(scope, includeDecks: true, CancellationToken.None);
 
         Assert.Equal(scope, snapshot.Scope);
         Assert.Equal("auto", snapshot.SaveMode);
@@ -41,6 +49,31 @@ public sealed class ConversationBootstrapServiceTests
         Assert.NotEmpty(snapshot.CommandGroups);
         Assert.NotEmpty(snapshot.PartOfSpeechOptions);
         Assert.True(snapshot.PartOfSpeechOptions.Zip(snapshot.PartOfSpeechOptions.Skip(1), (a, b) => a.Number <= b.Number).All(x => x));
+        Assert.NotNull(snapshot.WritableDecks);
+        Assert.Single(snapshot.WritableDecks!);
+        Assert.Equal(1, deckService.GetWritableDeckFilesCalls);
+    }
+
+    [Fact]
+    public async Task BuildAsync_ShouldSkipDeckEnumeration_WhenIncludeDecksIsFalse()
+    {
+        var sessionPreferenceService = new FakeSessionPreferenceService();
+        var saveModePreferenceService = new FakeSaveModePreferenceService();
+        var storageModeProvider = new FakeStorageModeProvider();
+        var deckService = new FakeDeckService();
+        var graphAuthService = new FakeGraphAuthService();
+
+        var sut = new ConversationBootstrapService(
+            sessionPreferenceService,
+            saveModePreferenceService,
+            storageModeProvider,
+            deckService,
+            graphAuthService);
+
+        var snapshot = await sut.BuildAsync(ConversationScope.Default, includeDecks: false, CancellationToken.None);
+
+        Assert.Null(snapshot.WritableDecks);
+        Assert.Equal(0, deckService.GetWritableDeckFilesCalls);
     }
 
     private sealed class FakeSessionPreferenceService : IVocabularySessionPreferenceService
@@ -132,5 +165,53 @@ public sealed class ConversationBootstrapServiceTests
 
         public Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<string?>(null);
+    }
+
+    private sealed class FakeDeckService : IVocabularyDeckService
+    {
+        public IReadOnlyList<VocabularyDeckFile> WritableDecks { get; set; } = [];
+
+        public int GetWritableDeckFilesCalls { get; private set; }
+
+        public Task<VocabularyLookupResult> FindInWritableDecksAsync(string word, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new VocabularyLookupResult(word, []));
+        }
+
+        public Task<IReadOnlyList<VocabularyDeckFile>> GetWritableDeckFilesAsync(CancellationToken cancellationToken = default)
+        {
+            GetWritableDeckFilesCalls++;
+            return Task.FromResult(WritableDecks);
+        }
+
+        public Task<VocabularyAppendPreviewResult> PreviewAppendFromAssistantReplyAsync(
+            string requestedWord,
+            string assistantReply,
+            string? forcedDeckFileName = null,
+            string? overridePartOfSpeech = null,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new VocabularyAppendPreviewResult(
+                VocabularyAppendPreviewStatus.Error,
+                requestedWord,
+                null,
+                null,
+                null,
+                "not implemented"));
+        }
+
+        public Task<VocabularyAppendResult> AppendFromAssistantReplyAsync(
+            string requestedWord,
+            string assistantReply,
+            string? forcedDeckFileName = null,
+            string? overridePartOfSpeech = null,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new VocabularyAppendResult(
+                VocabularyAppendStatus.Error,
+                null,
+                null,
+                "not implemented"));
+        }
     }
 }

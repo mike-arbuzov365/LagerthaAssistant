@@ -11,4 +11,5 @@ public sealed record ConversationBootstrapSnapshot(
     IReadOnlyList<string> AvailableStorageModes,
     GraphAuthStatus Graph,
     IReadOnlyList<ConversationCommandCatalogGroup> CommandGroups,
-    IReadOnlyList<VocabularyPartOfSpeechOption> PartOfSpeechOptions);
+    IReadOnlyList<VocabularyPartOfSpeechOption> PartOfSpeechOptions,
+    IReadOnlyList<VocabularyDeckFile>? WritableDecks);
