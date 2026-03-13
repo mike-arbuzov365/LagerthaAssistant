@@ -1,4 +1,5 @@
-﻿using LagerthaAssistant.Application.Interfaces.Common;
+﻿using System.Diagnostics;
+using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
@@ -162,6 +163,74 @@ internal static partial class Program
         Console.ForegroundColor = ConsoleColor.Yellow;
         Console.WriteLine($"warning: Graph status: {status.Message}");
         Console.ResetColor();
+    }
+
+    private static Task PrintGraphDeviceCodePromptAsync(
+        GraphDeviceCodePrompt prompt,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!string.IsNullOrWhiteSpace(prompt.UserCode))
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"! First copy your one-time code: {prompt.UserCode}");
+            Console.ResetColor();
+
+            Console.Write($"Press Enter to open {prompt.VerificationUri} in your browser...");
+            if (!TryReadInputLine(out _))
+            {
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"warning: Open {prompt.VerificationUri} manually and continue sign-in.");
+                Console.ResetColor();
+                return Task.CompletedTask;
+            }
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"Open {prompt.VerificationUri} in a browser to continue Graph sign-in.");
+            Console.ResetColor();
+        }
+
+        if (TryOpenBrowser(prompt.VerificationUri))
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("info: Browser opened. Complete authentication there, then return to this terminal.");
+            Console.ResetColor();
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"warning: Could not open a browser automatically. Open {prompt.VerificationUri} manually.");
+            Console.ResetColor();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static bool TryOpenBrowser(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string? ReadMultilinePrompt()

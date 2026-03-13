@@ -10,6 +10,8 @@ using Microsoft.Extensions.Logging;
 
 public sealed class GraphAuthService : IGraphAuthService
 {
+    private const string DefaultVerificationUri = "https://www.microsoft.com/link";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -49,7 +51,22 @@ public sealed class GraphAuthService : IGraphAuthService
         return new GraphAuthStatus(true, true, "Authenticated.", cache.AccessTokenExpiresAtUtc);
     }
 
-    public async Task<GraphLoginResult> LoginAsync(CancellationToken cancellationToken = default)
+    public Task<GraphLoginResult> LoginAsync(CancellationToken cancellationToken = default)
+    {
+        return LoginCoreAsync(null, cancellationToken);
+    }
+
+    public Task<GraphLoginResult> LoginAsync(
+        Func<GraphDeviceCodePrompt, CancellationToken, Task> onDeviceCodeReceived,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(onDeviceCodeReceived);
+        return LoginCoreAsync(onDeviceCodeReceived, cancellationToken);
+    }
+
+    private async Task<GraphLoginResult> LoginCoreAsync(
+        Func<GraphDeviceCodePrompt, CancellationToken, Task>? onDeviceCodeReceived,
+        CancellationToken cancellationToken)
     {
         if (!IsConfigured())
         {
@@ -63,6 +80,12 @@ public sealed class GraphAuthService : IGraphAuthService
             if (deviceCode is null)
             {
                 return new GraphLoginResult(false, "Failed to start device-code login flow.");
+            }
+
+            if (onDeviceCodeReceived is not null)
+            {
+                var prompt = BuildDeviceCodePrompt(deviceCode);
+                await onDeviceCodeReceived(prompt, cancellationToken);
             }
 
             var intervalSeconds = Math.Max(3, deviceCode.Interval);
@@ -219,29 +242,36 @@ public sealed class GraphAuthService : IGraphAuthService
             return null;
         }
 
-        var verificationUri = string.IsNullOrWhiteSpace(model.VerificationUri)
-            ? "https://microsoft.com/devicelogin"
-            : model.VerificationUri.Trim();
-
-        if (verificationUri.Contains("login.microsoft.com/device", StringComparison.OrdinalIgnoreCase))
-        {
-            verificationUri = "https://microsoft.com/devicelogin";
-        }
-
-        Console.ForegroundColor = ConsoleColor.Cyan;
-
-        if (!string.IsNullOrWhiteSpace(model.UserCode))
-        {
-            Console.WriteLine($"To sign in, use a web browser to open the page {verificationUri} and enter the code {model.UserCode} to authenticate.");
-        }
-        else if (!string.IsNullOrWhiteSpace(model.Message))
-        {
-            Console.WriteLine(model.Message);
-        }
-
-        Console.ResetColor();
-
+        model.VerificationUri = NormalizeVerificationUri(model.VerificationUri);
         return model;
+    }
+
+    private static GraphDeviceCodePrompt BuildDeviceCodePrompt(DeviceCodeResponse deviceCode)
+    {
+        return new GraphDeviceCodePrompt(
+            deviceCode.UserCode.Trim(),
+            NormalizeVerificationUri(deviceCode.VerificationUri),
+            string.IsNullOrWhiteSpace(deviceCode.Message)
+                ? null
+                : deviceCode.Message.Trim());
+    }
+
+    private static string NormalizeVerificationUri(string? verificationUri)
+    {
+        if (string.IsNullOrWhiteSpace(verificationUri))
+        {
+            return DefaultVerificationUri;
+        }
+
+        var normalized = verificationUri.Trim();
+        if (normalized.Contains("microsoftonline.com", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("microsoft.com/devicelogin", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("login.microsoft.com/device", StringComparison.OrdinalIgnoreCase))
+        {
+            return DefaultVerificationUri;
+        }
+
+        return normalized;
     }
 
     private async Task<TokenResponse?> RequestTokenByDeviceCodeAsync(string deviceCode, CancellationToken cancellationToken)

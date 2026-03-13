@@ -109,6 +109,15 @@ public sealed class GraphControllerTests
             return Task.FromResult(NextLoginResult);
         }
 
+        public Task<GraphLoginResult> LoginAsync(
+            Func<GraphDeviceCodePrompt, CancellationToken, Task> onDeviceCodeReceived,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(onDeviceCodeReceived);
+            LoginCalls++;
+            return Task.FromResult(NextLoginResult);
+        }
+
         public Task LogoutAsync(CancellationToken cancellationToken = default)
         {
             LogoutCalled = true;

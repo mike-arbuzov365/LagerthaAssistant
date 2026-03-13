@@ -24,4 +24,28 @@ public sealed class GraphAuthServiceTests
         Assert.False(status.IsAuthenticated);
         Assert.Contains("not configured", status.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task LoginAsync_WithDeviceCodeCallback_ShouldReportNotConfigured_WhenClientIdIsMissing()
+    {
+        var sut = new GraphAuthService(
+            new GraphOptions
+            {
+                ClientId = string.Empty,
+                TenantId = "common"
+            },
+            NullLogger<GraphAuthService>.Instance);
+
+        var callbackInvoked = false;
+        var result = await sut.LoginAsync(
+            (_, _) =>
+            {
+                callbackInvoked = true;
+                return Task.CompletedTask;
+            });
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("not configured", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(callbackInvoked);
+    }
 }
