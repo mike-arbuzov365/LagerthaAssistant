@@ -1,4 +1,4 @@
-using LagerthaAssistant.Application.Interfaces.Agents;
+﻿using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
@@ -30,6 +30,7 @@ internal static partial class Program
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
+        IVocabularyStoragePreferenceService vocabularyStoragePreferenceService,
         IGraphAuthService graphAuthService,
         IUserMemoryRepository userMemoryRepository,
         IUnitOfWork unitOfWork)
@@ -135,8 +136,7 @@ internal static partial class Program
                 return CommandHandlingResult.Continue(saveMode);
             }
 
-            vocabularyStorageModeProvider.SetMode(updatedStorageMode);
-            await PersistStorageModeAsync(userMemoryRepository, unitOfWork, updatedStorageMode, vocabularyStorageModeProvider, uiScope);
+            await PersistStorageModeAsync(vocabularyStoragePreferenceService, updatedStorageMode, vocabularyStorageModeProvider, uiScope);
             PrintCurrentStorageMode(vocabularyStorageModeProvider, updatedStorageMode);
 
             if (updatedStorageMode == VocabularyStorageMode.Graph)
@@ -165,10 +165,8 @@ internal static partial class Program
                 if (vocabularyStorageModeProvider.CurrentMode != VocabularyStorageMode.Graph
                     && AskYesNo("Switch storage mode to graph now?"))
                 {
-                    vocabularyStorageModeProvider.SetMode(VocabularyStorageMode.Graph);
                     await PersistStorageModeAsync(
-                        userMemoryRepository,
-                        unitOfWork,
+                        vocabularyStoragePreferenceService,
                         VocabularyStorageMode.Graph,
                         vocabularyStorageModeProvider,
                         uiScope);
@@ -227,3 +225,4 @@ internal static partial class Program
         return CommandHandlingResult.NotHandled(saveMode);
     }
 }
+

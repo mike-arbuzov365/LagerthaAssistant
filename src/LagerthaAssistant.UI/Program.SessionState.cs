@@ -1,4 +1,4 @@
-using LagerthaAssistant.Application.Interfaces.Common;
+﻿using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
@@ -96,54 +96,20 @@ internal static partial class Program
     }
 
     private static async Task<VocabularyStorageMode> LoadStorageModeAsync(
-        IUserMemoryRepository userMemoryRepository,
-        IVocabularyStorageModeProvider vocabularyStorageModeProvider,
+        IVocabularyStoragePreferenceService vocabularyStoragePreferenceService,
         ConversationScope scope)
     {
-        var entry = await GetScopedOrLegacyEntryAsync(userMemoryRepository, StorageModeMemoryKey, scope);
-        if (entry is null)
-        {
-            return vocabularyStorageModeProvider.CurrentMode;
-        }
-
-        return vocabularyStorageModeProvider.TryParse(entry.Value, out var mode)
-            ? mode
-            : vocabularyStorageModeProvider.CurrentMode;
+        return await vocabularyStoragePreferenceService.GetModeAsync(scope);
     }
 
     private static async Task PersistStorageModeAsync(
-        IUserMemoryRepository userMemoryRepository,
-        IUnitOfWork unitOfWork,
+        IVocabularyStoragePreferenceService vocabularyStoragePreferenceService,
         VocabularyStorageMode mode,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
         ConversationScope scope)
     {
-        var modeValue = vocabularyStorageModeProvider.ToText(mode);
-        var now = DateTimeOffset.UtcNow;
-
-        var entry = await userMemoryRepository.GetByKeyAsync(StorageModeMemoryKey, scope.Channel, scope.UserId);
-        if (entry is null)
-        {
-            await userMemoryRepository.AddAsync(new UserMemoryEntry
-            {
-                Key = StorageModeMemoryKey,
-                Value = modeValue,
-                Confidence = 1.0,
-                IsActive = false,
-                LastSeenAtUtc = now,
-                Channel = scope.Channel,
-                UserId = scope.UserId
-            });
-        }
-        else
-        {
-            entry.Value = modeValue;
-            entry.Confidence = 1.0;
-            entry.IsActive = false;
-            entry.LastSeenAtUtc = now;
-        }
-
-        await unitOfWork.SaveChangesAsync();
+        await vocabularyStoragePreferenceService.SetModeAsync(scope, mode);
+        vocabularyStorageModeProvider.SetMode(mode);
     }
 
     private static async Task<UserMemoryEntry?> GetScopedOrLegacyEntryAsync(

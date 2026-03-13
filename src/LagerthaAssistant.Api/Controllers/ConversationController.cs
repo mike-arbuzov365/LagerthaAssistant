@@ -1,9 +1,10 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
+using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Domain.Entities;
@@ -19,15 +20,21 @@ public sealed class ConversationController : ControllerBase
     private readonly IConversationOrchestrator _orchestrator;
     private readonly IAssistantSessionService _assistantSessionService;
     private readonly IConversationScopeAccessor _scopeAccessor;
+    private readonly IVocabularyStorageModeProvider _storageModeProvider;
+    private readonly IVocabularyStoragePreferenceService _storagePreferenceService;
 
     public ConversationController(
         IConversationOrchestrator orchestrator,
         IAssistantSessionService assistantSessionService,
-        IConversationScopeAccessor scopeAccessor)
+        IConversationScopeAccessor scopeAccessor,
+        IVocabularyStorageModeProvider storageModeProvider,
+        IVocabularyStoragePreferenceService storagePreferenceService)
     {
         _orchestrator = orchestrator;
         _assistantSessionService = assistantSessionService;
         _scopeAccessor = scopeAccessor;
+        _storageModeProvider = storageModeProvider;
+        _storagePreferenceService = storagePreferenceService;
     }
 
     [HttpGet("commands")]
@@ -289,14 +296,45 @@ public sealed class ConversationController : ControllerBase
             return BadRequest("Input is required.");
         }
 
-        var channelName = NormalizeChannel(request.Channel);
+        var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
+        _scopeAccessor.Set(scope);
+
+        var applyMode = await TryApplyStorageModeAsync(scope, request.StorageMode, cancellationToken);
+        if (!applyMode.Success)
+        {
+            return applyMode.Error!;
+        }
+
         var result = await _orchestrator.ProcessAsync(
             request.Input,
-            channelName,
-            request.UserId,
-            request.ConversationId,
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
             cancellationToken);
         return Ok(Map(result));
+    }
+
+    private async Task<(bool Success, ActionResult? Error)> TryApplyStorageModeAsync(
+        ConversationScope scope,
+        string? requestedStorageMode,
+        CancellationToken cancellationToken)
+    {
+        VocabularyStorageMode mode;
+
+        if (!string.IsNullOrWhiteSpace(requestedStorageMode))
+        {
+            if (!_storageModeProvider.TryParse(requestedStorageMode, out mode))
+            {
+                return (false, BadRequest($"Unsupported mode '{requestedStorageMode}'. Use local or graph."));
+            }
+        }
+        else
+        {
+            mode = await _storagePreferenceService.GetModeAsync(scope, cancellationToken);
+        }
+
+        _storageModeProvider.SetMode(mode);
+        return (true, null);
     }
 
     private static IReadOnlyList<ConversationCommandItemResponse> BuildCommandItems()

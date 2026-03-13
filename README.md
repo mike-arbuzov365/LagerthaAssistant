@@ -1,4 +1,4 @@
-# LagerthaAssistant
+﻿# LagerthaAssistant
 
 Console AI assistant prototype built with Clean Architecture and SQL Server persistence.
 
@@ -188,11 +188,18 @@ curl -X POST http://localhost:5000/api/conversation/prompt/proposals/improve -H 
 curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/apply
 curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/reject
 curl -X POST "http://localhost:5000/api/conversation/reset?channel=api&userId=anonymous&conversationId=default"
-curl -X POST http://localhost:5000/api/vocabulary/analyze -H "Content-Type: application/json" -d "{\"input\":\"void\",\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
-curl -X POST http://localhost:5000/api/vocabulary/analyze-batch -H "Content-Type: application/json" -d "{\"inputs\":[\"void\",\"call back\"],\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
+curl http://localhost:5000/api/graph/status
+curl -X POST http://localhost:5000/api/graph/login
+curl -X POST http://localhost:5000/api/graph/logout
+curl -X POST http://localhost:5000/api/vocabulary/analyze -H "Content-Type: application/json" -d "{\"input\":\"void\",\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\",\"storageMode\":\"local\"}"
+curl -X POST http://localhost:5000/api/vocabulary/analyze-batch -H "Content-Type: application/json" -d "{\"inputs\":[\"void\",\"call back\"],\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\",\"storageMode\":\"graph\"}"
+curl "http://localhost:5000/api/vocabulary/storage-mode?channel=api&userId=anonymous&conversationId=default"
+curl -X PUT http://localhost:5000/api/vocabulary/storage-mode -H "Content-Type: application/json" -d "{\"mode\":\"graph\",\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
+curl "http://localhost:5000/api/vocabulary/decks?channel=api&userId=anonymous&conversationId=default"
+curl http://localhost:5000/api/vocabulary/markers
 curl -X POST http://localhost:5000/api/vocabulary/parse-batch -H "Content-Type: application/json" -d "{\"input\":\"void prepare\",\"applySpaceSplit\":false}"
-curl -X POST http://localhost:5000/api/vocabulary/save -H "Content-Type: application/json" -d "{\"requestedWord\":\"void\",\"assistantReply\":\"void\\n\\n(n) emptiness\"}"
-curl -X POST http://localhost:5000/api/vocabulary/save-batch -H "Content-Type: application/json" -d "{\"items\":[{\"requestedWord\":\"void\",\"assistantReply\":\"void\\n\\n(n) emptiness\"},{\"requestedWord\":\"prepare\",\"assistantReply\":\"prepare\\n\\n(v) готувати\"}]}"
+curl -X POST "http://localhost:5000/api/vocabulary/save?channel=api&userId=anonymous&conversationId=default&storageMode=local" -H "Content-Type: application/json" -d "{\"requestedWord\":\"void\",\"assistantReply\":\"void\\n\\n(n) emptiness\"}"
+curl -X POST "http://localhost:5000/api/vocabulary/save-batch?channel=api&userId=anonymous&conversationId=default&storageMode=graph" -H "Content-Type: application/json" -d "{\"items\":[{\"requestedWord\":\"void\",\"assistantReply\":\"void\\n\\n(n) emptiness\"},{\"requestedWord\":\"prepare\",\"assistantReply\":\"prepare\\n\\n(v) to prepare\"}]}"
 ```
 
 On startup both UI and API apply EF migrations automatically.
@@ -201,9 +208,9 @@ On startup both UI and API apply EF migrations automatically.
 
 For `POST /api/conversation/messages`, you can send natural language command-like requests (no slash required), for example:
 
-- Optional request fields: `channel`, `userId`, `conversationId`.
+- Optional request fields: `channel`, `userId`, `conversationId`, `storageMode` (`local|graph`).
 - Defaults when omitted: `channel=api`, `userId=anonymous`, `conversationId=default`.
-- Example request body: `{"input":"void","channel":"telegram","userId":"mike","conversationId":"chat-42"}`
+- Example request body: `{"input":"void","channel":"telegram","userId":"mike","conversationId":"chat-42","storageMode":"graph"}`
 
 - `show conversation history`
 - `show active memory`
@@ -238,11 +245,22 @@ Command catalog endpoints (for external clients):
 - `POST /api/conversation/prompt/proposals/{id}/apply` (apply proposal)
 - `POST /api/conversation/prompt/proposals/{id}/reject` (reject proposal)
 - `POST /api/conversation/reset?channel=api&userId=anonymous&conversationId=default` (reset conversation for exact scope)
+- `GET /api/graph/status` (get Graph authentication status)
+- `POST /api/graph/login` (start Graph device-code login and return fresh auth status)
+- `POST /api/graph/logout` (clear Graph token cache and return fresh auth status)
 - `POST /api/vocabulary/analyze` (process one vocabulary item using scoped conversation context)
 - `POST /api/vocabulary/analyze-batch` (process multiple items sequentially in one scope)
+- `GET /api/vocabulary/storage-mode` (get active vocabulary storage mode and supported values)
+- `PUT /api/vocabulary/storage-mode` (switch vocabulary storage mode to `local` or `graph`)
+- `GET /api/vocabulary/decks` (list writable decks for current storage mode with suggested POS marker)
+- `GET /api/vocabulary/markers` (list supported POS markers for custom save flows)
 - `POST /api/vocabulary/parse-batch` (parse raw batch text and return split hints for clients)
 - `POST /api/vocabulary/save` (append parsed assistant reply to selected deck)
 - `POST /api/vocabulary/save-batch` (append multiple assistant replies in one request with per-item result)
+
+Vocabulary scope and mode notes:
+- `channel`, `userId`, `conversationId` select per-user storage preferences for vocabulary endpoints.
+- `storageMode` can be sent as request override (`analyze`/`analyze-batch` body, `decks`/`save`/`save-batch` query) without changing stored preference.
 
 Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
 
@@ -300,3 +318,4 @@ Use `/help` to see full command reference in the console.
 dotnet build LagerthaAssistant.slnx
 dotnet test LagerthaAssistant.slnx -v minimal
 ```
+

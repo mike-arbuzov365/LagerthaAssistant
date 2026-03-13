@@ -2,6 +2,7 @@ namespace LagerthaAssistant.Infrastructure.Services.Vocabulary;
 
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
+using LagerthaAssistant.Application.Services.Vocabulary;
 using LagerthaAssistant.Infrastructure.Options;
 
 internal readonly record struct VocabularyAppendRequestSignature(
@@ -232,24 +233,6 @@ internal static class VocabularyAppendPlanning
 
     private static string? NormalizePartOfSpeech(string? raw)
     {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return null;
-        }
-
-        return raw.Trim().ToLowerInvariant() switch
-        {
-            "n" or "noun" => "n",
-            "v" or "verb" => "v",
-            "iv" or "irregular" or "irregular-verb" => "iv",
-            "pv" or "phrasal" or "phrasal-verb" => "pv",
-            "adj" or "adjective" => "adj",
-            "adv" or "adverb" => "adv",
-            "prep" or "preposition" => "prep",
-            "conj" or "conjunction" => "conj",
-            "pron" or "pronoun" => "pron",
-            "pe" or "persistent" or "persistent-expression" or "expression" => "pe",
-            _ => null
-        };
+        return VocabularyPartOfSpeechCatalog.NormalizeOrNull(raw);
     }
 }
