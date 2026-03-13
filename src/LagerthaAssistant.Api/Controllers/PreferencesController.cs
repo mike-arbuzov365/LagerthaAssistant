@@ -56,7 +56,10 @@ public sealed class PreferencesController : ControllerBase
 
         if (!_saveModePreferenceService.TryParse(request.Mode, out var mode))
         {
-            return BadRequest($"Unsupported mode '{request.Mode}'. Use ask, auto, or off.");
+            return BadRequest(ApiModeValidationErrors.BuildUnsupported(
+                "mode",
+                request.Mode,
+                _saveModePreferenceService.SupportedModes));
         }
 
         var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, request.Channel, request.UserId, request.ConversationId);
@@ -105,7 +108,10 @@ public sealed class PreferencesController : ControllerBase
         {
             if (!_saveModePreferenceService.TryParse(request.SaveMode, out var saveMode))
             {
-                return BadRequest($"Unsupported save mode '{request.SaveMode}'. Use ask, auto, or off.");
+                return BadRequest(ApiModeValidationErrors.BuildUnsupported(
+                    "save mode",
+                    request.SaveMode,
+                    _saveModePreferenceService.SupportedModes));
             }
 
             parsedSaveMode = saveMode;
@@ -116,7 +122,10 @@ public sealed class PreferencesController : ControllerBase
         {
             if (!_storageModeProvider.TryParse(request.StorageMode, out var storageMode))
             {
-                return BadRequest($"Unsupported storage mode '{request.StorageMode}'. Use local or graph.");
+                return BadRequest(ApiModeValidationErrors.BuildUnsupported(
+                    "storage mode",
+                    request.StorageMode,
+                    _sessionPreferenceService.SupportedStorageModes));
             }
 
             parsedStorageMode = storageMode;

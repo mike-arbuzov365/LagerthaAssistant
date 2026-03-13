@@ -161,7 +161,10 @@ public sealed class VocabularyController : ControllerBase
 
         if (!_storageModeProvider.TryParse(request.Mode, out var mode))
         {
-            return BadRequest($"Unsupported mode '{request.Mode}'. Use local or graph.");
+            return BadRequest(ApiModeValidationErrors.BuildUnsupported(
+                "mode",
+                request.Mode,
+                _storagePreferenceService.SupportedModes));
         }
 
         var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, request.Channel, request.UserId, request.ConversationId);

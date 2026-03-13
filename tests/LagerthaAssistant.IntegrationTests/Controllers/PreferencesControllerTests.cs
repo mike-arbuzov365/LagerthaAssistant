@@ -51,13 +51,17 @@ public sealed class PreferencesControllerTests
     public async Task SetSaveMode_ShouldReturnBadRequest_WhenModeUnsupported()
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var saveModeService = new FakeVocabularySaveModePreferenceService();
+        var saveModeService = new FakeVocabularySaveModePreferenceService
+        {
+            SupportedModes = ["ask", "auto", "off", "silent"]
+        };
         var sessionPreferenceService = new FakeVocabularySessionPreferenceService();
         var sut = CreateSut(scopeAccessor, saveModeService, sessionPreferenceService);
 
         var response = await sut.SetSaveMode(new PreferenceSetSaveModeRequest("cloud"), CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(response.Result);
+        var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal("Unsupported mode 'cloud'. Use one of: ask, auto, off, silent.", badRequest.Value);
         Assert.Null(saveModeService.LastSetScope);
     }
 
@@ -165,7 +169,10 @@ public sealed class PreferencesControllerTests
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
         var saveModeService = new FakeVocabularySaveModePreferenceService();
-        var sessionPreferenceService = new FakeVocabularySessionPreferenceService();
+        var sessionPreferenceService = new FakeVocabularySessionPreferenceService
+        {
+            SupportedStorageModes = ["local", "graph", "archive"]
+        };
         var storageModeProvider = new FakeVocabularyStorageModeProvider();
         var sut = new PreferencesController(scopeAccessor, saveModeService, sessionPreferenceService, storageModeProvider);
 
@@ -173,7 +180,28 @@ public sealed class PreferencesControllerTests
             new PreferenceSetSessionRequest(SaveMode: "ask", StorageMode: "cloud"),
             CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(response.Result);
+        var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal("Unsupported storage mode 'cloud'. Use one of: local, graph, archive.", badRequest.Value);
+    }
+
+    [Fact]
+    public async Task SetSession_ShouldReturnBadRequest_WhenSaveModeUnsupported()
+    {
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var saveModeService = new FakeVocabularySaveModePreferenceService
+        {
+            SupportedModes = ["ask", "auto", "off", "silent"]
+        };
+        var sessionPreferenceService = new FakeVocabularySessionPreferenceService();
+        var storageModeProvider = new FakeVocabularyStorageModeProvider();
+        var sut = new PreferencesController(scopeAccessor, saveModeService, sessionPreferenceService, storageModeProvider);
+
+        var response = await sut.SetSession(
+            new PreferenceSetSessionRequest(SaveMode: "cloud", StorageMode: "local"),
+            CancellationToken.None);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal("Unsupported save mode 'cloud'. Use one of: ask, auto, off, silent.", badRequest.Value);
     }
 
     private static PreferencesController CreateSut(
@@ -200,7 +228,7 @@ public sealed class PreferencesControllerTests
 
     private sealed class FakeVocabularySaveModePreferenceService : IVocabularySaveModePreferenceService
     {
-        public IReadOnlyList<string> SupportedModes { get; } = ["ask", "auto", "off"];
+        public IReadOnlyList<string> SupportedModes { get; set; } = ["ask", "auto", "off"];
 
         public VocabularySaveMode CurrentMode { get; set; } = VocabularySaveMode.Ask;
 
@@ -253,7 +281,7 @@ public sealed class PreferencesControllerTests
     {
         public IReadOnlyList<string> SupportedSaveModes { get; } = ["ask", "auto", "off"];
 
-        public IReadOnlyList<string> SupportedStorageModes { get; } = ["local", "graph"];
+        public IReadOnlyList<string> SupportedStorageModes { get; set; } = ["local", "graph"];
 
         public VocabularySaveMode CurrentSaveMode { get; set; } = VocabularySaveMode.Ask;
 

@@ -19,7 +19,10 @@ internal static class ApiVocabularyStorageModeApplier
         {
             if (!storageModeProvider.TryParse(requestedStorageMode, out mode))
             {
-                return (false, $"Unsupported mode '{requestedStorageMode}'. Use local or graph.", default);
+                return (false, ApiModeValidationErrors.BuildUnsupported(
+                    "mode",
+                    requestedStorageMode,
+                    storagePreferenceService.SupportedModes), default);
             }
         }
         else

@@ -504,14 +504,18 @@ public sealed class ConversationControllerTests
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
         var storageModeProvider = new FakeVocabularyStorageModeProvider();
-        var storagePreferenceService = new FakeVocabularyStoragePreferenceService();
+        var storagePreferenceService = new FakeVocabularyStoragePreferenceService
+        {
+            SupportedModes = ["local", "graph", "hybrid"]
+        };
         var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, storageModeProvider, storagePreferenceService, new FakeConversationCommandCatalogService());
 
         var response = await sut.PostMessage(
             new ConversationMessageRequest("void", "api", "Mike", "chat-42", "cloud"),
             CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(response.Result);
+        var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal("Unsupported mode 'cloud'. Use one of: local, graph, hybrid.", badRequest.Value);
         Assert.Equal(0, orchestrator.Calls);
     }
 
@@ -706,7 +710,7 @@ public sealed class ConversationControllerTests
 
     private sealed class FakeVocabularyStoragePreferenceService : IVocabularyStoragePreferenceService
     {
-        public IReadOnlyList<string> SupportedModes { get; } = ["local", "graph"];
+        public IReadOnlyList<string> SupportedModes { get; set; } = ["local", "graph"];
 
         public VocabularyStorageMode CurrentMode { get; set; } = VocabularyStorageMode.Local;
 
