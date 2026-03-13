@@ -14,19 +14,22 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
     private readonly IVocabularyStorageModeProvider _storageModeProvider;
     private readonly IVocabularyDeckService _deckService;
     private readonly IGraphAuthService _graphAuthService;
+    private readonly IConversationCommandCatalogService _commandCatalogService;
 
     public ConversationBootstrapService(
         IVocabularySessionPreferenceService sessionPreferenceService,
         IVocabularySaveModePreferenceService saveModePreferenceService,
         IVocabularyStorageModeProvider storageModeProvider,
         IVocabularyDeckService deckService,
-        IGraphAuthService graphAuthService)
+        IGraphAuthService graphAuthService,
+        IConversationCommandCatalogService commandCatalogService)
     {
         _sessionPreferenceService = sessionPreferenceService;
         _saveModePreferenceService = saveModePreferenceService;
         _storageModeProvider = storageModeProvider;
         _deckService = deckService;
         _graphAuthService = graphAuthService;
+        _commandCatalogService = commandCatalogService;
     }
 
     public async Task<ConversationBootstrapSnapshot> BuildAsync(
@@ -53,7 +56,7 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
             : [];
 
         IReadOnlyList<ConversationCommandCatalogGroup> commandGroups = options.IncludeCommandGroups
-            ? ConversationCommandCatalog.SlashCommandGroups
+            ? _commandCatalogService.GetGroups()
             : [];
 
         IReadOnlyList<VocabularyDeckFile>? writableDecks = null;

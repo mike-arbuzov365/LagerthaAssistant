@@ -35,7 +35,8 @@ public sealed class ConversationBootstrapServiceTests
             saveModePreferenceService,
             storageModeProvider,
             deckService,
-            graphAuthService);
+            graphAuthService,
+            new ConversationCommandCatalogService());
 
         var scope = ConversationScope.Create("telegram", "mike", "chat-42");
         var snapshot = await sut.BuildAsync(
@@ -74,7 +75,8 @@ public sealed class ConversationBootstrapServiceTests
             saveModePreferenceService,
             storageModeProvider,
             deckService,
-            graphAuthService);
+            graphAuthService,
+            new ConversationCommandCatalogService());
 
         var snapshot = await sut.BuildAsync(
             ConversationScope.Default,
@@ -102,7 +104,8 @@ public sealed class ConversationBootstrapServiceTests
             saveModePreferenceService,
             storageModeProvider,
             deckService,
-            graphAuthService);
+            graphAuthService,
+            new ConversationCommandCatalogService());
 
         var snapshot = await sut.BuildAsync(
             ConversationScope.Default,

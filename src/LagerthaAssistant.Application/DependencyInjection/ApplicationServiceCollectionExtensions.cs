@@ -31,6 +31,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IVocabularySessionPreferenceService, VocabularySessionPreferenceService>();
 
         services.AddSingleton<IConversationIntentRouter, ConversationIntentRouter>();
+        services.AddSingleton<IConversationCommandCatalogService, ConversationCommandCatalogService>();
         services.AddScoped<IConversationOrchestrator, ConversationOrchestrator>();
         services.AddScoped<IConversationBootstrapService, ConversationBootstrapService>();
         services.AddScoped<IConversationMetricsService, ConversationMetricsService>();

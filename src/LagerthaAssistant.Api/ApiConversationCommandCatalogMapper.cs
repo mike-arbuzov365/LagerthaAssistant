@@ -1,21 +1,16 @@
 namespace LagerthaAssistant.Api;
 
 using LagerthaAssistant.Api.Contracts;
-using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Models.Agents;
 
 internal static class ApiConversationCommandCatalogMapper
 {
-    public static IReadOnlyList<ConversationCommandItemResponse> BuildFlatItems()
+    public static IReadOnlyList<ConversationCommandItemResponse> MapFlatItems(
+        IReadOnlyList<ConversationCommandCatalogItem> items)
     {
-        return ConversationCommandCatalog.SlashCommands
+        return items
             .Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description))
             .ToList();
-    }
-
-    public static IReadOnlyList<ConversationCommandGroupResponse> BuildGroupedItems()
-    {
-        return MapGroupedItems(ConversationCommandCatalog.SlashCommandGroups);
     }
 
     public static IReadOnlyList<ConversationCommandGroupResponse> MapGroupedItems(

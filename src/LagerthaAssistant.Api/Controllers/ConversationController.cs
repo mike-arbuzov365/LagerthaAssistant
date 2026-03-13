@@ -21,33 +21,36 @@ public sealed class ConversationController : ControllerBase
     private readonly IConversationScopeAccessor _scopeAccessor;
     private readonly IVocabularyStorageModeProvider _storageModeProvider;
     private readonly IVocabularyStoragePreferenceService _storagePreferenceService;
+    private readonly IConversationCommandCatalogService _commandCatalogService;
 
     public ConversationController(
         IConversationOrchestrator orchestrator,
         IAssistantSessionService assistantSessionService,
         IConversationScopeAccessor scopeAccessor,
         IVocabularyStorageModeProvider storageModeProvider,
-        IVocabularyStoragePreferenceService storagePreferenceService)
+        IVocabularyStoragePreferenceService storagePreferenceService,
+        IConversationCommandCatalogService commandCatalogService)
     {
         _orchestrator = orchestrator;
         _assistantSessionService = assistantSessionService;
         _scopeAccessor = scopeAccessor;
         _storageModeProvider = storageModeProvider;
         _storagePreferenceService = storagePreferenceService;
+        _commandCatalogService = commandCatalogService;
     }
 
     [HttpGet("commands")]
     [ProducesResponseType(typeof(IReadOnlyList<ConversationCommandItemResponse>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<ConversationCommandItemResponse>> GetCommands()
     {
-        return Ok(ApiConversationCommandCatalogMapper.BuildFlatItems());
+        return Ok(ApiConversationCommandCatalogMapper.MapFlatItems(_commandCatalogService.GetCommands()));
     }
 
     [HttpGet("commands/grouped")]
     [ProducesResponseType(typeof(IReadOnlyList<ConversationCommandGroupResponse>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<ConversationCommandGroupResponse>> GetGroupedCommands()
     {
-        return Ok(ApiConversationCommandCatalogMapper.BuildGroupedItems());
+        return Ok(ApiConversationCommandCatalogMapper.MapGroupedItems(_commandCatalogService.GetGroups()));
     }
 
     [HttpGet("history")]
