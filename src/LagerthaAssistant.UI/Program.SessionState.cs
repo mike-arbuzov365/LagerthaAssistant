@@ -1,98 +1,33 @@
 ﻿using System.Diagnostics;
-using LagerthaAssistant.Application.Interfaces.Common;
-using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
-using LagerthaAssistant.Domain.Entities;
 
 namespace LagerthaAssistant.UI;
 
 internal static partial class Program
 {
-    private static async Task<SaveMode> LoadSaveModeAsync(
-        IUserMemoryRepository userMemoryRepository,
+    private static async Task<VocabularySaveMode> LoadSaveModeAsync(
+        IVocabularySaveModePreferenceService vocabularySaveModePreferenceService,
         ConversationScope scope)
     {
-        var entry = await GetScopedOrLegacyEntryAsync(userMemoryRepository, SaveModeMemoryKey, scope);
-        if (entry is null)
-        {
-            return SaveMode.Ask;
-        }
-
-        return TryParseSaveMode(entry.Value, out var saveMode)
-            ? saveMode
-            : SaveMode.Ask;
+        return await vocabularySaveModePreferenceService.GetModeAsync(scope);
     }
 
     private static async Task PersistSaveModeAsync(
-        IUserMemoryRepository userMemoryRepository,
-        IUnitOfWork unitOfWork,
-        SaveMode saveMode,
+        IVocabularySaveModePreferenceService vocabularySaveModePreferenceService,
+        VocabularySaveMode saveMode,
         ConversationScope scope)
     {
-        var modeValue = ToSaveModeText(saveMode);
-        var now = DateTimeOffset.UtcNow;
-
-        var entry = await userMemoryRepository.GetByKeyAsync(SaveModeMemoryKey, scope.Channel, scope.UserId);
-        if (entry is null)
-        {
-            await userMemoryRepository.AddAsync(new UserMemoryEntry
-            {
-                Key = SaveModeMemoryKey,
-                Value = modeValue,
-                Confidence = 1.0,
-                IsActive = false,
-                LastSeenAtUtc = now,
-                Channel = scope.Channel,
-                UserId = scope.UserId
-            });
-        }
-        else
-        {
-            entry.Value = modeValue;
-            entry.Confidence = 1.0;
-            entry.IsActive = false;
-            entry.LastSeenAtUtc = now;
-        }
-
-        await unitOfWork.SaveChangesAsync();
+        await vocabularySaveModePreferenceService.SetModeAsync(scope, saveMode);
     }
 
-    private static bool TryParseSaveMode(string? value, out SaveMode saveMode)
-    {
-        switch (value?.Trim().ToLowerInvariant())
-        {
-            case "ask":
-                saveMode = SaveMode.Ask;
-                return true;
-            case "auto":
-                saveMode = SaveMode.Auto;
-                return true;
-            case "off":
-                saveMode = SaveMode.Off;
-                return true;
-            default:
-                saveMode = SaveMode.Ask;
-                return false;
-        }
-    }
-
-    private static string ToSaveModeText(SaveMode saveMode)
-    {
-        return saveMode switch
-        {
-            SaveMode.Ask => "ask",
-            SaveMode.Auto => "auto",
-            SaveMode.Off => "off",
-            _ => "ask"
-        };
-    }
-
-    private static void PrintCurrentSaveMode(SaveMode saveMode)
+    private static void PrintCurrentSaveMode(
+        IVocabularySaveModePreferenceService vocabularySaveModePreferenceService,
+        VocabularySaveMode saveMode)
     {
         Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine($"info: Save mode is '{ToSaveModeText(saveMode)}'.");
+        Console.WriteLine($"info: Save mode is '{vocabularySaveModePreferenceService.ToText(saveMode)}'.");
         Console.ResetColor();
     }
 
@@ -111,26 +46,6 @@ internal static partial class Program
     {
         await vocabularyStoragePreferenceService.SetModeAsync(scope, mode);
         vocabularyStorageModeProvider.SetMode(mode);
-    }
-
-    private static async Task<UserMemoryEntry?> GetScopedOrLegacyEntryAsync(
-        IUserMemoryRepository userMemoryRepository,
-        string key,
-        ConversationScope scope)
-    {
-        var scoped = await userMemoryRepository.GetByKeyAsync(key, scope.Channel, scope.UserId);
-        if (scoped is not null)
-        {
-            return scoped;
-        }
-
-        if (scope.Channel.Equals(ConversationScope.DefaultChannel, StringComparison.Ordinal)
-            && scope.UserId.Equals(ConversationScope.DefaultUserId, StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        return await userMemoryRepository.GetByKeyAsync(key);
     }
 
     private static void PrintCurrentStorageMode(

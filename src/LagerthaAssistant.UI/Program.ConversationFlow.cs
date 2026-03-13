@@ -1,4 +1,4 @@
-using LagerthaAssistant.Application.Interfaces.Vocabulary;
+﻿using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 
@@ -22,11 +22,11 @@ internal static partial class Program
         Console.ResetColor();
     }
 
-    private static async Task<SaveMode> HandleVocabularyAgentResultAsync(
+    private static async Task<VocabularySaveMode> HandleVocabularyAgentResultAsync(
         ConversationAgentResult result,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
-        SaveMode saveMode)
+        VocabularySaveMode saveMode)
     {
         if (result.Items.Count == 0)
         {
@@ -53,11 +53,11 @@ internal static partial class Program
             saveMode);
     }
 
-    private static async Task<SaveMode> HandleVocabularyAgentItemAsync(
+    private static async Task<VocabularySaveMode> HandleVocabularyAgentItemAsync(
         ConversationAgentItemResult item,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
-        SaveMode saveMode)
+        VocabularySaveMode saveMode)
     {
         if (item.FoundInDeck)
         {
@@ -86,19 +86,19 @@ internal static partial class Program
             && !string.IsNullOrWhiteSpace(preview.TargetDeckFileName)
             && !string.IsNullOrWhiteSpace(preview.TargetDeckPath))
         {
-            var shouldSave = saveMode != SaveMode.Off;
+            var shouldSave = saveMode != VocabularySaveMode.Off;
             var targetDeckFileName = preview.TargetDeckFileName;
             string? overridePartOfSpeech = null;
             var retryPreview = preview;
 
-            if (saveMode == SaveMode.Ask)
+            if (saveMode == VocabularySaveMode.Ask)
             {
                 var confirmationChoice = AskVocabularySaveConfirmation(preview);
                 shouldSave = confirmationChoice != SaveConfirmationChoice.No;
 
                 if (confirmationChoice == SaveConfirmationChoice.YesDontAskAgain)
                 {
-                    saveMode = SaveMode.Auto;
+                    saveMode = VocabularySaveMode.Auto;
                 }
                 else if (confirmationChoice == SaveConfirmationChoice.SaveToOtherDeck)
                 {
@@ -159,11 +159,11 @@ internal static partial class Program
         return saveMode;
     }
 
-    private static async Task<SaveMode> HandleVocabularyBatchAgentItemsAsync(
+    private static async Task<VocabularySaveMode> HandleVocabularyBatchAgentItemsAsync(
         IReadOnlyList<ConversationAgentItemResult> items,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
-        SaveMode saveMode)
+        VocabularySaveMode saveMode)
     {
         var pendingSaves = new List<PendingVocabularySave>();
 
@@ -219,12 +219,12 @@ internal static partial class Program
             vocabularyPersistenceService,
             saveMode);
     }
-    private static async Task<SaveMode> ProcessBatchInputsAsync(
+    private static async Task<VocabularySaveMode> ProcessBatchInputsAsync(
         IReadOnlyList<string> batchItems,
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
-        SaveMode saveMode)
+        VocabularySaveMode saveMode)
     {
         var workflowItems = await vocabularyWorkflowService.ProcessBatchAsync(batchItems);
         var mappedItems = workflowItems
@@ -242,11 +242,11 @@ internal static partial class Program
             saveMode);
     }
 
-    private static async Task<SaveMode> FinalizePendingBatchSavesAsync(
+    private static async Task<VocabularySaveMode> FinalizePendingBatchSavesAsync(
         IReadOnlyList<PendingVocabularySave> pendingSaves,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
-        SaveMode saveMode)
+        VocabularySaveMode saveMode)
     {
         if (pendingSaves.Count == 0)
         {
@@ -257,7 +257,7 @@ internal static partial class Program
             return saveMode;
         }
 
-        if (saveMode == SaveMode.Off)
+        if (saveMode == VocabularySaveMode.Off)
         {
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("info: Save skipped for batch (mode=off).");
@@ -269,7 +269,7 @@ internal static partial class Program
         IReadOnlyList<PendingVocabularySave> saveQueue = pendingSaves;
         var shouldSave = true;
 
-        if (saveMode == SaveMode.Ask)
+        if (saveMode == VocabularySaveMode.Ask)
         {
             var confirmation = AskBatchSaveConfirmation(pendingSaves);
 
@@ -280,7 +280,7 @@ internal static partial class Program
                     break;
                 case BatchSaveConfirmationChoice.SaveAllDontAskAgain:
                     saveQueue = pendingSaves;
-                    saveMode = SaveMode.Auto;
+                    saveMode = VocabularySaveMode.Auto;
                     break;
                 case BatchSaveConfirmationChoice.ReviewTargets:
                     saveQueue = await ReviewBatchSaveTargetsAsync(pendingSaves, vocabularyDeckService);
@@ -575,3 +575,4 @@ internal static partial class Program
     }
 
 }
+

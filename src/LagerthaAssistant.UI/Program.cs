@@ -6,8 +6,6 @@ using Microsoft.Extensions.Logging;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.DependencyInjection;
 using LagerthaAssistant.Application.Interfaces.Agents;
-using LagerthaAssistant.Application.Interfaces.Common;
-using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Models.Agents;
@@ -26,18 +24,10 @@ namespace LagerthaAssistant.UI;
 
 internal static partial class Program
 {
-    private const string SaveModeMemoryKey = UserPreferenceMemoryKeys.SaveMode;
     private const string UiChannel = "ui";
     private const string UiConversationId = "main";
     private const string UiUserIdEnvironmentVariable = "LAGERTHA_USER_ID";
     private const string UiConversationIdEnvironmentVariable = "LAGERTHA_CONVERSATION_ID";
-
-    private enum SaveMode
-    {
-        Ask,
-        Auto,
-        Off
-    }
 
     private enum SaveConfirmationChoice
     {
@@ -137,11 +127,10 @@ internal static partial class Program
         var vocabularyBatchInputService = services.GetRequiredService<IVocabularyBatchInputService>();
         var vocabularyDeckService = services.GetRequiredService<IVocabularyDeckService>();
         var vocabularyPersistenceService = services.GetRequiredService<IVocabularyPersistenceService>();
+        var vocabularySaveModePreferenceService = services.GetRequiredService<IVocabularySaveModePreferenceService>();
         var vocabularyStorageModeProvider = services.GetRequiredService<IVocabularyStorageModeProvider>();
         var vocabularyStoragePreferenceService = services.GetRequiredService<IVocabularyStoragePreferenceService>();
         var graphAuthService = services.GetRequiredService<IGraphAuthService>();
-        var userMemoryRepository = services.GetRequiredService<IUserMemoryRepository>();
-        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
 
         if (string.IsNullOrWhiteSpace(aiOptions.ApiKey))
         {
@@ -156,11 +145,10 @@ internal static partial class Program
             vocabularyBatchInputService,
             vocabularyDeckService,
             vocabularyPersistenceService,
+            vocabularySaveModePreferenceService,
             vocabularyStorageModeProvider,
             vocabularyStoragePreferenceService,
             graphAuthService,
-            userMemoryRepository,
-            unitOfWork,
             aiOptions.Model);
     }
 
@@ -170,19 +158,18 @@ internal static partial class Program
         IVocabularyBatchInputService vocabularyBatchInputService,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
+        IVocabularySaveModePreferenceService vocabularySaveModePreferenceService,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
         IVocabularyStoragePreferenceService vocabularyStoragePreferenceService,
         IGraphAuthService graphAuthService,
-        IUserMemoryRepository userMemoryRepository,
-        IUnitOfWork unitOfWork,
         string model)
     {
         PrintBanner(model);
 
         var uiScope = BuildUiScope();
 
-        var saveMode = await LoadSaveModeAsync(userMemoryRepository, uiScope);
-        PrintCurrentSaveMode(saveMode);
+        var saveMode = await LoadSaveModeAsync(vocabularySaveModePreferenceService, uiScope);
+        PrintCurrentSaveMode(vocabularySaveModePreferenceService, saveMode);
 
         var storageMode = await LoadStorageModeAsync(vocabularyStoragePreferenceService, uiScope);
         vocabularyStorageModeProvider.SetMode(storageMode);
@@ -211,11 +198,10 @@ internal static partial class Program
                 vocabularyBatchInputService,
                 vocabularyDeckService,
                 vocabularyPersistenceService,
+                vocabularySaveModePreferenceService,
                 vocabularyStorageModeProvider,
                 vocabularyStoragePreferenceService,
-                graphAuthService,
-                userMemoryRepository,
-                unitOfWork);
+                graphAuthService);
             saveMode = commandHandling.SaveMode;
 
             if (commandHandling.ShouldExit)
