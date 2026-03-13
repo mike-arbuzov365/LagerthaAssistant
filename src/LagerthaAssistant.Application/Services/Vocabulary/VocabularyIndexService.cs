@@ -14,6 +14,7 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
     private static readonly char[] WordFormSeparators = ['-', ',', '/', '='];
     private static readonly char[] TokenTrimChars = ['"', '\'', '`', '.', '!', '?', ';', ':', '(', ')', '[', ']'];
     private static readonly Regex PosFromMeaningRegex = new("^\\((?<pos>[a-z]+)\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly char[] DashVariants = ['\u2013', '\u2014', '\u2212'];
 
     private readonly IVocabularyCardRepository _cardRepository;
     private readonly IVocabularySyncJobRepository _syncJobRepository;
@@ -90,12 +91,14 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
         }
 
         var lookups = new Dictionary<string, VocabularyLookupResult>(StringComparer.OrdinalIgnoreCase);
+        var cardsByToken = BuildCardsByToken(cards);
+
         foreach (var input in normalizedInputs)
         {
             var inputTokens = tokensByInput[input];
             var matches = inputTokens.Count == 0
                 ? []
-                : BuildMatches(cards, inputTokens);
+                : BuildMatches(cardsByToken, inputTokens);
 
             lookups[input] = new VocabularyLookupResult(input, matches);
         }
@@ -326,6 +329,60 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
             .ToList();
     }
 
+    private static IReadOnlyDictionary<string, IReadOnlyList<VocabularyCard>> BuildCardsByToken(
+        IReadOnlyList<VocabularyCard> cards)
+    {
+        var map = new Dictionary<string, List<VocabularyCard>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var card in cards)
+        {
+            foreach (var token in card.Tokens)
+            {
+                if (string.IsNullOrWhiteSpace(token.TokenNormalized))
+                {
+                    continue;
+                }
+
+                if (!map.TryGetValue(token.TokenNormalized, out var bucket))
+                {
+                    bucket = [];
+                    map[token.TokenNormalized] = bucket;
+                }
+
+                bucket.Add(card);
+            }
+        }
+
+        return map.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<VocabularyCard>)pair.Value,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<VocabularyDeckEntry> BuildMatches(
+        IReadOnlyDictionary<string, IReadOnlyList<VocabularyCard>> cardsByToken,
+        IReadOnlyCollection<string> tokens)
+    {
+        var matchedCards = new HashSet<VocabularyCard>();
+        foreach (var token in tokens)
+        {
+            if (!cardsByToken.TryGetValue(token, out var cards))
+            {
+                continue;
+            }
+
+            foreach (var card in cards)
+            {
+                matchedCards.Add(card);
+            }
+        }
+
+        return matchedCards
+            .OrderByDescending(card => card.LastSeenAtUtc)
+            .ThenBy(card => card.DeckFileName, StringComparer.OrdinalIgnoreCase)
+            .Select(MapToEntry)
+            .ToList();
+    }
+
     private string? ResolvePartOfSpeech(string assistantReply, string? overridePartOfSpeech, string meaning)
     {
         if (!string.IsNullOrWhiteSpace(overridePartOfSpeech))
@@ -404,9 +461,7 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
                 continue;
             }
 
-            var parts = value
-                .Replace('–', '-')
-                .Replace('—', '-')
+            var parts = ReplaceDashVariants(value)
                 .Split(WordFormSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
             foreach (var part in parts)
@@ -449,13 +504,22 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
             return string.Empty;
         }
 
-        var normalized = value
-            .Replace('–', '-')
-            .Replace('—', '-')
+        var normalized = ReplaceDashVariants(value)
             .Trim()
             .Trim(TokenTrimChars);
 
         normalized = Regex.Replace(normalized, "\\s+", " ");
         return normalized.ToLowerInvariant();
+    }
+
+    private static string ReplaceDashVariants(string value)
+    {
+        var normalized = value;
+        foreach (var dash in DashVariants)
+        {
+            normalized = normalized.Replace(dash, '-');
+        }
+
+        return normalized;
     }
 }

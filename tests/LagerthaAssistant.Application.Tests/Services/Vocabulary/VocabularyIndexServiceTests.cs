@@ -105,6 +105,81 @@ public sealed class VocabularyIndexServiceTests
     }
 
     [Fact]
+    public async Task FindByInputAsync_ShouldNormalizeUnicodeDashVariants_WhenTokenizing()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var card = new VocabularyCard
+        {
+            Id = 1,
+            Word = "undertake - undertook - undertaken",
+            NormalizedWord = "undertake - undertook - undertaken",
+            Meaning = "(iv) братися за щось",
+            Examples = "The team undertook a redesign.",
+            DeckFileName = "wm-irregular-verbs-ua-en.xlsx",
+            DeckPath = "C:/deck/wm-irregular-verbs-ua-en.xlsx",
+            LastKnownRowNumber = 81,
+            StorageMode = "local",
+            SyncStatus = VocabularySyncStatus.Synced,
+            FirstSeenAtUtc = DateTimeOffset.UtcNow,
+            LastSeenAtUtc = DateTimeOffset.UtcNow
+        };
+
+        card.Tokens.Add(new VocabularyCardToken { TokenNormalized = "undertook" });
+        cardRepo.Cards.Add(card);
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var query = "undertake \u2013 undertook \u2014 undertaken";
+        var lookup = await sut.FindByInputAsync(query);
+
+        Assert.True(lookup.Found);
+        var match = Assert.Single(lookup.Matches);
+        Assert.Equal("undertake - undertook - undertaken", match.Word);
+    }
+
+    [Fact]
+    public async Task FindByInputsAsync_ShouldNotDuplicateMatches_WhenSeveralTokensPointToSameCard()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var card = new VocabularyCard
+        {
+            Id = 1,
+            Word = "undertake - undertook - undertaken",
+            NormalizedWord = "undertake - undertook - undertaken",
+            Meaning = "(iv) братися за щось",
+            Examples = "The team undertook a redesign.",
+            DeckFileName = "wm-irregular-verbs-ua-en.xlsx",
+            DeckPath = "C:/deck/wm-irregular-verbs-ua-en.xlsx",
+            LastKnownRowNumber = 81,
+            StorageMode = "local",
+            SyncStatus = VocabularySyncStatus.Synced,
+            FirstSeenAtUtc = DateTimeOffset.UtcNow,
+            LastSeenAtUtc = DateTimeOffset.UtcNow
+        };
+
+        card.Tokens.Add(new VocabularyCardToken { TokenNormalized = "undertake" });
+        card.Tokens.Add(new VocabularyCardToken { TokenNormalized = "undertook" });
+        card.Tokens.Add(new VocabularyCardToken { TokenNormalized = "undertaken" });
+        cardRepo.Cards.Add(card);
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var lookups = await sut.FindByInputsAsync(["undertake - undertook - undertaken"]);
+
+        var lookup = lookups["undertake - undertook - undertaken"];
+        Assert.True(lookup.Found);
+        Assert.Single(lookup.Matches);
+    }
+
+    [Fact]
     public async Task HandleAppendResultAsync_ShouldUpsertSyncedCard_WhenAppendSucceeded()
     {
         var cardRepo = new FakeVocabularyCardRepository();
