@@ -40,14 +40,14 @@ public sealed class ConversationController : ControllerBase
     [ProducesResponseType(typeof(IReadOnlyList<ConversationCommandItemResponse>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<ConversationCommandItemResponse>> GetCommands()
     {
-        return Ok(BuildCommandItems());
+        return Ok(ApiConversationCommandCatalogMapper.BuildFlatItems());
     }
 
     [HttpGet("commands/grouped")]
     [ProducesResponseType(typeof(IReadOnlyList<ConversationCommandGroupResponse>), StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<ConversationCommandGroupResponse>> GetGroupedCommands()
     {
-        return Ok(BuildCommandGroups());
+        return Ok(ApiConversationCommandCatalogMapper.BuildGroupedItems());
     }
 
     [HttpGet("history")]
@@ -335,26 +335,6 @@ public sealed class ConversationController : ControllerBase
         _storageModeProvider.SetMode(mode);
         return (true, null);
     }
-
-    private static IReadOnlyList<ConversationCommandItemResponse> BuildCommandItems()
-    {
-        return ConversationCommandCatalog.SlashCommands
-            .Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description))
-            .ToList();
-    }
-
-    private static IReadOnlyList<ConversationCommandGroupResponse> BuildCommandGroups()
-    {
-        return ConversationCommandCatalog.SlashCommandGroups
-            .Select(group =>
-                new ConversationCommandGroupResponse(
-                    group.Category,
-                    group.Commands
-                        .Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description))
-                        .ToList()))
-            .ToList();
-    }
-
     private static ConversationMessageResponse Map(ConversationAgentResult result)
     {
         var items = result.Items
@@ -509,6 +489,8 @@ public sealed class ConversationController : ControllerBase
     }
 
 }
+
+
 
 
 

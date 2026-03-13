@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
-using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
@@ -59,22 +58,6 @@ public sealed class SessionController : ControllerBase
                 graph.IsAuthenticated,
                 graph.Message,
                 graph.AccessTokenExpiresAtUtc),
-            BuildCommandGroups()));
+            ApiConversationCommandCatalogMapper.BuildGroupedItems()));
     }
-
-    private static IReadOnlyList<ConversationCommandGroupResponse> BuildCommandGroups()
-    {
-        return ConversationCommandCatalog.SlashCommandGroups
-            .Select(group =>
-                new ConversationCommandGroupResponse(
-                    group.Category,
-                    group.Commands
-                        .Select(item => new ConversationCommandItemResponse(item.Category, item.Command, item.Description))
-                        .ToList()))
-            .ToList();
-    }
-
 }
-
-
-
