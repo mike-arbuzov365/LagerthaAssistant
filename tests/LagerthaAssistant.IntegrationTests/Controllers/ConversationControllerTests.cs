@@ -121,6 +121,95 @@ public sealed class ConversationControllerTests
     }
 
     [Fact]
+    public async Task GetPrompt_ShouldReturnActivePrompt()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService
+        {
+            SystemPrompt = "You are a concise assistant."
+        };
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.GetPrompt(CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<ConversationSystemPromptResponse>(ok.Value);
+
+        Assert.Equal("You are a concise assistant.", payload.Prompt);
+    }
+
+    [Fact]
+    public async Task GetPromptHistory_ShouldReturnMappedEntries()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService
+        {
+            PromptHistory =
+            [
+                new SystemPromptEntry
+                {
+                    Version = 3,
+                    PromptText = "Prompt v3",
+                    Source = "manual",
+                    IsActive = true,
+                    CreatedAtUtc = DateTimeOffset.UtcNow
+                }
+            ]
+        };
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.GetPromptHistory(10, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsAssignableFrom<IReadOnlyList<ConversationSystemPromptHistoryEntryResponse>>(ok.Value);
+
+        var entry = Assert.Single(payload);
+        Assert.Equal(3, entry.Version);
+        Assert.Equal("Prompt v3", entry.PromptText);
+        Assert.Equal("manual", entry.Source);
+        Assert.True(entry.IsActive);
+    }
+
+    [Fact]
+    public async Task GetPromptProposals_ShouldReturnMappedEntries()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sessionService = new FakeAssistantSessionService
+        {
+            PromptProposals =
+            [
+                new SystemPromptProposal
+                {
+                    Id = 7,
+                    ProposedPrompt = "New prompt",
+                    Reason = "Improve clarity",
+                    Confidence = 0.83,
+                    Source = "ai",
+                    Status = "pending",
+                    CreatedAtUtc = DateTimeOffset.UtcNow,
+                    ReviewedAtUtc = null,
+                    AppliedSystemPromptEntryId = null
+                }
+            ]
+        };
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(orchestrator, sessionService, scopeAccessor);
+
+        var response = await sut.GetPromptProposals(10, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsAssignableFrom<IReadOnlyList<ConversationSystemPromptProposalResponse>>(ok.Value);
+
+        var entry = Assert.Single(payload);
+        Assert.Equal(7, entry.Id);
+        Assert.Equal("New prompt", entry.ProposedPrompt);
+        Assert.Equal("Improve clarity", entry.Reason);
+        Assert.Equal("pending", entry.Status);
+    }
+
+    [Fact]
     public async Task PostMessage_ShouldUseDefaultChannel_WhenNotProvided()
     {
         var orchestrator = new FakeConversationOrchestrator();
@@ -264,6 +353,12 @@ public sealed class ConversationControllerTests
 
         public IReadOnlyCollection<UserMemoryEntry> Memory { get; set; } = [];
 
+        public string SystemPrompt { get; set; } = "prompt";
+
+        public IReadOnlyCollection<SystemPromptEntry> PromptHistory { get; set; } = [];
+
+        public IReadOnlyCollection<SystemPromptProposal> PromptProposals { get; set; } = [];
+
         public Task<AssistantCompletionResult> AskAsync(string userMessage, CancellationToken cancellationToken = default)
             => Task.FromResult(new AssistantCompletionResult("ok", "test-model", null));
 
@@ -274,13 +369,13 @@ public sealed class ConversationControllerTests
             => Task.FromResult(Memory);
 
         public Task<string> GetSystemPromptAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult("prompt");
+            => Task.FromResult(SystemPrompt);
 
         public Task<IReadOnlyCollection<SystemPromptEntry>> GetSystemPromptHistoryAsync(int take, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyCollection<SystemPromptEntry>>([]);
+            => Task.FromResult(PromptHistory);
 
         public Task<IReadOnlyCollection<SystemPromptProposal>> GetSystemPromptProposalsAsync(int take, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyCollection<SystemPromptProposal>>([]);
+            => Task.FromResult(PromptProposals);
 
         public Task<SystemPromptProposal> CreateSystemPromptProposalAsync(
             string prompt,

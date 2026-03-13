@@ -178,6 +178,9 @@ curl http://localhost:5000/api/conversation/commands
 curl http://localhost:5000/api/conversation/commands/grouped
 curl "http://localhost:5000/api/conversation/history?take=20&channel=api&userId=anonymous&conversationId=default"
 curl "http://localhost:5000/api/conversation/memory?take=20&channel=api&userId=anonymous&conversationId=default"
+curl http://localhost:5000/api/conversation/prompt
+curl "http://localhost:5000/api/conversation/prompt/history?take=20"
+curl "http://localhost:5000/api/conversation/prompt/proposals?take=20"
 ```
 
 On startup both UI and API apply EF migrations automatically.
@@ -213,6 +216,9 @@ Command catalog endpoints (for external clients):
 - `GET /api/conversation/commands/grouped` (grouped by category)
 - `GET /api/conversation/history?take=20&channel=api&userId=anonymous&conversationId=default` (recent history for exact scope)
 - `GET /api/conversation/memory?take=20&channel=api&userId=anonymous&conversationId=default` (active memory for exact scope)
+- `GET /api/conversation/prompt` (active system prompt)
+- `GET /api/conversation/prompt/history?take=20` (system prompt versions)
+- `GET /api/conversation/prompt/proposals?take=20` (pending/reviewed prompt proposals)
 
 Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
 

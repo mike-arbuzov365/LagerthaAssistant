@@ -95,6 +95,61 @@ public sealed class ConversationController : ControllerBase
         return Ok(response);
     }
 
+    [HttpGet("prompt")]
+    [ProducesResponseType(typeof(ConversationSystemPromptResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ConversationSystemPromptResponse>> GetPrompt(
+        CancellationToken cancellationToken = default)
+    {
+        var prompt = await _assistantSessionService.GetSystemPromptAsync(cancellationToken);
+        return Ok(new ConversationSystemPromptResponse(prompt));
+    }
+
+    [HttpGet("prompt/history")]
+    [ProducesResponseType(typeof(IReadOnlyList<ConversationSystemPromptHistoryEntryResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<ConversationSystemPromptHistoryEntryResponse>>> GetPromptHistory(
+        [FromQuery] int take = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedTake = Math.Max(1, take);
+        var history = await _assistantSessionService.GetSystemPromptHistoryAsync(normalizedTake, cancellationToken);
+
+        var response = history
+            .Select(item => new ConversationSystemPromptHistoryEntryResponse(
+                item.Version,
+                item.PromptText,
+                item.Source,
+                item.IsActive,
+                item.CreatedAtUtc))
+            .ToList();
+
+        return Ok(response);
+    }
+
+    [HttpGet("prompt/proposals")]
+    [ProducesResponseType(typeof(IReadOnlyList<ConversationSystemPromptProposalResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<ConversationSystemPromptProposalResponse>>> GetPromptProposals(
+        [FromQuery] int take = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedTake = Math.Max(1, take);
+        var proposals = await _assistantSessionService.GetSystemPromptProposalsAsync(normalizedTake, cancellationToken);
+
+        var response = proposals
+            .Select(item => new ConversationSystemPromptProposalResponse(
+                item.Id,
+                item.ProposedPrompt,
+                item.Reason,
+                item.Confidence,
+                item.Source,
+                item.Status,
+                item.CreatedAtUtc,
+                item.ReviewedAtUtc,
+                item.AppliedSystemPromptEntryId))
+            .ToList();
+
+        return Ok(response);
+    }
+
     [HttpPost("messages")]
     [ProducesResponseType(typeof(ConversationMessageResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
