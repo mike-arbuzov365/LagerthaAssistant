@@ -706,6 +706,8 @@ public sealed class ConversationControllerTests
 
     private sealed class FakeVocabularyStoragePreferenceService : IVocabularyStoragePreferenceService
     {
+        public IReadOnlyList<string> SupportedModes { get; } = ["local", "graph"];
+
         public VocabularyStorageMode CurrentMode { get; set; } = VocabularyStorageMode.Local;
 
         public ConversationScope? LastGetScope { get; private set; }

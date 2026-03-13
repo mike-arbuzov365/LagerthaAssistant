@@ -13,12 +13,6 @@ namespace LagerthaAssistant.Api.Controllers;
 [Route("api/vocabulary")]
 public sealed class VocabularyController : ControllerBase
 {
-    private static readonly IReadOnlyList<string> SupportedStorageModes =
-    [
-        "local",
-        "graph"
-    ];
-
     private readonly IVocabularyWorkflowService _workflowService;
     private readonly IVocabularyPersistenceService _persistenceService;
     private readonly IVocabularyBatchInputService _batchInputService;
@@ -352,7 +346,7 @@ public sealed class VocabularyController : ControllerBase
     private VocabularyStorageModeResponse BuildStorageModeResponse(VocabularyStorageMode mode)
     {
         var modeText = _storageModeProvider.ToText(mode);
-        return new VocabularyStorageModeResponse(modeText, SupportedStorageModes);
+        return new VocabularyStorageModeResponse(modeText, _storagePreferenceService.SupportedModes);
     }
 
     private static VocabularyWorkflowItemResponse MapWorkflowItem(VocabularyWorkflowItemResult result)

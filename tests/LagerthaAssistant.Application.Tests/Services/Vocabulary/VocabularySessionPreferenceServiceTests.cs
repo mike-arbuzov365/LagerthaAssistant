@@ -119,6 +119,8 @@ public sealed class VocabularySessionPreferenceServiceTests
 
     private sealed class FakeStoragePreferenceService : IVocabularyStoragePreferenceService
     {
+        public IReadOnlyList<string> SupportedModes { get; } = ["local", "graph"];
+
         public VocabularyStorageMode CurrentMode { get; set; } = VocabularyStorageMode.Local;
 
         public ConversationScope? LastGetScope { get; private set; }

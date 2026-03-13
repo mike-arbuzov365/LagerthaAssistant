@@ -22,7 +22,14 @@ public sealed class VocabularyStoragePreferenceService : IVocabularyStoragePrefe
         _userMemoryRepository = userMemoryRepository;
         _unitOfWork = unitOfWork;
         _storageModeProvider = storageModeProvider;
+
+        SupportedModes = Enum.GetValues<VocabularyStorageMode>()
+            .Select(_storageModeProvider.ToText)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
+
+    public IReadOnlyList<string> SupportedModes { get; }
 
     public async Task<VocabularyStorageMode> GetModeAsync(ConversationScope scope, CancellationToken cancellationToken = default)
     {
