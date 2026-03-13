@@ -125,6 +125,36 @@ public sealed class SessionControllerTests
         Assert.False(bootstrapService.LastOptions!.IncludeWritableDecks);
     }
 
+    [Fact]
+    public async Task GetBootstrap_ShouldMapWritableDecks_WhenIncluded()
+    {
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var bootstrapService = new FakeConversationBootstrapService
+        {
+            WritableDecks =
+            [
+                new VocabularyDeckFile("wm-verbs-us-en.xlsx", "C:\\Decks\\wm-verbs-us-en.xlsx"),
+                new VocabularyDeckFile("wm-nouns-ua-en.xlsx", "C:\\Decks\\wm-nouns-ua-en.xlsx")
+            ]
+        };
+
+        var sut = new SessionController(scopeAccessor, bootstrapService);
+
+        var response = await sut.GetBootstrap(
+            includeDecks: true,
+            cancellationToken: CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<SessionBootstrapResponse>(ok.Value);
+
+        var decks = Assert.IsType<List<VocabularyDeckInfoResponse>>(payload.WritableDecks);
+        Assert.Equal(2, decks.Count);
+        Assert.Equal("wm-nouns-ua-en.xlsx", decks[0].FileName);
+        Assert.Equal("n", decks[0].SuggestedPartOfSpeech);
+        Assert.Equal("wm-verbs-us-en.xlsx", decks[1].FileName);
+        Assert.Equal("v", decks[1].SuggestedPartOfSpeech);
+    }
+
     private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
     {
         public ConversationScope Current { get; private set; } = ConversationScope.Default;
@@ -150,6 +180,8 @@ public sealed class SessionControllerTests
         public IReadOnlyList<ConversationCommandCatalogGroup> CommandGroups { get; set; } = [];
 
         public IReadOnlyList<VocabularyPartOfSpeechOption> PartOfSpeechOptions { get; set; } = [];
+
+        public IReadOnlyList<VocabularyDeckFile> WritableDecks { get; set; } = [];
 
         public ConversationScope? LastScope { get; private set; }
         public ConversationBootstrapOptions? LastOptions { get; private set; }
@@ -181,8 +213,9 @@ public sealed class SessionControllerTests
                 commandGroups,
                 partOfSpeechOptions,
                 options.IncludeWritableDecks
-                    ? []
+                    ? WritableDecks
                     : null));
         }
     }
 }
+
