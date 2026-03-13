@@ -1,4 +1,4 @@
-using LagerthaAssistant.Api.Contracts;
+﻿using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
@@ -11,8 +11,6 @@ namespace LagerthaAssistant.Api.Controllers;
 [Route("api/preferences")]
 public sealed class PreferencesController : ControllerBase
 {
-    private const string DefaultChannel = "api";
-
     private readonly IConversationScopeAccessor _scopeAccessor;
     private readonly IVocabularySaveModePreferenceService _saveModePreferenceService;
     private readonly IVocabularySessionPreferenceService _sessionPreferenceService;
@@ -38,7 +36,7 @@ public sealed class PreferencesController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
         var mode = await _saveModePreferenceService.GetModeAsync(scope, cancellationToken);
@@ -62,7 +60,7 @@ public sealed class PreferencesController : ControllerBase
             return BadRequest($"Unsupported mode '{request.Mode}'. Use ask, auto, or off.");
         }
 
-        var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
+        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
         _scopeAccessor.Set(scope);
 
         await _saveModePreferenceService.SetModeAsync(scope, mode, cancellationToken);
@@ -77,7 +75,7 @@ public sealed class PreferencesController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
         var session = await _sessionPreferenceService.GetAsync(scope, cancellationToken);
@@ -127,7 +125,7 @@ public sealed class PreferencesController : ControllerBase
             parsedStorageMode = storageMode;
         }
 
-        var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
+        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
         _scopeAccessor.Set(scope);
 
         var session = await _sessionPreferenceService.SetAsync(scope, parsedSaveMode, parsedStorageMode, cancellationToken);
@@ -154,13 +152,6 @@ public sealed class PreferencesController : ControllerBase
             _sessionPreferenceService.SupportedStorageModes);
     }
 
-    private static ConversationScope BuildScope(string? channel, string? userId, string? conversationId)
-    {
-        var normalizedChannel = channel?.Trim().ToLowerInvariant();
-        var effectiveChannel = string.IsNullOrWhiteSpace(normalizedChannel)
-            ? DefaultChannel
-            : normalizedChannel;
-
-        return ConversationScope.Create(effectiveChannel, userId, conversationId);
-    }
 }
+
+

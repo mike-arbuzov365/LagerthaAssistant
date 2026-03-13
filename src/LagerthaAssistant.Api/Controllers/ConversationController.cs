@@ -16,8 +16,6 @@ namespace LagerthaAssistant.Api.Controllers;
 [Route("api/conversation")]
 public sealed class ConversationController : ControllerBase
 {
-    private const string DefaultChannel = "api";
-
     private readonly IConversationOrchestrator _orchestrator;
     private readonly IAssistantSessionService _assistantSessionService;
     private readonly IConversationScopeAccessor _scopeAccessor;
@@ -61,7 +59,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
         var normalizedTake = Math.Max(1, take);
@@ -86,7 +84,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
         var normalizedTake = Math.Max(1, take);
@@ -277,7 +275,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? userId = null,
         [FromQuery] string? conversationId = null)
     {
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
         _assistantSessionService.Reset();
 
@@ -297,7 +295,7 @@ public sealed class ConversationController : ControllerBase
             return BadRequest("Input is required.");
         }
 
-        var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
+        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
         _scopeAccessor.Set(scope);
 
         var applyMode = await TryApplyStorageModeAsync(scope, request.StorageMode, cancellationToken);
@@ -510,20 +508,7 @@ public sealed class ConversationController : ControllerBase
             entry.Examples);
     }
 
-    private static ConversationScope BuildScope(string? channel, string? userId, string? conversationId)
-    {
-        return ConversationScope.Create(
-            NormalizeChannel(channel),
-            userId,
-            conversationId);
-    }
-
-    private static string NormalizeChannel(string? channel)
-    {
-        var normalized = channel?.Trim().ToLowerInvariant();
-        return string.IsNullOrWhiteSpace(normalized)
-            ? DefaultChannel
-            : normalized;
-    }
 }
+
+
 

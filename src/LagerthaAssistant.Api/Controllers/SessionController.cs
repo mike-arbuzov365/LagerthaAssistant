@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.Common;
@@ -11,8 +11,6 @@ namespace LagerthaAssistant.Api.Controllers;
 [Route("api/session")]
 public sealed class SessionController : ControllerBase
 {
-    private const string DefaultChannel = "api";
-
     private readonly IConversationScopeAccessor _scopeAccessor;
     private readonly IVocabularySessionPreferenceService _sessionPreferenceService;
     private readonly IVocabularySaveModePreferenceService _saveModePreferenceService;
@@ -41,7 +39,7 @@ public sealed class SessionController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = BuildScope(channel, userId, conversationId);
+        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
         var session = await _sessionPreferenceService.GetAsync(scope, cancellationToken);
@@ -76,13 +74,7 @@ public sealed class SessionController : ControllerBase
             .ToList();
     }
 
-    private static ConversationScope BuildScope(string? channel, string? userId, string? conversationId)
-    {
-        var normalizedChannel = channel?.Trim().ToLowerInvariant();
-        var effectiveChannel = string.IsNullOrWhiteSpace(normalizedChannel)
-            ? DefaultChannel
-            : normalizedChannel;
-
-        return ConversationScope.Create(effectiveChannel, userId, conversationId);
-    }
 }
+
+
+
