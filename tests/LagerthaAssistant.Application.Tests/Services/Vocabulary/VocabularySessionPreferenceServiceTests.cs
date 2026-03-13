@@ -31,6 +31,24 @@ public sealed class VocabularySessionPreferenceServiceTests
     }
 
     [Fact]
+    public void SupportedStorageModes_ShouldMirrorStoragePreferenceServiceModes()
+    {
+        var saveModeService = new FakeSaveModePreferenceService();
+        var storagePreferenceService = new FakeStoragePreferenceService
+        {
+            SupportedModes = ["local", "graph", "hybrid"]
+        };
+        var storageModeProvider = new FakeStorageModeProvider();
+
+        var sut = new VocabularySessionPreferenceService(
+            saveModeService,
+            storagePreferenceService,
+            storageModeProvider);
+
+        Assert.Equal(["local", "graph", "hybrid"], sut.SupportedStorageModes);
+    }
+
+    [Fact]
     public async Task SetAsync_ShouldPersistOnlyProvidedValues_AndReturnEffectiveSession()
     {
         var saveModeService = new FakeSaveModePreferenceService { CurrentMode = VocabularySaveMode.Ask };
@@ -119,7 +137,7 @@ public sealed class VocabularySessionPreferenceServiceTests
 
     private sealed class FakeStoragePreferenceService : IVocabularyStoragePreferenceService
     {
-        public IReadOnlyList<string> SupportedModes { get; } = ["local", "graph"];
+        public IReadOnlyList<string> SupportedModes { get; set; } = ["local", "graph"];
 
         public VocabularyStorageMode CurrentMode { get; set; } = VocabularyStorageMode.Local;
 
