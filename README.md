@@ -213,6 +213,7 @@ For `POST /api/conversation/messages`, you can send natural language command-lik
 - Optional request fields: `channel`, `userId`, `conversationId`, `storageMode` (`local|graph`).
 - Defaults when omitted: `channel=api`, `userId=anonymous`, `conversationId=default`.
 - Example request body: `{"input":"void","channel":"telegram","userId":"mike","conversationId":"chat-42","storageMode":"graph"}`
+- Response item fields now include `readyToAppend`, `suggestedPartOfSpeech`, and `duplicateMatches` to build client-side save confirmation flows.
 
 - `show conversation history`
 - `show active memory`

@@ -540,6 +540,66 @@ public sealed class ConversationControllerTests
     }
 
     [Fact]
+    public async Task PostMessage_ShouldExposeSuggestedPartOfSpeechAndDuplicateMatches()
+    {
+        var duplicate = new VocabularyDeckEntry(
+            DeckFileName: "wm-verbs-us-en.xlsx",
+            DeckPath: "C:\\Decks\\wm-verbs-us-en.xlsx",
+            RowNumber: 42,
+            Word: "prepare",
+            Meaning: "(v) готувати",
+            Examples: "We prepare release notes.");
+
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = new ConversationAgentResult(
+                AgentName: "vocabulary-agent",
+                Intent: "vocabulary.single",
+                IsBatch: false,
+                Items:
+                [
+                    new ConversationAgentItemResult(
+                        Input: "prepare",
+                        Lookup: new VocabularyLookupResult("prepare", []),
+                        AssistantCompletion: new AssistantCompletionResult(
+                            Content: "prepare\n\n(v) готувати\n\nWe prepare release notes.",
+                            Model: "gpt-4.1-mini",
+                            Usage: null),
+                        AppendPreview: new VocabularyAppendPreviewResult(
+                            Status: VocabularyAppendPreviewStatus.ReadyToAppend,
+                            Word: "prepare",
+                            TargetDeckFileName: "wm-verbs-us-en.xlsx",
+                            TargetDeckPath: "C:\\Decks\\wm-verbs-us-en.xlsx",
+                            DuplicateMatches: [duplicate],
+                            Message: null))
+                ])
+        };
+
+        var sessionService = new FakeAssistantSessionService();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var sut = new ConversationController(
+            orchestrator,
+            sessionService,
+            scopeAccessor,
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService());
+
+        var response = await sut.PostMessage(new ConversationMessageRequest("prepare"), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<ConversationMessageResponse>(ok.Value);
+        var item = Assert.Single(payload.Items);
+
+        Assert.True(item.ReadyToAppend);
+        Assert.Equal("v", item.SuggestedPartOfSpeech);
+
+        var duplicatePayload = Assert.Single(item.DuplicateMatches!);
+        Assert.Equal("wm-verbs-us-en.xlsx", duplicatePayload.DeckFileName);
+        Assert.Equal(42, duplicatePayload.RowNumber);
+        Assert.Equal("prepare", duplicatePayload.Word);
+    }
+
+    [Fact]
     public async Task PostMessage_ShouldReturnBadRequest_WhenInputIsEmpty()
     {
         var orchestrator = new FakeConversationOrchestrator();

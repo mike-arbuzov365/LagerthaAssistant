@@ -7,6 +7,7 @@ using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
+using LagerthaAssistant.Application.Services.Vocabulary;
 using LagerthaAssistant.Domain.Entities;
 
 namespace LagerthaAssistant.Api.Controllers;
@@ -410,7 +411,10 @@ public sealed class ConversationController : ControllerBase
             preview?.TargetDeckFileName,
             preview?.TargetDeckPath,
             BuildExistingEntriesPreview(item.Lookup),
-            warning);
+            warning,
+            preview?.Status == VocabularyAppendPreviewStatus.ReadyToAppend,
+            BuildSuggestedPartOfSpeech(item),
+            preview?.DuplicateMatches?.Select(MapDeckEntry).ToList());
     }
 
     private static string? BuildWarning(VocabularyAppendPreviewResult preview)
@@ -437,6 +441,73 @@ public sealed class ConversationController : ControllerBase
             .Select(entry => $"{entry.DeckFileName} row {entry.RowNumber}: {entry.Word}");
 
         return string.Join(" | ", lines);
+    }
+
+    private static string? BuildSuggestedPartOfSpeech(ConversationAgentItemResult item)
+    {
+        if (item.AppendPreview is null)
+        {
+            return null;
+        }
+
+        if (TryExtractPartOfSpeechMarker(item.AssistantCompletion?.Content, out var markerFromReply))
+        {
+            return markerFromReply;
+        }
+
+        if (string.IsNullOrWhiteSpace(item.AppendPreview.TargetDeckFileName))
+        {
+            return null;
+        }
+
+        return VocabularyDeckMarkerSuggester.SuggestMarker(item.AppendPreview.TargetDeckFileName);
+    }
+
+    private static bool TryExtractPartOfSpeechMarker(string? assistantReply, out string marker)
+    {
+        marker = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(assistantReply))
+        {
+            return false;
+        }
+
+        var lines = assistantReply
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var line in lines)
+        {
+            if (!line.StartsWith("(", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var closeIndex = line.IndexOf(')');
+            if (closeIndex <= 1)
+            {
+                continue;
+            }
+
+            var candidate = line[1..closeIndex].Trim();
+            if (VocabularyPartOfSpeechCatalog.TryNormalize(candidate, out marker))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static ConversationDeckEntryResponse MapDeckEntry(VocabularyDeckEntry entry)
+    {
+        return new ConversationDeckEntryResponse(
+            entry.DeckFileName,
+            entry.DeckPath,
+            entry.RowNumber,
+            entry.Word,
+            entry.Meaning,
+            entry.Examples);
     }
 
     private static ConversationScope BuildScope(string? channel, string? userId, string? conversationId)
