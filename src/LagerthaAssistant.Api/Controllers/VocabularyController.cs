@@ -206,10 +206,7 @@ public sealed class VocabularyController : ControllerBase
     [ProducesResponseType(typeof(VocabularyPartOfSpeechCatalogResponse), StatusCodes.Status200OK)]
     public ActionResult<VocabularyPartOfSpeechCatalogResponse> GetPartOfSpeechMarkers()
     {
-        var markers = VocabularyPartOfSpeechCatalog.GetOptions()
-            .OrderBy(option => option.Number)
-            .Select(MapPartOfSpeechOption)
-            .ToList();
+        var markers = ApiVocabularyPartOfSpeechMapper.BuildOptions();
 
         return Ok(new VocabularyPartOfSpeechCatalogResponse(markers));
     }
@@ -448,12 +445,11 @@ public sealed class VocabularyController : ControllerBase
             deck.FullPath,
             VocabularyDeckMarkerSuggester.SuggestMarker(deck.FileName));
     }
-
-    private static VocabularyPartOfSpeechOptionResponse MapPartOfSpeechOption(VocabularyPartOfSpeechOption option)
-    {
-        return new VocabularyPartOfSpeechOptionResponse(option.Number, option.Marker, option.Label);
-    }
 }
+
+
+
+
 
 
 

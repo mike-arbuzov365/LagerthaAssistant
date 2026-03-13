@@ -253,7 +253,7 @@ Command catalog endpoints (for external clients):
 - `POST /api/conversation/prompt/proposals/{id}/apply` (apply proposal)
 - `POST /api/conversation/prompt/proposals/{id}/reject` (reject proposal)
 - `POST /api/conversation/reset?channel=api&userId=anonymous&conversationId=default` (reset conversation for exact scope)
-- `GET /api/session/bootstrap?channel=api&userId=anonymous&conversationId=default` (single payload for scope, preferences, Graph status, and grouped commands)
+- `GET /api/session/bootstrap?channel=api&userId=anonymous&conversationId=default` (single payload for scope, preferences, Graph status, grouped commands, and POS marker options)
 - `GET /api/graph/status` (get Graph authentication status)
 - `POST /api/graph/login` (start Graph device-code login and return fresh auth status)
 - `POST /api/graph/login/start` (start two-phase Graph device-code flow and return device challenge payload)

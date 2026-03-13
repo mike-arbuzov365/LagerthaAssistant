@@ -54,6 +54,8 @@ public sealed class SessionControllerTests
 
         Assert.NotEmpty(payload.CommandGroups);
         Assert.Contains(payload.CommandGroups, g => g.Category == "Session");
+        Assert.NotEmpty(payload.PartOfSpeechOptions);
+        Assert.Contains(payload.PartOfSpeechOptions, option => option.Marker == "n");
     }
 
     [Fact]

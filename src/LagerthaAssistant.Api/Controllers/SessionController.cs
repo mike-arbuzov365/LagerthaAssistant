@@ -58,6 +58,9 @@ public sealed class SessionController : ControllerBase
                 graph.IsAuthenticated,
                 graph.Message,
                 graph.AccessTokenExpiresAtUtc),
-            ApiConversationCommandCatalogMapper.BuildGroupedItems()));
+            ApiConversationCommandCatalogMapper.BuildGroupedItems(),
+            ApiVocabularyPartOfSpeechMapper.BuildOptions()));
     }
 }
+
+

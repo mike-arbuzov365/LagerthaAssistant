@@ -9,4 +9,5 @@ public sealed record SessionBootstrapResponse(
     SessionScopeResponse Scope,
     PreferenceSessionResponse Preferences,
     GraphAuthStatusResponse Graph,
-    IReadOnlyList<ConversationCommandGroupResponse> CommandGroups);
+    IReadOnlyList<ConversationCommandGroupResponse> CommandGroups,
+    IReadOnlyList<VocabularyPartOfSpeechOptionResponse> PartOfSpeechOptions);
