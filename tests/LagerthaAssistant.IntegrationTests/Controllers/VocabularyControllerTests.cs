@@ -137,7 +137,7 @@ public sealed class VocabularyControllerTests
                     @"C:\Decks\wm-nouns-ua-en.xlsx",
                     101,
                     "void",
-                    "(n) ?????????",
+                    "(n) emptiness",
                     "The function returns void."),
                 null,
                 "Added successfully")
@@ -148,7 +148,7 @@ public sealed class VocabularyControllerTests
         var response = await sut.Save(
             new VocabularySaveRequest(
                 "void",
-                "void\n\n(n) ?????????",
+                "void\n\n(n) emptiness",
                 "wm-nouns-ua-en.xlsx",
                 "n"),
             CancellationToken.None);

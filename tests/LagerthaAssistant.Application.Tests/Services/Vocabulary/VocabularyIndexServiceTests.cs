@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.Application.Tests.Services.Vocabulary;
+namespace LagerthaAssistant.Application.Tests.Services.Vocabulary;
 
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
@@ -25,7 +25,7 @@ public sealed class VocabularyIndexServiceTests
             Id = 1,
             Word = "void",
             NormalizedWord = "void",
-            Meaning = "(n) ?????????",
+            Meaning = "(n) emptiness",
             Examples = "The function returns void.",
             DeckFileName = "wm-nouns-ua-en.xlsx",
             DeckPath = "C:/deck/wm-nouns-ua-en.xlsx",
@@ -66,13 +66,13 @@ public sealed class VocabularyIndexServiceTests
                 "C:/deck/wm-irregular-verbs-ua-en.xlsx",
                 81,
                 "undertake - undertook - undertaken",
-                "(iv) ??????? ?? ????",
+                "(iv) take on something",
                 "We undertake infrastructure improvements."));
 
         var reply = """
 undertake - undertook - undertaken
 
-(iv) ??????? ?? ????
+(iv) take on something
 
 We undertake infrastructure improvements every quarter
 
@@ -115,7 +115,7 @@ The migration has been undertaken by the platform team
         var reply = """
 void
 
-(n) ?????????
+(n) emptiness
 
 The function returns void when there is no value to return
 """;

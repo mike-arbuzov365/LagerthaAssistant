@@ -151,7 +151,7 @@ public sealed class AssistantSessionServiceTests
         fx.AiClient.NextContent = """
 undertake - undertook - undertaken
 
-(v) ??????? ?? ????, ???????? ??????????
+(v) take on something, begin executing
 
 The developer undertook the task of refactoring the legacy code.
 
@@ -163,8 +163,8 @@ She has undertaken to deliver the project by the end of the month.
         var result = await sut.AskAsync("undertake");
 
         Assert.StartsWith("undertake - undertook - undertaken", result.Content, StringComparison.Ordinal);
-        Assert.Contains("(iv) ??????? ?? ????, ???????? ??????????", result.Content, StringComparison.Ordinal);
-        Assert.DoesNotContain("(v) ??????? ?? ????", result.Content, StringComparison.Ordinal);
+        Assert.Contains("(iv) take on something, begin executing", result.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain("(v) take on something", result.Content, StringComparison.Ordinal);
 
         var nonEmptyLines = result.Content
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -202,7 +202,7 @@ We prepare the deployment scripts before the release.
         fx.AiClient.NextContent = """
 on the same page
 
-(v) мати спільне розуміння
+(v) share the same understanding
 
 We are on the same page about the release.
 """;
@@ -212,7 +212,7 @@ We are on the same page about the release.
         var result = await sut.AskAsync("on the same page");
 
         Assert.StartsWith("On the same page", result.Content, StringComparison.Ordinal);
-        Assert.Contains("(pe) мати спільне розуміння", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("(pe) share the same understanding", result.Content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("(pv)", result.Content, StringComparison.OrdinalIgnoreCase);
 
         var nonEmptyLines = result.Content

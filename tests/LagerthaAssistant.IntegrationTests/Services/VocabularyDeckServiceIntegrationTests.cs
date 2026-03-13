@@ -22,7 +22,7 @@ public sealed class VocabularyDeckServiceIntegrationTests
         try
         {
             var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
-            CreateTemplateWorkbook(workbookPath, "test", "(v) ????", "This is a test sentence.");
+            CreateTemplateWorkbook(workbookPath, "test", "(v) test action", "This is a test sentence.");
 
             var options = new VocabularyDeckOptions
             {
@@ -39,7 +39,7 @@ public sealed class VocabularyDeckServiceIntegrationTests
             var response = """
             determine
 
-            (v) ?????????, ?????????????
+            (v) determine, identify
 
             We need to determine the best approach.
             """;
@@ -82,7 +82,7 @@ public sealed class VocabularyDeckServiceIntegrationTests
         try
         {
             var irregularPath = Path.Combine(tempDir, "wm-irregular-verbs-ua-en.xlsx");
-            CreateTemplateWorkbook(irregularPath, "be - was, were - been", "(iv) ????", "We were online all day.");
+            CreateTemplateWorkbook(irregularPath, "be - was, were - been", "(iv) be", "We were online all day.");
 
             var options = new VocabularyDeckOptions
             {
@@ -121,8 +121,8 @@ public sealed class VocabularyDeckServiceIntegrationTests
             var verbsPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
             var irregularPath = Path.Combine(tempDir, "wm-irregular-verbs-ua-en.xlsx");
 
-            CreateTemplateWorkbook(verbsPath, "build", "(v) ????????", "We build services daily.");
-            CreateTemplateWorkbook(irregularPath, "beat - beat - beaten", "(iv) ????", "I beat the estimate.");
+            CreateTemplateWorkbook(verbsPath, "build", "(v) build", "We build services daily.");
+            CreateTemplateWorkbook(irregularPath, "beat - beat - beaten", "(iv) beat", "I beat the estimate.");
 
             var options = new VocabularyDeckOptions
             {
@@ -139,7 +139,7 @@ public sealed class VocabularyDeckServiceIntegrationTests
             var response = """
             bear - bore - born
 
-            (iv) ?????, ???????????
+            (iv) bear, carry
 
             The service bore high traffic yesterday.
 
@@ -229,7 +229,7 @@ public sealed class VocabularyDeckServiceIntegrationTests
             var persistentPath = Path.Combine(tempDir, "wm-persistant-expressions-ua-en.xlsx");
 
             CreateTemplateWorkbook(verbsPath, "build", "(v) create software", "We build services daily.");
-            CreateTemplateWorkbook(persistentPath, "On purpose", "(pe) навмисно", string.Empty);
+            CreateTemplateWorkbook(persistentPath, "On purpose", "(pe) intentionally", string.Empty);
 
             var options = new VocabularyDeckOptions
             {
@@ -246,7 +246,7 @@ public sealed class VocabularyDeckServiceIntegrationTests
             var response = """
 on the same page
 
-(pe) мати спільне розуміння
+(pe) intentionally
 """;
 
             var result = await sut.AppendFromAssistantReplyAsync("on the same page", response);
@@ -277,8 +277,8 @@ on the same page
             var verbsPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
             var phrasalPath = Path.Combine(tempDir, "wm-phrasal-verbs-ua-en.xlsx");
 
-            CreateTemplateWorkbook(verbsPath, "build", "(v) ????????", "We build services daily.");
-            CreateTemplateWorkbook(phrasalPath, "look up", "(pv) ??????", "I will look up the docs.");
+            CreateTemplateWorkbook(verbsPath, "build", "(v) build", "We build services daily.");
+            CreateTemplateWorkbook(phrasalPath, "look up", "(pv) look up", "I will look up the docs.");
 
             var options = new VocabularyDeckOptions
             {
@@ -333,8 +333,8 @@ on the same page
             var verbsPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
             var prepositionsPath = Path.Combine(tempDir, "wm-prepositions-ua-en.xlsx");
 
-            CreateTemplateWorkbook(verbsPath, "call", "(v) ??????????", "Call me later.");
-            CreateTemplateWorkbook(prepositionsPath, "under", "(prep) ???", "Under heavy load, latency grows.");
+            CreateTemplateWorkbook(verbsPath, "call", "(v) call", "Call me later.");
+            CreateTemplateWorkbook(prepositionsPath, "under", "(prep) under", "Under heavy load, latency grows.");
 
             var options = new VocabularyDeckOptions
             {
@@ -387,7 +387,7 @@ on the same page
         try
         {
             var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
-            CreateTemplateWorkbook(workbookPath, "bore", "(v) ???????? ??????", "This lesson will bore you.");
+            CreateTemplateWorkbook(workbookPath, "bore", "(v) make bored", "This lesson will bore you.");
 
             var options = new VocabularyDeckOptions
             {
@@ -426,7 +426,7 @@ on the same page
         try
         {
             var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
-            CreateTemplateWorkbook(workbookPath, "build", "(v) ????????", "We build services daily.");
+            CreateTemplateWorkbook(workbookPath, "build", "(v) build", "We build services daily.");
 
             var options = new VocabularyDeckOptions
             {
@@ -443,7 +443,7 @@ on the same page
             var response = """
             deploy
 
-            (v) ??????????
+            (v) deploy
 
             We deploy every Friday.
             """;

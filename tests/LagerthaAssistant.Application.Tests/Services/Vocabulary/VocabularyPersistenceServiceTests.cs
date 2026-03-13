@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.Application.Tests.Services.Vocabulary;
+namespace LagerthaAssistant.Application.Tests.Services.Vocabulary;
 
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
@@ -18,7 +18,7 @@ public sealed class VocabularyPersistenceServiceTests
                 "C:/deck/wm-verbs-us-en.xlsx",
                 21,
                 "prepare",
-                "(v) ????????",
+                "(v) prepare",
                 "We prepare release notes."));
 
         var deckService = new FakeVocabularyDeckModeService(expectedResult);
@@ -33,7 +33,7 @@ public sealed class VocabularyPersistenceServiceTests
 
         var result = await sut.AppendFromAssistantReplyAsync(
             "prepare",
-            "prepare\n\n(v) ????????\n\nWe prepare release notes.",
+            "prepare\n\n(v) prepare\n\nWe prepare release notes.",
             "wm-verbs-us-en.xlsx",
             "v");
 
