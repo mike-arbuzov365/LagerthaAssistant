@@ -301,13 +301,26 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
                 LastSyncError = errorMessage,
                 FirstSeenAtUtc = now,
                 LastSeenAtUtc = now,
-                SyncedAtUtc = syncedAtUtc
+                SyncedAtUtc = syncedAtUtc,
+                NotionSyncStatus = NotionSyncStatus.Pending,
+                NotionAttemptCount = 0,
+                NotionLastError = null,
+                NotionLastAttemptAtUtc = null,
+                NotionSyncedAtUtc = null
             };
 
             AddTokens(card, BuildTokens(word, query));
             await _cardRepository.AddAsync(card, cancellationToken);
             return;
         }
+
+        var notionSyncRequired = IsNotionSyncRequired(
+            card,
+            word,
+            meaning,
+            examples,
+            partOfSpeech,
+            rowNumber);
 
         card.Word = word.Trim();
         card.Meaning = meaning;
@@ -324,7 +337,32 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
             card.SyncedAtUtc = syncedAtUtc;
         }
 
+        if (notionSyncRequired)
+        {
+            card.NotionSyncStatus = NotionSyncStatus.Pending;
+            card.NotionAttemptCount = 0;
+            card.NotionLastError = null;
+            card.NotionLastAttemptAtUtc = null;
+        }
+
         AddTokens(card, BuildTokens(word, query));
+    }
+
+    private static bool IsNotionSyncRequired(
+        VocabularyCard existingCard,
+        string word,
+        string meaning,
+        string examples,
+        string? partOfSpeech,
+        int rowNumber)
+    {
+        var normalizedWord = word.Trim();
+
+        return !string.Equals(existingCard.Word, normalizedWord, StringComparison.Ordinal)
+            || !string.Equals(existingCard.Meaning, meaning, StringComparison.Ordinal)
+            || !string.Equals(existingCard.Examples, examples, StringComparison.Ordinal)
+            || !string.Equals(existingCard.PartOfSpeechMarker, partOfSpeech, StringComparison.Ordinal)
+            || existingCard.LastKnownRowNumber != rowNumber;
     }
 
     private static VocabularyDeckEntry MapToEntry(VocabularyCard card)

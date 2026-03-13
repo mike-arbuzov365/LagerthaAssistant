@@ -2,6 +2,7 @@ namespace LagerthaAssistant.Infrastructure.Repositories;
 
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Domain.Entities;
+using LagerthaAssistant.Domain.Enums;
 using LagerthaAssistant.Infrastructure.Constants;
 using LagerthaAssistant.Infrastructure.Data;
 using LagerthaAssistant.Infrastructure.Exceptions;
@@ -90,6 +91,184 @@ public sealed class VocabularyCardRepository : IVocabularyCardRepository
         {
             _logger.LogError(ex, "Error in {Operation} for vocabulary card {Word}", RepositoryOperations.Add, card.Word);
             throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.Add, "Failed to add vocabulary card", ex);
+        }
+    }
+
+    public async Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Executing {Operation} for pending Notion sync cards count", RepositoryOperations.GetActive);
+
+            return await _context.VocabularyCards
+                .Where(x => x.NotionSyncStatus == NotionSyncStatus.Pending)
+                .CountAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for pending Notion sync cards count", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.GetActive, "Failed to count pending Notion sync cards", ex);
+        }
+    }
+
+    public async Task<int> CountFailedNotionSyncAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Executing {Operation} for failed Notion sync cards count", RepositoryOperations.GetActive);
+
+            return await _context.VocabularyCards
+                .Where(x => x.NotionSyncStatus == NotionSyncStatus.Failed)
+                .CountAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for failed Notion sync cards count", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.GetActive, "Failed to count failed Notion sync cards", ex);
+        }
+    }
+
+    public async Task<IReadOnlyList<VocabularyCard>> ClaimPendingNotionSyncAsync(
+        int take,
+        DateTimeOffset claimedAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (take <= 0)
+        {
+            return [];
+        }
+
+        try
+        {
+            _logger.LogDebug("Executing {Operation}; Take: {Take}; ClaimedAtUtc: {ClaimedAtUtc}", RepositoryOperations.GetActive, take, claimedAtUtc);
+
+            var probeTake = Math.Clamp(take * 3, take, 2000);
+            var candidateIds = await _context.VocabularyCards
+                .AsNoTracking()
+                .Where(x => x.NotionSyncStatus == NotionSyncStatus.Pending)
+                .OrderBy(x => x.UpdatedAt)
+                .ThenBy(x => x.Id)
+                .Select(x => x.Id)
+                .Take(probeTake)
+                .ToListAsync(cancellationToken);
+
+            if (candidateIds.Count == 0)
+            {
+                return [];
+            }
+
+            var claimed = new List<VocabularyCard>(Math.Min(take, candidateIds.Count));
+            foreach (var id in candidateIds)
+            {
+                if (claimed.Count >= take)
+                {
+                    break;
+                }
+
+                var updated = await _context.VocabularyCards
+                    .Where(x => x.Id == id && x.NotionSyncStatus == NotionSyncStatus.Pending)
+                    .ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(x => x.NotionSyncStatus, NotionSyncStatus.Processing)
+                            .SetProperty(x => x.NotionAttemptCount, x => x.NotionAttemptCount + 1)
+                            .SetProperty(x => x.NotionLastAttemptAtUtc, claimedAtUtc),
+                        cancellationToken);
+
+                if (updated == 0)
+                {
+                    continue;
+                }
+
+                var card = await _context.VocabularyCards
+                    .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+                if (card is not null)
+                {
+                    claimed.Add(card);
+                }
+            }
+
+            return claimed;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for claiming pending Notion sync cards", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.GetActive, "Failed to claim pending Notion sync cards", ex);
+        }
+    }
+
+    public async Task<IReadOnlyList<VocabularyCard>> GetFailedNotionSyncAsync(
+        int take,
+        CancellationToken cancellationToken = default)
+    {
+        if (take <= 0)
+        {
+            return [];
+        }
+
+        try
+        {
+            _logger.LogDebug("Executing {Operation}; Take: {Take}; Status: {Status}", RepositoryOperations.GetActive, take, NotionSyncStatus.Failed);
+
+            return await _context.VocabularyCards
+                .AsNoTracking()
+                .Where(x => x.NotionSyncStatus == NotionSyncStatus.Failed)
+                .OrderByDescending(x => x.NotionLastAttemptAtUtc ?? x.UpdatedAt)
+                .ThenByDescending(x => x.Id)
+                .Take(take)
+                .ToListAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for failed Notion sync cards", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.GetActive, "Failed to load failed Notion sync cards", ex);
+        }
+    }
+
+    public async Task<int> RequeueFailedNotionSyncAsync(
+        int take,
+        DateTimeOffset requeuedAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (take <= 0)
+        {
+            return 0;
+        }
+
+        try
+        {
+            _logger.LogDebug("Executing {Operation}; Take: {Take}; RequeuedAtUtc: {RequeuedAtUtc}", RepositoryOperations.Update, take, requeuedAtUtc);
+
+            var candidateIds = await _context.VocabularyCards
+                .AsNoTracking()
+                .Where(x => x.NotionSyncStatus == NotionSyncStatus.Failed)
+                .OrderByDescending(x => x.NotionLastAttemptAtUtc ?? x.UpdatedAt)
+                .ThenByDescending(x => x.Id)
+                .Select(x => x.Id)
+                .Take(take)
+                .ToListAsync(cancellationToken);
+
+            if (candidateIds.Count == 0)
+            {
+                return 0;
+            }
+
+            var updated = await _context.VocabularyCards
+                .Where(x => candidateIds.Contains(x.Id) && x.NotionSyncStatus == NotionSyncStatus.Failed)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(x => x.NotionSyncStatus, NotionSyncStatus.Pending)
+                        .SetProperty(x => x.NotionAttemptCount, 0)
+                        .SetProperty(x => x.NotionLastError, (string?)null)
+                        .SetProperty(x => x.NotionLastAttemptAtUtc, (DateTimeOffset?)null),
+                    cancellationToken);
+
+            return updated;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for requeueing failed Notion sync cards", RepositoryOperations.Update);
+            throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.Update, "Failed to requeue failed Notion sync cards", ex);
         }
     }
 }

@@ -26,6 +26,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IVocabularyWorkflowService, VocabularyWorkflowService>();
         services.AddScoped<IVocabularyPersistenceService, VocabularyPersistenceService>();
         services.AddScoped<IVocabularySyncProcessor, VocabularySyncProcessor>();
+        services.AddScoped<INotionSyncProcessor, NotionSyncProcessor>();
         services.AddScoped<IVocabularyStoragePreferenceService, VocabularyStoragePreferenceService>();
         services.AddScoped<IVocabularySaveModePreferenceService, VocabularySaveModePreferenceService>();
         services.AddScoped<IVocabularySessionPreferenceService, VocabularySessionPreferenceService>();

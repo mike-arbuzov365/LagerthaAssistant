@@ -344,6 +344,66 @@ The function returns void when there is no value to return
             Cards.Add(card);
             return Task.CompletedTask;
         }
+
+        public Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(Cards.Count(card => card.NotionSyncStatus == NotionSyncStatus.Pending));
+
+        public Task<int> CountFailedNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(Cards.Count(card => card.NotionSyncStatus == NotionSyncStatus.Failed));
+
+        public Task<IReadOnlyList<VocabularyCard>> ClaimPendingNotionSyncAsync(
+            int take,
+            DateTimeOffset claimedAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            var claimed = Cards
+                .Where(card => card.NotionSyncStatus == NotionSyncStatus.Pending)
+                .OrderBy(card => card.Id)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            foreach (var card in claimed)
+            {
+                card.NotionSyncStatus = NotionSyncStatus.Processing;
+                card.NotionAttemptCount += 1;
+                card.NotionLastAttemptAtUtc = claimedAtUtc;
+            }
+
+            return Task.FromResult<IReadOnlyList<VocabularyCard>>(claimed);
+        }
+
+        public Task<IReadOnlyList<VocabularyCard>> GetFailedNotionSyncAsync(int take, CancellationToken cancellationToken = default)
+        {
+            var failed = Cards
+                .Where(card => card.NotionSyncStatus == NotionSyncStatus.Failed)
+                .OrderByDescending(card => card.NotionLastAttemptAtUtc ?? card.LastSeenAtUtc)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            return Task.FromResult<IReadOnlyList<VocabularyCard>>(failed);
+        }
+
+        public Task<int> RequeueFailedNotionSyncAsync(
+            int take,
+            DateTimeOffset requeuedAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            var failed = Cards
+                .Where(card => card.NotionSyncStatus == NotionSyncStatus.Failed)
+                .OrderByDescending(card => card.NotionLastAttemptAtUtc ?? card.LastSeenAtUtc)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            foreach (var card in failed)
+            {
+                card.NotionSyncStatus = NotionSyncStatus.Pending;
+                card.NotionAttemptCount = 0;
+                card.NotionLastError = null;
+                card.NotionLastAttemptAtUtc = null;
+            }
+
+            return Task.FromResult(failed.Count);
+        }
     }
 
     private sealed class FakeVocabularySyncJobRepository : IVocabularySyncJobRepository

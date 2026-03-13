@@ -128,6 +128,50 @@ Notes:
   - `conversationId = chat.id` (or `chat.id:message_thread_id` for topic threads)
 - If `WebhookSecret` is set, requests must include header `X-Telegram-Bot-Api-Secret-Token`.
 
+### Notion settings (SQL-first export adapter)
+
+```json
+"Notion": {
+  "Enabled": false,
+  "ApiKey": "<notion integration secret>",
+  "DatabaseId": "<notion database id>",
+  "ApiBaseUrl": "https://api.notion.com/v1",
+  "Version": "2022-06-28",
+  "ConflictMode": "update",
+  "RequestTimeoutSeconds": 60,
+  "KeyPropertyName": "Key",
+  "WordPropertyName": "Word",
+  "MeaningPropertyName": "Meaning",
+  "ExamplesPropertyName": "Examples",
+  "PartOfSpeechPropertyName": "PartOfSpeech",
+  "DeckPropertyName": "DeckFile",
+  "StorageModePropertyName": "StorageMode",
+  "RowNumberPropertyName": "RowNumber",
+  "LastSeenPropertyName": "LastSeenAtUtc"
+}
+```
+
+Notes:
+- Export source is SQL index (`VocabularyCards`), not direct Excel file reads.
+- Conflict handling is controlled by `Notion:ConflictMode`:
+  - `update` - update existing page with same key (`normalizedWord|deck|storageMode`)
+  - `skip` - keep existing page and mark sync as completed
+  - `error` - treat existing page as conflict error
+- Retries use persistent SQL card state (`Pending`/`Processing`/`Synced`/`Failed`) with capped recoverable attempts.
+
+### Notion sync worker (API only)
+
+```json
+"NotionSyncWorker": {
+  "Enabled": false,
+  "IntervalSeconds": 60,
+  "BatchSize": 25,
+  "RunOnStartup": true,
+  "MaxBackoffSeconds": 300,
+  "BackoffFactor": 2
+}
+```
+
 UI scope overrides (optional):
 
 - `LAGERTHA_USER_ID` - override default UI user identity (otherwise OS username is used).
@@ -204,6 +248,10 @@ curl http://localhost:5000/api/vocabulary-sync/status
 curl -X POST "http://localhost:5000/api/vocabulary-sync/run?take=25"
 curl "http://localhost:5000/api/vocabulary-sync/failed?take=20"
 curl -X POST "http://localhost:5000/api/vocabulary-sync/retry-failed?take=25"
+curl http://localhost:5000/api/notion-sync/status
+curl -X POST "http://localhost:5000/api/notion-sync/run?take=25"
+curl "http://localhost:5000/api/notion-sync/failed?take=20"
+curl -X POST "http://localhost:5000/api/notion-sync/retry-failed?take=25"
 curl "http://localhost:5000/api/telemetry/intents?days=7&top=20&channel=api"
 curl http://localhost:5000/api/conversation/commands
 curl http://localhost:5000/api/conversation/commands/grouped
@@ -296,6 +344,10 @@ Command catalog endpoints (for external clients):
 - `POST /api/graph/login/complete` (complete two-phase device-code login using returned challenge payload)
 - `POST /api/graph/logout` (clear Graph token cache and return fresh auth status)
 - `POST /api/telegram/webhook` (Telegram webhook adapter; maps Telegram chat/user/thread to conversation scope and sends reply via Bot API)
+- `GET /api/notion-sync/status` (Notion export status + pending/failed SQL card counts)
+- `POST /api/notion-sync/run?take=25` (run Notion export for pending SQL cards)
+- `GET /api/notion-sync/failed?take=20` (list failed Notion export cards)
+- `POST /api/notion-sync/retry-failed?take=25` (move failed Notion export cards back to pending)
 - `GET /api/vocabulary-sync/failed?take=20` (list recent failed sync jobs)
 - `POST /api/vocabulary-sync/retry-failed?take=25` (move failed jobs back to pending with reset attempts)
 - `GET /api/preferences/save-mode` (get scoped save mode preference and available values)

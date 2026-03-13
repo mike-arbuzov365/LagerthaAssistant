@@ -63,6 +63,24 @@ public sealed class VocabularyCardConfiguration : IEntityTypeConfiguration<Vocab
 
         builder.Property(x => x.SyncedAtUtc);
 
+        builder.Property(x => x.NotionSyncStatus)
+            .HasConversion<string>()
+            .HasMaxLength(32)
+            .IsRequired();
+
+        builder.Property(x => x.NotionPageId)
+            .HasMaxLength(128);
+
+        builder.Property(x => x.NotionAttemptCount)
+            .IsRequired();
+
+        builder.Property(x => x.NotionLastError)
+            .HasMaxLength(2000);
+
+        builder.Property(x => x.NotionLastAttemptAtUtc);
+
+        builder.Property(x => x.NotionSyncedAtUtc);
+
         builder.Property(x => x.CreatedAt)
             .IsRequired();
 
@@ -80,5 +98,7 @@ public sealed class VocabularyCardConfiguration : IEntityTypeConfiguration<Vocab
         builder.HasIndex(x => new { x.StorageMode, x.LastSeenAtUtc });
 
         builder.HasIndex(x => new { x.SyncStatus, x.UpdatedAt });
+
+        builder.HasIndex(x => new { x.NotionSyncStatus, x.NotionLastAttemptAtUtc });
     }
 }

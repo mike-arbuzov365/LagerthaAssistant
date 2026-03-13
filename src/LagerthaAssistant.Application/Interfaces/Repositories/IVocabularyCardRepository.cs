@@ -15,4 +15,22 @@ public interface IVocabularyCardRepository
         CancellationToken cancellationToken = default);
 
     Task AddAsync(VocabularyCard card, CancellationToken cancellationToken = default);
+
+    Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default);
+
+    Task<int> CountFailedNotionSyncAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<VocabularyCard>> ClaimPendingNotionSyncAsync(
+        int take,
+        DateTimeOffset claimedAtUtc,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<VocabularyCard>> GetFailedNotionSyncAsync(
+        int take,
+        CancellationToken cancellationToken = default);
+
+    Task<int> RequeueFailedNotionSyncAsync(
+        int take,
+        DateTimeOffset requeuedAtUtc,
+        CancellationToken cancellationToken = default);
 }

@@ -27,10 +27,12 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.Configure<VocabularySyncWorkerOptions>(builder.Configuration.GetSection("VocabularySyncWorker"));
+builder.Services.Configure<NotionSyncWorkerOptions>(builder.Configuration.GetSection("NotionSyncWorker"));
 builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
 builder.Services.AddSingleton<ITelegramConversationResponseFormatter, TelegramConversationResponseFormatter>();
 builder.Services.AddSingleton<ITelegramBotSender, TelegramBotSender>();
 builder.Services.AddHostedService<VocabularySyncHostedService>();
+builder.Services.AddHostedService<NotionSyncHostedService>();
 
 var app = builder.Build();
 
