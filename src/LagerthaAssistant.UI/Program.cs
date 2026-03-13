@@ -123,6 +123,7 @@ internal static partial class Program
 
         var aiOptions = services.GetRequiredService<OpenAiOptions>();
         var conversationOrchestrator = services.GetRequiredService<IConversationOrchestrator>();
+        var commandCatalogService = services.GetRequiredService<IConversationCommandCatalogService>();
         var vocabularyWorkflowService = services.GetRequiredService<IVocabularyWorkflowService>();
         var vocabularyBatchInputService = services.GetRequiredService<IVocabularyBatchInputService>();
         var vocabularyDeckService = services.GetRequiredService<IVocabularyDeckService>();
@@ -141,6 +142,7 @@ internal static partial class Program
 
         await RunConsoleAssistantAsync(
             conversationOrchestrator,
+            commandCatalogService,
             vocabularyWorkflowService,
             vocabularyBatchInputService,
             vocabularyDeckService,
@@ -154,6 +156,7 @@ internal static partial class Program
 
     private static async Task RunConsoleAssistantAsync(
         IConversationOrchestrator conversationOrchestrator,
+        IConversationCommandCatalogService commandCatalogService,
         IVocabularyWorkflowService vocabularyWorkflowService,
         IVocabularyBatchInputService vocabularyBatchInputService,
         IVocabularyDeckService vocabularyDeckService,
@@ -164,6 +167,7 @@ internal static partial class Program
         IGraphAuthService graphAuthService,
         string model)
     {
+        InitializeCommandCatalog(commandCatalogService);
         PrintBanner(model);
 
         var uiScope = BuildUiScope();

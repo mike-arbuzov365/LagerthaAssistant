@@ -1,20 +1,30 @@
 using LagerthaAssistant.Application.Constants;
+using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.UI.Constants;
 
 namespace LagerthaAssistant.UI;
 
 internal static partial class Program
 {
-    private static readonly IReadOnlyDictionary<string, string> CommandCatalogDescriptions =
-        ConversationCommandCatalog.SlashCommands
+    private static IReadOnlyDictionary<string, string> CommandCatalogDescriptions { get; set; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> CommandCatalogCommandsByCategory { get; set; } =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+    private static void InitializeCommandCatalog(IConversationCommandCatalogService commandCatalogService)
+    {
+        CommandCatalogDescriptions = commandCatalogService
+            .GetCommands()
             .ToDictionary(item => item.Command, item => item.Description, StringComparer.OrdinalIgnoreCase);
 
-    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> CommandCatalogCommandsByCategory =
-        ConversationCommandCatalog.SlashCommandGroups
+        CommandCatalogCommandsByCategory = commandCatalogService
+            .GetGroups()
             .ToDictionary(
                 group => group.Category,
                 group => (IReadOnlyList<string>)group.Commands.Select(item => item.Command).ToList(),
                 StringComparer.OrdinalIgnoreCase);
+    }
 
     private static void PrintBanner(string model)
     {
