@@ -188,6 +188,9 @@ curl -X POST http://localhost:5000/api/conversation/prompt/proposals/improve -H 
 curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/apply
 curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/reject
 curl -X POST "http://localhost:5000/api/conversation/reset?channel=api&userId=anonymous&conversationId=default"
+curl -X POST http://localhost:5000/api/vocabulary/analyze -H "Content-Type: application/json" -d "{\"input\":\"void\",\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
+curl -X POST http://localhost:5000/api/vocabulary/analyze-batch -H "Content-Type: application/json" -d "{\"inputs\":[\"void\",\"call back\"],\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
+curl -X POST http://localhost:5000/api/vocabulary/save -H "Content-Type: application/json" -d "{\"requestedWord\":\"void\",\"assistantReply\":\"void\\n\\n(n) emptiness\"}"
 ```
 
 On startup both UI and API apply EF migrations automatically.
@@ -233,6 +236,9 @@ Command catalog endpoints (for external clients):
 - `POST /api/conversation/prompt/proposals/{id}/apply` (apply proposal)
 - `POST /api/conversation/prompt/proposals/{id}/reject` (reject proposal)
 - `POST /api/conversation/reset?channel=api&userId=anonymous&conversationId=default` (reset conversation for exact scope)
+- `POST /api/vocabulary/analyze` (process one vocabulary item using scoped conversation context)
+- `POST /api/vocabulary/analyze-batch` (process multiple items sequentially in one scope)
+- `POST /api/vocabulary/save` (append parsed assistant reply to selected deck)
 
 Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
 
