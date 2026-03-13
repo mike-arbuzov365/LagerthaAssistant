@@ -1,8 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
+using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
-using LagerthaAssistant.Application.Interfaces.Vocabulary;
-using LagerthaAssistant.Application.Models.Agents;
 
 namespace LagerthaAssistant.Api.Controllers;
 
@@ -11,23 +10,14 @@ namespace LagerthaAssistant.Api.Controllers;
 public sealed class SessionController : ControllerBase
 {
     private readonly IConversationScopeAccessor _scopeAccessor;
-    private readonly IVocabularySessionPreferenceService _sessionPreferenceService;
-    private readonly IVocabularySaveModePreferenceService _saveModePreferenceService;
-    private readonly IVocabularyStorageModeProvider _storageModeProvider;
-    private readonly IGraphAuthService _graphAuthService;
+    private readonly IConversationBootstrapService _conversationBootstrapService;
 
     public SessionController(
         IConversationScopeAccessor scopeAccessor,
-        IVocabularySessionPreferenceService sessionPreferenceService,
-        IVocabularySaveModePreferenceService saveModePreferenceService,
-        IVocabularyStorageModeProvider storageModeProvider,
-        IGraphAuthService graphAuthService)
+        IConversationBootstrapService conversationBootstrapService)
     {
         _scopeAccessor = scopeAccessor;
-        _sessionPreferenceService = sessionPreferenceService;
-        _saveModePreferenceService = saveModePreferenceService;
-        _storageModeProvider = storageModeProvider;
-        _graphAuthService = graphAuthService;
+        _conversationBootstrapService = conversationBootstrapService;
     }
 
     [HttpGet("bootstrap")]
@@ -41,26 +31,23 @@ public sealed class SessionController : ControllerBase
         var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
-        var session = await _sessionPreferenceService.GetAsync(scope, cancellationToken);
-        var graph = await _graphAuthService.GetStatusAsync(cancellationToken);
+        var bootstrap = await _conversationBootstrapService.BuildAsync(scope, cancellationToken);
 
         var preferences = new PreferenceSessionResponse(
-            _saveModePreferenceService.ToText(session.SaveMode),
-            _sessionPreferenceService.SupportedSaveModes,
-            _storageModeProvider.ToText(session.StorageMode),
-            _sessionPreferenceService.SupportedStorageModes);
+            bootstrap.SaveMode,
+            bootstrap.AvailableSaveModes,
+            bootstrap.StorageMode,
+            bootstrap.AvailableStorageModes);
 
         return Ok(new SessionBootstrapResponse(
-            new SessionScopeResponse(scope.Channel, scope.UserId, scope.ConversationId),
+            new SessionScopeResponse(bootstrap.Scope.Channel, bootstrap.Scope.UserId, bootstrap.Scope.ConversationId),
             preferences,
             new GraphAuthStatusResponse(
-                graph.IsConfigured,
-                graph.IsAuthenticated,
-                graph.Message,
-                graph.AccessTokenExpiresAtUtc),
-            ApiConversationCommandCatalogMapper.BuildGroupedItems(),
-            ApiVocabularyPartOfSpeechMapper.BuildOptions()));
+                bootstrap.Graph.IsConfigured,
+                bootstrap.Graph.IsAuthenticated,
+                bootstrap.Graph.Message,
+                bootstrap.Graph.AccessTokenExpiresAtUtc),
+            ApiConversationCommandCatalogMapper.MapGroupedItems(bootstrap.CommandGroups),
+            ApiVocabularyPartOfSpeechMapper.MapOptions(bootstrap.PartOfSpeechOptions)));
     }
 }
-
-

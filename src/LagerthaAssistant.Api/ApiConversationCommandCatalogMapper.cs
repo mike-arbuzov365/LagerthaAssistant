@@ -2,6 +2,7 @@ namespace LagerthaAssistant.Api;
 
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Constants;
+using LagerthaAssistant.Application.Models.Agents;
 
 internal static class ApiConversationCommandCatalogMapper
 {
@@ -14,7 +15,13 @@ internal static class ApiConversationCommandCatalogMapper
 
     public static IReadOnlyList<ConversationCommandGroupResponse> BuildGroupedItems()
     {
-        return ConversationCommandCatalog.SlashCommandGroups
+        return MapGroupedItems(ConversationCommandCatalog.SlashCommandGroups);
+    }
+
+    public static IReadOnlyList<ConversationCommandGroupResponse> MapGroupedItems(
+        IReadOnlyList<ConversationCommandCatalogGroup> groups)
+    {
+        return groups
             .Select(group =>
                 new ConversationCommandGroupResponse(
                     group.Category,

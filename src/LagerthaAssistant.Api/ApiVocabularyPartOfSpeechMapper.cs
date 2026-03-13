@@ -7,7 +7,13 @@ internal static class ApiVocabularyPartOfSpeechMapper
 {
     public static IReadOnlyList<VocabularyPartOfSpeechOptionResponse> BuildOptions()
     {
-        return VocabularyPartOfSpeechCatalog.GetOptions()
+        return MapOptions(VocabularyPartOfSpeechCatalog.GetOptions());
+    }
+
+    public static IReadOnlyList<VocabularyPartOfSpeechOptionResponse> MapOptions(
+        IReadOnlyList<VocabularyPartOfSpeechOption> options)
+    {
+        return options
             .OrderBy(option => option.Number)
             .Select(option => new VocabularyPartOfSpeechOptionResponse(option.Number, option.Marker, option.Label))
             .ToList();
