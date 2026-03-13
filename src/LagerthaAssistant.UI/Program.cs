@@ -12,7 +12,6 @@ using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
-using LagerthaAssistant.Application.Services.Vocabulary;
 using LagerthaAssistant.Domain.AI;
 using LagerthaAssistant.Domain.Entities;
 using LagerthaAssistant.Infrastructure;
@@ -136,6 +135,7 @@ internal static partial class Program
         var aiOptions = services.GetRequiredService<OpenAiOptions>();
         var conversationOrchestrator = services.GetRequiredService<IConversationOrchestrator>();
         var vocabularyWorkflowService = services.GetRequiredService<IVocabularyWorkflowService>();
+        var vocabularyBatchInputService = services.GetRequiredService<IVocabularyBatchInputService>();
         var vocabularyDeckService = services.GetRequiredService<IVocabularyDeckService>();
         var vocabularyPersistenceService = services.GetRequiredService<IVocabularyPersistenceService>();
         var vocabularyStorageModeProvider = services.GetRequiredService<IVocabularyStorageModeProvider>();
@@ -153,6 +153,7 @@ internal static partial class Program
         await RunConsoleAssistantAsync(
             conversationOrchestrator,
             vocabularyWorkflowService,
+            vocabularyBatchInputService,
             vocabularyDeckService,
             vocabularyPersistenceService,
             vocabularyStorageModeProvider,
@@ -165,6 +166,7 @@ internal static partial class Program
     private static async Task RunConsoleAssistantAsync(
         IConversationOrchestrator conversationOrchestrator,
         IVocabularyWorkflowService vocabularyWorkflowService,
+        IVocabularyBatchInputService vocabularyBatchInputService,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
@@ -204,6 +206,7 @@ internal static partial class Program
                 uiScope,
                 conversationOrchestrator,
                 vocabularyWorkflowService,
+                vocabularyBatchInputService,
                 vocabularyDeckService,
                 vocabularyPersistenceService,
                 vocabularyStorageModeProvider,

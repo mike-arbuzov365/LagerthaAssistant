@@ -4,7 +4,6 @@ using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
-using LagerthaAssistant.Application.Services.Vocabulary;
 using LagerthaAssistant.Infrastructure.Constants;
 using LagerthaAssistant.UI.Constants;
 
@@ -27,6 +26,7 @@ internal static partial class Program
         ConversationScope uiScope,
         IConversationOrchestrator conversationOrchestrator,
         IVocabularyWorkflowService vocabularyWorkflowService,
+        IVocabularyBatchInputService vocabularyBatchInputService,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
@@ -49,15 +49,15 @@ internal static partial class Program
                 return CommandHandlingResult.Continue(saveMode);
             }
 
-            var parsedItems = VocabularyBatchInputParser.Parse(rawBatchInput);
+            var batchParse = vocabularyBatchInputService.Parse(rawBatchInput);
+            var parsedItems = batchParse.Items;
 
-            if (ShouldOfferSpaceSplit(rawBatchInput, parsedItems))
+            if (batchParse.ShouldOfferSpaceSplit
+                && batchParse.SpaceSplitCandidates.Count > 1
+                && !string.IsNullOrWhiteSpace(batchParse.SingleItemWithoutSeparators)
+                && AskBatchSpaceSplitChoice(batchParse.SingleItemWithoutSeparators, batchParse.SpaceSplitCandidates))
             {
-                var splitCandidates = SplitBatchInputBySpaces(parsedItems[0]);
-                if (splitCandidates.Count > 1 && AskBatchSpaceSplitChoice(parsedItems[0], splitCandidates))
-                {
-                    parsedItems = splitCandidates;
-                }
+                parsedItems = batchParse.SpaceSplitCandidates;
             }
 
             if (parsedItems.Count == 0)

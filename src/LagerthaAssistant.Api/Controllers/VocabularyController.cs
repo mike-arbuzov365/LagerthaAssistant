@@ -16,15 +16,18 @@ public sealed class VocabularyController : ControllerBase
 
     private readonly IVocabularyWorkflowService _workflowService;
     private readonly IVocabularyPersistenceService _persistenceService;
+    private readonly IVocabularyBatchInputService _batchInputService;
     private readonly IConversationScopeAccessor _scopeAccessor;
 
     public VocabularyController(
         IVocabularyWorkflowService workflowService,
         IVocabularyPersistenceService persistenceService,
+        IVocabularyBatchInputService batchInputService,
         IConversationScopeAccessor scopeAccessor)
     {
         _workflowService = workflowService;
         _persistenceService = persistenceService;
+        _batchInputService = batchInputService;
         _scopeAccessor = scopeAccessor;
     }
 
@@ -81,6 +84,96 @@ public sealed class VocabularyController : ControllerBase
         return Ok(results.Select(MapWorkflowItem).ToList());
     }
 
+
+    [HttpPost("parse-batch")]
+    [ProducesResponseType(typeof(VocabularyParseBatchResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public ActionResult<VocabularyParseBatchResponse> ParseBatch([FromBody] VocabularyParseBatchRequest request)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.Input))
+        {
+            return BadRequest("Input is required.");
+        }
+
+        var parseResult = _batchInputService.Parse(request.Input, request.ApplySpaceSplit);
+
+        return Ok(new VocabularyParseBatchResponse(
+            parseResult.Items,
+            parseResult.ShouldOfferSpaceSplit,
+            parseResult.SpaceSplitCandidates,
+            parseResult.SingleItemWithoutSeparators));
+    }
+
+    [HttpPost("save-batch")]
+    [ProducesResponseType(typeof(VocabularySaveBatchResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<VocabularySaveBatchResponse>> SaveBatch(
+        [FromBody] VocabularySaveBatchRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null || request.Items is null || request.Items.Count == 0)
+        {
+            return BadRequest("At least one item is required.");
+        }
+
+        var items = request.Items.ToList();
+        for (var index = 0; index < items.Count; index++)
+        {
+            var item = items[index];
+
+            if (string.IsNullOrWhiteSpace(item.RequestedWord))
+            {
+                return BadRequest($"items[{index}].requestedWord is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(item.AssistantReply))
+            {
+                return BadRequest($"items[{index}].assistantReply is required.");
+            }
+        }
+
+        var responses = new List<VocabularySaveBatchItemResponse>(items.Count);
+        var added = 0;
+        var duplicates = 0;
+        var failed = 0;
+
+        for (var index = 0; index < items.Count; index++)
+        {
+            var item = items[index];
+
+            var appendResult = await _persistenceService.AppendFromAssistantReplyAsync(
+                item.RequestedWord,
+                item.AssistantReply,
+                item.ForcedDeckFileName,
+                item.OverridePartOfSpeech,
+                cancellationToken);
+
+            switch (appendResult.Status)
+            {
+                case VocabularyAppendStatus.Added:
+                    added++;
+                    break;
+                case VocabularyAppendStatus.DuplicateFound:
+                    duplicates++;
+                    break;
+                default:
+                    failed++;
+                    break;
+            }
+
+            responses.Add(new VocabularySaveBatchItemResponse(
+                index + 1,
+                item.RequestedWord,
+                MapAppendResult(appendResult)));
+        }
+
+        return Ok(new VocabularySaveBatchResponse(
+            items.Count,
+            added,
+            duplicates,
+            failed,
+            responses));
+    }
     [HttpPost("save")]
     [ProducesResponseType(typeof(VocabularyAppendResultResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -192,4 +285,3 @@ public sealed class VocabularyController : ControllerBase
             entry.Examples);
     }
 }
-

@@ -1,7 +1,6 @@
 using System.Globalization;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
-using LagerthaAssistant.Application.Services.Vocabulary;
 
 namespace LagerthaAssistant.UI;
 
@@ -37,46 +36,6 @@ internal static partial class Program
 
             lines.Add(line);
         }
-    }
-
-    private static bool ShouldOfferSpaceSplit(string rawBatchInput, IReadOnlyList<string> parsedItems)
-    {
-        if (parsedItems.Count != 1)
-        {
-            return false;
-        }
-
-        var normalized = rawBatchInput.Trim();
-        if (string.IsNullOrWhiteSpace(normalized))
-        {
-            return false;
-        }
-
-        if (normalized.Contains(Environment.NewLine, StringComparison.Ordinal)
-            || normalized.Contains('\n')
-            || normalized.Contains('\r')
-            || normalized.Contains('\t')
-            || normalized.Contains(';')
-            || normalized.Contains(',')
-            || normalized.Contains('.')
-            || normalized.Contains('!')
-            || normalized.Contains('?'))
-        {
-            return false;
-        }
-
-        return normalized.Contains(' ', StringComparison.Ordinal);
-    }
-
-    private static IReadOnlyList<string> SplitBatchInputBySpaces(string input)
-    {
-        var tokens = input
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(token => !string.IsNullOrWhiteSpace(token))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return tokens;
     }
 
     private static bool AskBatchSpaceSplitChoice(string originalItem, IReadOnlyList<string> splitCandidates)

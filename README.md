@@ -190,7 +190,9 @@ curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/reject
 curl -X POST "http://localhost:5000/api/conversation/reset?channel=api&userId=anonymous&conversationId=default"
 curl -X POST http://localhost:5000/api/vocabulary/analyze -H "Content-Type: application/json" -d "{\"input\":\"void\",\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
 curl -X POST http://localhost:5000/api/vocabulary/analyze-batch -H "Content-Type: application/json" -d "{\"inputs\":[\"void\",\"call back\"],\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
+curl -X POST http://localhost:5000/api/vocabulary/parse-batch -H "Content-Type: application/json" -d "{\"input\":\"void prepare\",\"applySpaceSplit\":false}"
 curl -X POST http://localhost:5000/api/vocabulary/save -H "Content-Type: application/json" -d "{\"requestedWord\":\"void\",\"assistantReply\":\"void\\n\\n(n) emptiness\"}"
+curl -X POST http://localhost:5000/api/vocabulary/save-batch -H "Content-Type: application/json" -d "{\"items\":[{\"requestedWord\":\"void\",\"assistantReply\":\"void\\n\\n(n) emptiness\"},{\"requestedWord\":\"prepare\",\"assistantReply\":\"prepare\\n\\n(v) готувати\"}]}"
 ```
 
 On startup both UI and API apply EF migrations automatically.
@@ -238,7 +240,9 @@ Command catalog endpoints (for external clients):
 - `POST /api/conversation/reset?channel=api&userId=anonymous&conversationId=default` (reset conversation for exact scope)
 - `POST /api/vocabulary/analyze` (process one vocabulary item using scoped conversation context)
 - `POST /api/vocabulary/analyze-batch` (process multiple items sequentially in one scope)
+- `POST /api/vocabulary/parse-batch` (parse raw batch text and return split hints for clients)
 - `POST /api/vocabulary/save` (append parsed assistant reply to selected deck)
+- `POST /api/vocabulary/save-batch` (append multiple assistant replies in one request with per-item result)
 
 Single-word inputs are still treated as vocabulary requests to avoid accidental command routing.
 
@@ -296,4 +300,3 @@ Use `/help` to see full command reference in the console.
 dotnet build LagerthaAssistant.slnx
 dotnet test LagerthaAssistant.slnx -v minimal
 ```
-
