@@ -19,7 +19,8 @@ public sealed class PreferencesControllerTests
         {
             CurrentMode = VocabularySaveMode.Auto
         };
-        var sut = CreateSut(scopeAccessor, saveModeService);
+        var sessionPreferenceService = new FakeVocabularySessionPreferenceService();
+        var sut = CreateSut(scopeAccessor, saveModeService, sessionPreferenceService);
 
         var response = await sut.GetSaveMode(cancellationToken: CancellationToken.None);
 
@@ -37,7 +38,8 @@ public sealed class PreferencesControllerTests
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
         var saveModeService = new FakeVocabularySaveModePreferenceService();
-        var sut = CreateSut(scopeAccessor, saveModeService);
+        var sessionPreferenceService = new FakeVocabularySessionPreferenceService();
+        var sut = CreateSut(scopeAccessor, saveModeService, sessionPreferenceService);
 
         var response = await sut.SetSaveMode(new PreferenceSetSaveModeRequest("   "), CancellationToken.None);
 
@@ -50,7 +52,8 @@ public sealed class PreferencesControllerTests
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
         var saveModeService = new FakeVocabularySaveModePreferenceService();
-        var sut = CreateSut(scopeAccessor, saveModeService);
+        var sessionPreferenceService = new FakeVocabularySessionPreferenceService();
+        var sut = CreateSut(scopeAccessor, saveModeService, sessionPreferenceService);
 
         var response = await sut.SetSaveMode(new PreferenceSetSaveModeRequest("cloud"), CancellationToken.None);
 
@@ -63,7 +66,8 @@ public sealed class PreferencesControllerTests
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
         var saveModeService = new FakeVocabularySaveModePreferenceService();
-        var sut = CreateSut(scopeAccessor, saveModeService);
+        var sessionPreferenceService = new FakeVocabularySessionPreferenceService();
+        var sut = CreateSut(scopeAccessor, saveModeService, sessionPreferenceService);
 
         var response = await sut.SetSaveMode(
             new PreferenceSetSaveModeRequest("off", "  TeLeGrAm  ", "Mike", "chat-42"),
@@ -88,12 +92,13 @@ public sealed class PreferencesControllerTests
         {
             CurrentMode = VocabularySaveMode.Off
         };
-        var storagePreferenceService = new FakeVocabularyStoragePreferenceService
+        var sessionPreferenceService = new FakeVocabularySessionPreferenceService
         {
-            CurrentMode = VocabularyStorageMode.Graph
+            CurrentSaveMode = VocabularySaveMode.Off,
+            CurrentStorageMode = VocabularyStorageMode.Graph
         };
         var storageModeProvider = new FakeVocabularyStorageModeProvider();
-        var sut = new PreferencesController(scopeAccessor, saveModeService, storagePreferenceService, storageModeProvider);
+        var sut = new PreferencesController(scopeAccessor, saveModeService, sessionPreferenceService, storageModeProvider);
 
         var response = await sut.GetSession("telegram", "mike", "chat-42", CancellationToken.None);
 
@@ -112,9 +117,9 @@ public sealed class PreferencesControllerTests
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
         var saveModeService = new FakeVocabularySaveModePreferenceService();
-        var storagePreferenceService = new FakeVocabularyStoragePreferenceService();
+        var sessionPreferenceService = new FakeVocabularySessionPreferenceService();
         var storageModeProvider = new FakeVocabularyStorageModeProvider();
-        var sut = new PreferencesController(scopeAccessor, saveModeService, storagePreferenceService, storageModeProvider);
+        var sut = new PreferencesController(scopeAccessor, saveModeService, sessionPreferenceService, storageModeProvider);
 
         var response = await sut.SetSession(new PreferenceSetSessionRequest(), CancellationToken.None);
 
@@ -126,9 +131,9 @@ public sealed class PreferencesControllerTests
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
         var saveModeService = new FakeVocabularySaveModePreferenceService();
-        var storagePreferenceService = new FakeVocabularyStoragePreferenceService();
+        var sessionPreferenceService = new FakeVocabularySessionPreferenceService();
         var storageModeProvider = new FakeVocabularyStorageModeProvider();
-        var sut = new PreferencesController(scopeAccessor, saveModeService, storagePreferenceService, storageModeProvider);
+        var sut = new PreferencesController(scopeAccessor, saveModeService, sessionPreferenceService, storageModeProvider);
 
         var response = await sut.SetSession(
             new PreferenceSetSessionRequest(
@@ -144,17 +149,15 @@ public sealed class PreferencesControllerTests
 
         Assert.Equal("auto", payload.SaveMode);
         Assert.Equal("graph", payload.StorageMode);
-        Assert.Equal(VocabularySaveMode.Auto, saveModeService.CurrentMode);
-        Assert.Equal(VocabularyStorageMode.Graph, storagePreferenceService.CurrentMode);
+        Assert.Equal(VocabularySaveMode.Auto, sessionPreferenceService.CurrentSaveMode);
+        Assert.Equal(VocabularyStorageMode.Graph, sessionPreferenceService.CurrentStorageMode);
         Assert.Equal(VocabularyStorageMode.Graph, storageModeProvider.CurrentMode);
 
-        Assert.NotNull(saveModeService.LastSetScope);
-        Assert.Equal("telegram", saveModeService.LastSetScope!.Channel);
-        Assert.Equal("mike", saveModeService.LastSetScope!.UserId);
-
-        Assert.NotNull(storagePreferenceService.LastSetScope);
-        Assert.Equal("telegram", storagePreferenceService.LastSetScope!.Channel);
-        Assert.Equal("mike", storagePreferenceService.LastSetScope!.UserId);
+        Assert.NotNull(sessionPreferenceService.LastSetScope);
+        Assert.Equal("telegram", sessionPreferenceService.LastSetScope!.Channel);
+        Assert.Equal("mike", sessionPreferenceService.LastSetScope!.UserId);
+        Assert.Equal(VocabularySaveMode.Auto, sessionPreferenceService.LastSetSaveMode);
+        Assert.Equal(VocabularyStorageMode.Graph, sessionPreferenceService.LastSetStorageMode);
     }
 
     [Fact]
@@ -162,9 +165,9 @@ public sealed class PreferencesControllerTests
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
         var saveModeService = new FakeVocabularySaveModePreferenceService();
-        var storagePreferenceService = new FakeVocabularyStoragePreferenceService();
+        var sessionPreferenceService = new FakeVocabularySessionPreferenceService();
         var storageModeProvider = new FakeVocabularyStorageModeProvider();
-        var sut = new PreferencesController(scopeAccessor, saveModeService, storagePreferenceService, storageModeProvider);
+        var sut = new PreferencesController(scopeAccessor, saveModeService, sessionPreferenceService, storageModeProvider);
 
         var response = await sut.SetSession(
             new PreferenceSetSessionRequest(SaveMode: "ask", StorageMode: "cloud"),
@@ -175,12 +178,13 @@ public sealed class PreferencesControllerTests
 
     private static PreferencesController CreateSut(
         FakeConversationScopeAccessor scopeAccessor,
-        FakeVocabularySaveModePreferenceService saveModeService)
+        FakeVocabularySaveModePreferenceService saveModeService,
+        FakeVocabularySessionPreferenceService sessionPreferenceService)
     {
         return new PreferencesController(
             scopeAccessor,
             saveModeService,
-            new FakeVocabularyStoragePreferenceService(),
+            sessionPreferenceService,
             new FakeVocabularyStorageModeProvider());
     }
 
@@ -245,28 +249,53 @@ public sealed class PreferencesControllerTests
         }
     }
 
-    private sealed class FakeVocabularyStoragePreferenceService : IVocabularyStoragePreferenceService
+    private sealed class FakeVocabularySessionPreferenceService : IVocabularySessionPreferenceService
     {
-        public VocabularyStorageMode CurrentMode { get; set; } = VocabularyStorageMode.Local;
+        public IReadOnlyList<string> SupportedSaveModes { get; } = ["ask", "auto", "off"];
+
+        public IReadOnlyList<string> SupportedStorageModes { get; } = ["local", "graph"];
+
+        public VocabularySaveMode CurrentSaveMode { get; set; } = VocabularySaveMode.Ask;
+
+        public VocabularyStorageMode CurrentStorageMode { get; set; } = VocabularyStorageMode.Local;
 
         public ConversationScope? LastGetScope { get; private set; }
 
         public ConversationScope? LastSetScope { get; private set; }
 
-        public Task<VocabularyStorageMode> GetModeAsync(ConversationScope scope, CancellationToken cancellationToken = default)
+        public VocabularySaveMode? LastSetSaveMode { get; private set; }
+
+        public VocabularyStorageMode? LastSetStorageMode { get; private set; }
+
+        public Task<VocabularySessionPreferences> GetAsync(
+            ConversationScope scope,
+            CancellationToken cancellationToken = default)
         {
             LastGetScope = scope;
-            return Task.FromResult(CurrentMode);
+            return Task.FromResult(new VocabularySessionPreferences(CurrentSaveMode, CurrentStorageMode));
         }
 
-        public Task<VocabularyStorageMode> SetModeAsync(
+        public Task<VocabularySessionPreferences> SetAsync(
             ConversationScope scope,
-            VocabularyStorageMode mode,
+            VocabularySaveMode? saveMode = null,
+            VocabularyStorageMode? storageMode = null,
             CancellationToken cancellationToken = default)
         {
             LastSetScope = scope;
-            CurrentMode = mode;
-            return Task.FromResult(mode);
+
+            if (saveMode.HasValue)
+            {
+                CurrentSaveMode = saveMode.Value;
+            }
+
+            if (storageMode.HasValue)
+            {
+                CurrentStorageMode = storageMode.Value;
+            }
+
+            LastSetSaveMode = saveMode;
+            LastSetStorageMode = storageMode;
+            return Task.FromResult(new VocabularySessionPreferences(CurrentSaveMode, CurrentStorageMode));
         }
     }
 

@@ -128,6 +128,7 @@ internal static partial class Program
         var vocabularyDeckService = services.GetRequiredService<IVocabularyDeckService>();
         var vocabularyPersistenceService = services.GetRequiredService<IVocabularyPersistenceService>();
         var vocabularySaveModePreferenceService = services.GetRequiredService<IVocabularySaveModePreferenceService>();
+        var vocabularySessionPreferenceService = services.GetRequiredService<IVocabularySessionPreferenceService>();
         var vocabularyStorageModeProvider = services.GetRequiredService<IVocabularyStorageModeProvider>();
         var vocabularyStoragePreferenceService = services.GetRequiredService<IVocabularyStoragePreferenceService>();
         var graphAuthService = services.GetRequiredService<IGraphAuthService>();
@@ -146,6 +147,7 @@ internal static partial class Program
             vocabularyDeckService,
             vocabularyPersistenceService,
             vocabularySaveModePreferenceService,
+            vocabularySessionPreferenceService,
             vocabularyStorageModeProvider,
             vocabularyStoragePreferenceService,
             graphAuthService,
@@ -159,6 +161,7 @@ internal static partial class Program
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
         IVocabularySaveModePreferenceService vocabularySaveModePreferenceService,
+        IVocabularySessionPreferenceService vocabularySessionPreferenceService,
         IVocabularyStorageModeProvider vocabularyStorageModeProvider,
         IVocabularyStoragePreferenceService vocabularyStoragePreferenceService,
         IGraphAuthService graphAuthService,
@@ -167,11 +170,12 @@ internal static partial class Program
         PrintBanner(model);
 
         var uiScope = BuildUiScope();
+        var sessionPreferences = await LoadSessionPreferencesAsync(vocabularySessionPreferenceService, uiScope);
 
-        var saveMode = await LoadSaveModeAsync(vocabularySaveModePreferenceService, uiScope);
+        var saveMode = sessionPreferences.SaveMode;
         PrintCurrentSaveMode(vocabularySaveModePreferenceService, saveMode);
 
-        var storageMode = await LoadStorageModeAsync(vocabularyStoragePreferenceService, uiScope);
+        var storageMode = sessionPreferences.StorageMode;
         vocabularyStorageModeProvider.SetMode(storageMode);
         PrintCurrentStorageMode(vocabularyStorageModeProvider, storageMode);
 

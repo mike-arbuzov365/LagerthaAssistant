@@ -7,11 +7,11 @@ namespace LagerthaAssistant.UI;
 
 internal static partial class Program
 {
-    private static async Task<VocabularySaveMode> LoadSaveModeAsync(
-        IVocabularySaveModePreferenceService vocabularySaveModePreferenceService,
+    private static async Task<VocabularySessionPreferences> LoadSessionPreferencesAsync(
+        IVocabularySessionPreferenceService vocabularySessionPreferenceService,
         ConversationScope scope)
     {
-        return await vocabularySaveModePreferenceService.GetModeAsync(scope);
+        return await vocabularySessionPreferenceService.GetAsync(scope);
     }
 
     private static async Task PersistSaveModeAsync(
@@ -29,13 +29,6 @@ internal static partial class Program
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine($"info: Save mode is '{vocabularySaveModePreferenceService.ToText(saveMode)}'.");
         Console.ResetColor();
-    }
-
-    private static async Task<VocabularyStorageMode> LoadStorageModeAsync(
-        IVocabularyStoragePreferenceService vocabularyStoragePreferenceService,
-        ConversationScope scope)
-    {
-        return await vocabularyStoragePreferenceService.GetModeAsync(scope);
     }
 
     private static async Task PersistStorageModeAsync(

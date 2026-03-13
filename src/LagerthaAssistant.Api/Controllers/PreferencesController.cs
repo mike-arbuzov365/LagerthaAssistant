@@ -15,18 +15,18 @@ public sealed class PreferencesController : ControllerBase
 
     private readonly IConversationScopeAccessor _scopeAccessor;
     private readonly IVocabularySaveModePreferenceService _saveModePreferenceService;
-    private readonly IVocabularyStoragePreferenceService _storagePreferenceService;
+    private readonly IVocabularySessionPreferenceService _sessionPreferenceService;
     private readonly IVocabularyStorageModeProvider _storageModeProvider;
 
     public PreferencesController(
         IConversationScopeAccessor scopeAccessor,
         IVocabularySaveModePreferenceService saveModePreferenceService,
-        IVocabularyStoragePreferenceService storagePreferenceService,
+        IVocabularySessionPreferenceService sessionPreferenceService,
         IVocabularyStorageModeProvider storageModeProvider)
     {
         _scopeAccessor = scopeAccessor;
         _saveModePreferenceService = saveModePreferenceService;
-        _storagePreferenceService = storagePreferenceService;
+        _sessionPreferenceService = sessionPreferenceService;
         _storageModeProvider = storageModeProvider;
     }
 
@@ -80,11 +80,10 @@ public sealed class PreferencesController : ControllerBase
         var scope = BuildScope(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
-        var saveMode = await _saveModePreferenceService.GetModeAsync(scope, cancellationToken);
-        var storageMode = await _storagePreferenceService.GetModeAsync(scope, cancellationToken);
-        _storageModeProvider.SetMode(storageMode);
+        var session = await _sessionPreferenceService.GetAsync(scope, cancellationToken);
+        _storageModeProvider.SetMode(session.StorageMode);
 
-        return Ok(BuildSessionResponse(saveMode, storageMode));
+        return Ok(BuildSessionResponse(session.SaveMode, session.StorageMode));
     }
 
     [HttpPut("session")]
@@ -131,22 +130,10 @@ public sealed class PreferencesController : ControllerBase
         var scope = BuildScope(request.Channel, request.UserId, request.ConversationId);
         _scopeAccessor.Set(scope);
 
-        if (parsedSaveMode.HasValue)
-        {
-            await _saveModePreferenceService.SetModeAsync(scope, parsedSaveMode.Value, cancellationToken);
-        }
+        var session = await _sessionPreferenceService.SetAsync(scope, parsedSaveMode, parsedStorageMode, cancellationToken);
+        _storageModeProvider.SetMode(session.StorageMode);
 
-        if (parsedStorageMode.HasValue)
-        {
-            await _storagePreferenceService.SetModeAsync(scope, parsedStorageMode.Value, cancellationToken);
-            _storageModeProvider.SetMode(parsedStorageMode.Value);
-        }
-
-        var effectiveSaveMode = parsedSaveMode ?? await _saveModePreferenceService.GetModeAsync(scope, cancellationToken);
-        var effectiveStorageMode = parsedStorageMode ?? await _storagePreferenceService.GetModeAsync(scope, cancellationToken);
-        _storageModeProvider.SetMode(effectiveStorageMode);
-
-        return Ok(BuildSessionResponse(effectiveSaveMode, effectiveStorageMode));
+        return Ok(BuildSessionResponse(session.SaveMode, session.StorageMode));
     }
 
     private PreferenceSaveModeResponse BuildSaveModeResponse(VocabularySaveMode mode)
@@ -164,7 +151,7 @@ public sealed class PreferencesController : ControllerBase
             _saveModePreferenceService.ToText(saveMode),
             _saveModePreferenceService.SupportedModes,
             _storageModeProvider.ToText(storageMode),
-            ["local", "graph"]);
+            _sessionPreferenceService.SupportedStorageModes);
     }
 
     private static ConversationScope BuildScope(string? channel, string? userId, string? conversationId)

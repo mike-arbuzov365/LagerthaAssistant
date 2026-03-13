@@ -28,6 +28,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IVocabularySyncProcessor, VocabularySyncProcessor>();
         services.AddScoped<IVocabularyStoragePreferenceService, VocabularyStoragePreferenceService>();
         services.AddScoped<IVocabularySaveModePreferenceService, VocabularySaveModePreferenceService>();
+        services.AddScoped<IVocabularySessionPreferenceService, VocabularySessionPreferenceService>();
 
         services.AddSingleton<IConversationIntentRouter, ConversationIntentRouter>();
         services.AddScoped<IConversationOrchestrator, ConversationOrchestrator>();
