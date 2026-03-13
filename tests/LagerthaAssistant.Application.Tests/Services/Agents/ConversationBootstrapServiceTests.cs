@@ -38,7 +38,13 @@ public sealed class ConversationBootstrapServiceTests
             graphAuthService);
 
         var scope = ConversationScope.Create("telegram", "mike", "chat-42");
-        var snapshot = await sut.BuildAsync(scope, includeDecks: true, CancellationToken.None);
+        var snapshot = await sut.BuildAsync(
+            scope,
+            new ConversationBootstrapOptions(
+                IncludeCommandGroups: true,
+                IncludePartOfSpeechOptions: true,
+                IncludeWritableDecks: true),
+            CancellationToken.None);
 
         Assert.Equal(scope, snapshot.Scope);
         Assert.Equal("auto", snapshot.SaveMode);
@@ -70,10 +76,44 @@ public sealed class ConversationBootstrapServiceTests
             deckService,
             graphAuthService);
 
-        var snapshot = await sut.BuildAsync(ConversationScope.Default, includeDecks: false, CancellationToken.None);
+        var snapshot = await sut.BuildAsync(
+            ConversationScope.Default,
+            new ConversationBootstrapOptions(
+                IncludeCommandGroups: true,
+                IncludePartOfSpeechOptions: true,
+                IncludeWritableDecks: false),
+            CancellationToken.None);
 
         Assert.Null(snapshot.WritableDecks);
         Assert.Equal(0, deckService.GetWritableDeckFilesCalls);
+    }
+
+    [Fact]
+    public async Task BuildAsync_ShouldSupportDisablingCommandAndPartOfSpeechCollections()
+    {
+        var sessionPreferenceService = new FakeSessionPreferenceService();
+        var saveModePreferenceService = new FakeSaveModePreferenceService();
+        var storageModeProvider = new FakeStorageModeProvider();
+        var deckService = new FakeDeckService();
+        var graphAuthService = new FakeGraphAuthService();
+
+        var sut = new ConversationBootstrapService(
+            sessionPreferenceService,
+            saveModePreferenceService,
+            storageModeProvider,
+            deckService,
+            graphAuthService);
+
+        var snapshot = await sut.BuildAsync(
+            ConversationScope.Default,
+            new ConversationBootstrapOptions(
+                IncludeCommandGroups: false,
+                IncludePartOfSpeechOptions: false,
+                IncludeWritableDecks: false),
+            CancellationToken.None);
+
+        Assert.Empty(snapshot.CommandGroups);
+        Assert.Empty(snapshot.PartOfSpeechOptions);
     }
 
     private sealed class FakeSessionPreferenceService : IVocabularySessionPreferenceService

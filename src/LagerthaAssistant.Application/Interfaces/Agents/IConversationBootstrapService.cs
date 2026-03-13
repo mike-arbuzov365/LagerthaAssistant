@@ -6,6 +6,6 @@ public interface IConversationBootstrapService
 {
     Task<ConversationBootstrapSnapshot> BuildAsync(
         ConversationScope scope,
-        bool includeDecks = false,
+        ConversationBootstrapOptions? options = null,
         CancellationToken cancellationToken = default);
 }

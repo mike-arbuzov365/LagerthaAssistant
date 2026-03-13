@@ -72,6 +72,8 @@ public sealed class SessionControllerTests
             " TeLeGrAm ",
             "Mike",
             "chat-42",
+            includeCommands: true,
+            includePartOfSpeechOptions: true,
             includeDecks: true,
             cancellationToken: CancellationToken.None);
 
@@ -82,7 +84,45 @@ public sealed class SessionControllerTests
         Assert.Equal("mike", payload.Scope.UserId);
         Assert.Equal("chat-42", payload.Scope.ConversationId);
         Assert.Equal(scopeAccessor.Current, bootstrapService.LastScope);
-        Assert.True(bootstrapService.LastIncludeDecks);
+        Assert.NotNull(bootstrapService.LastOptions);
+        Assert.True(bootstrapService.LastOptions!.IncludeWritableDecks);
+    }
+
+    [Fact]
+    public async Task GetBootstrap_ShouldAllowDisablingOptionalCollections()
+    {
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var bootstrapService = new FakeConversationBootstrapService
+        {
+            CommandGroups =
+            [
+                new ConversationCommandCatalogGroup(
+                    "Session",
+                    [new ConversationCommandCatalogItem("Session", "/help", "Show help")])
+            ],
+            PartOfSpeechOptions =
+            [
+                new VocabularyPartOfSpeechOption(1, "n", "noun", ["n", "noun"])
+            ]
+        };
+
+        var sut = new SessionController(scopeAccessor, bootstrapService);
+
+        var response = await sut.GetBootstrap(
+            includeCommands: false,
+            includePartOfSpeechOptions: false,
+            includeDecks: false,
+            cancellationToken: CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<SessionBootstrapResponse>(ok.Value);
+
+        Assert.Empty(payload.CommandGroups);
+        Assert.Empty(payload.PartOfSpeechOptions);
+        Assert.NotNull(bootstrapService.LastOptions);
+        Assert.False(bootstrapService.LastOptions!.IncludeCommandGroups);
+        Assert.False(bootstrapService.LastOptions!.IncludePartOfSpeechOptions);
+        Assert.False(bootstrapService.LastOptions!.IncludeWritableDecks);
     }
 
     private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
@@ -112,15 +152,25 @@ public sealed class SessionControllerTests
         public IReadOnlyList<VocabularyPartOfSpeechOption> PartOfSpeechOptions { get; set; } = [];
 
         public ConversationScope? LastScope { get; private set; }
-        public bool LastIncludeDecks { get; private set; }
+        public ConversationBootstrapOptions? LastOptions { get; private set; }
 
         public Task<ConversationBootstrapSnapshot> BuildAsync(
             ConversationScope scope,
-            bool includeDecks = false,
+            ConversationBootstrapOptions? options = null,
             CancellationToken cancellationToken = default)
         {
+            options ??= ConversationBootstrapOptions.Default;
             LastScope = scope;
-            LastIncludeDecks = includeDecks;
+            LastOptions = options;
+
+            var commandGroups = options.IncludeCommandGroups
+                ? CommandGroups
+                : [];
+
+            var partOfSpeechOptions = options.IncludePartOfSpeechOptions
+                ? PartOfSpeechOptions
+                : [];
+
             return Task.FromResult(new ConversationBootstrapSnapshot(
                 scope,
                 SaveMode,
@@ -128,9 +178,11 @@ public sealed class SessionControllerTests
                 StorageMode,
                 AvailableStorageModes,
                 Graph,
-                CommandGroups,
-                PartOfSpeechOptions,
-                null));
+                commandGroups,
+                partOfSpeechOptions,
+                options.IncludeWritableDecks
+                    ? []
+                    : null));
         }
     }
 }

@@ -2,6 +2,7 @@
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
+using LagerthaAssistant.Application.Models.Agents;
 
 namespace LagerthaAssistant.Api.Controllers;
 
@@ -26,13 +27,20 @@ public sealed class SessionController : ControllerBase
         [FromQuery] string? channel = null,
         [FromQuery] string? userId = null,
         [FromQuery] string? conversationId = null,
+        [FromQuery] bool includeCommands = true,
+        [FromQuery] bool includePartOfSpeechOptions = true,
         [FromQuery] bool includeDecks = false,
         CancellationToken cancellationToken = default)
     {
         var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
         _scopeAccessor.Set(scope);
 
-        var bootstrap = await _conversationBootstrapService.BuildAsync(scope, includeDecks, cancellationToken);
+        var options = new ConversationBootstrapOptions(
+            IncludeCommandGroups: includeCommands,
+            IncludePartOfSpeechOptions: includePartOfSpeechOptions,
+            IncludeWritableDecks: includeDecks);
+
+        var bootstrap = await _conversationBootstrapService.BuildAsync(scope, options, cancellationToken);
 
         var preferences = new PreferenceSessionResponse(
             bootstrap.SaveMode,

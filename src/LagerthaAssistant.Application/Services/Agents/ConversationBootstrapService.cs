@@ -31,9 +31,11 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
 
     public async Task<ConversationBootstrapSnapshot> BuildAsync(
         ConversationScope scope,
-        bool includeDecks = false,
+        ConversationBootstrapOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        options ??= ConversationBootstrapOptions.Default;
+
         var sessionTask = _sessionPreferenceService.GetAsync(scope, cancellationToken);
         var graphTask = _graphAuthService.GetStatusAsync(cancellationToken);
         await Task.WhenAll(sessionTask, graphTask);
@@ -44,11 +46,18 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
         var saveMode = _saveModePreferenceService.ToText(session.SaveMode);
         var storageMode = _storageModeProvider.ToText(session.StorageMode);
 
-        var markerOptions = VocabularyPartOfSpeechCatalog.GetOptions()
-            .OrderBy(option => option.Number)
-            .ToList();
+        IReadOnlyList<VocabularyPartOfSpeechOption> markerOptions = options.IncludePartOfSpeechOptions
+            ? VocabularyPartOfSpeechCatalog.GetOptions()
+                .OrderBy(option => option.Number)
+                .ToList()
+            : [];
+
+        IReadOnlyList<ConversationCommandCatalogGroup> commandGroups = options.IncludeCommandGroups
+            ? ConversationCommandCatalog.SlashCommandGroups
+            : [];
+
         IReadOnlyList<VocabularyDeckFile>? writableDecks = null;
-        if (includeDecks)
+        if (options.IncludeWritableDecks)
         {
             writableDecks = await _deckService.GetWritableDeckFilesAsync(cancellationToken);
         }
@@ -60,7 +69,7 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
             storageMode,
             _sessionPreferenceService.SupportedStorageModes,
             graph,
-            ConversationCommandCatalog.SlashCommandGroups,
+            commandGroups,
             markerOptions,
             writableDecks);
     }
