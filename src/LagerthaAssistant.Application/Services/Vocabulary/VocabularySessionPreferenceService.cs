@@ -6,8 +6,6 @@ using LagerthaAssistant.Application.Models.Vocabulary;
 
 public sealed class VocabularySessionPreferenceService : IVocabularySessionPreferenceService
 {
-    private static readonly IReadOnlyList<string> StorageModes = ["local", "graph"];
-
     private readonly IVocabularySaveModePreferenceService _saveModePreferenceService;
     private readonly IVocabularyStoragePreferenceService _storagePreferenceService;
     private readonly IVocabularyStorageModeProvider _storageModeProvider;
@@ -24,7 +22,7 @@ public sealed class VocabularySessionPreferenceService : IVocabularySessionPrefe
 
     public IReadOnlyList<string> SupportedSaveModes => _saveModePreferenceService.SupportedModes;
 
-    public IReadOnlyList<string> SupportedStorageModes => StorageModes;
+    public IReadOnlyList<string> SupportedStorageModes => _storagePreferenceService.SupportedModes;
 
     public async Task<VocabularySessionPreferences> GetAsync(
         ConversationScope scope,

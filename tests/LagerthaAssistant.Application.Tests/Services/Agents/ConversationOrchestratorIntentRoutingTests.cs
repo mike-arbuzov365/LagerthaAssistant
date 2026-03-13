@@ -264,6 +264,12 @@ public sealed class ConversationOrchestratorIntentRoutingTests
 
         public Task<VocabularySyncRunSummary> ProcessPendingAsync(int take, CancellationToken cancellationToken = default)
             => Task.FromResult(new VocabularySyncRunSummary(0, 0, 0, 0, 0, 0));
+
+        public Task<IReadOnlyList<VocabularySyncFailedJob>> GetFailedJobsAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularySyncFailedJob>>([]);
+
+        public Task<int> RequeueFailedAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
     }
 
     private sealed class FakeAssistantSessionService : IAssistantSessionService

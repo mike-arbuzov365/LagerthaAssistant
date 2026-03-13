@@ -14,6 +14,7 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
     private static readonly char[] WordFormSeparators = ['-', ',', '/', '='];
     private static readonly char[] TokenTrimChars = ['"', '\'', '`', '.', '!', '?', ';', ':', '(', ')', '[', ']'];
     private static readonly Regex PosFromMeaningRegex = new("^\\((?<pos>[a-z]+)\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly char[] DashVariants = ['\u2013', '\u2014', '\u2212'];
 
     private readonly IVocabularyCardRepository _cardRepository;
     private readonly IVocabularySyncJobRepository _syncJobRepository;
@@ -44,13 +45,65 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
         }
 
         var cards = await _cardRepository.FindByAnyTokenAsync(tokens, cancellationToken);
-        var matches = cards
-            .OrderByDescending(card => card.LastSeenAtUtc)
-            .ThenBy(card => card.DeckFileName, StringComparer.OrdinalIgnoreCase)
-            .Select(MapToEntry)
-            .ToList();
+        var matches = BuildMatches(cards, tokens);
 
         return new VocabularyLookupResult(input, matches);
+    }
+
+    public async Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindByInputsAsync(
+        IReadOnlyList<string> inputs,
+        CancellationToken cancellationToken = default)
+    {
+        if (inputs is null)
+        {
+            throw new ArgumentNullException(nameof(inputs));
+        }
+
+        var normalizedInputs = inputs
+            .Where(input => !string.IsNullOrWhiteSpace(input))
+            .Select(input => input.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalizedInputs.Count == 0)
+        {
+            return new Dictionary<string, VocabularyLookupResult>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var tokensByInput = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        var allTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var input in normalizedInputs)
+        {
+            var inputTokens = BuildTokens(input);
+            tokensByInput[input] = inputTokens;
+
+            foreach (var token in inputTokens)
+            {
+                allTokens.Add(token);
+            }
+        }
+
+        IReadOnlyList<VocabularyCard> cards = [];
+        if (allTokens.Count > 0)
+        {
+            cards = await _cardRepository.FindByAnyTokenAsync(allTokens.ToList(), cancellationToken);
+        }
+
+        var lookups = new Dictionary<string, VocabularyLookupResult>(StringComparer.OrdinalIgnoreCase);
+        var cardsByToken = BuildCardsByToken(cards);
+
+        foreach (var input in normalizedInputs)
+        {
+            var inputTokens = tokensByInput[input];
+            var matches = inputTokens.Count == 0
+                ? []
+                : BuildMatches(cardsByToken, inputTokens);
+
+            lookups[input] = new VocabularyLookupResult(input, matches);
+        }
+
+        return lookups;
     }
 
     public async Task IndexLookupResultAsync(
@@ -124,7 +177,8 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
             return;
         }
 
-        if (appendResult.Status == VocabularyAppendStatus.Error && IsRecoverableWriteFailure(appendResult.Message))
+        if (appendResult.Status == VocabularyAppendStatus.Error
+            && VocabularyWriteFailurePolicy.ShouldQueueAfterInitialAppendError(appendResult.Message))
         {
             var targetDeck = !string.IsNullOrWhiteSpace(targetDeckFileName)
                 ? targetDeckFileName.Trim()
@@ -132,21 +186,43 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
 
             if (!string.IsNullOrWhiteSpace(targetDeck))
             {
-                await _syncJobRepository.AddAsync(new VocabularySyncJob
+                var normalizedRequestedWord = requestedWord.Trim();
+                var normalizedOverridePartOfSpeech = NormalizeOptionalPartOfSpeech(overridePartOfSpeech);
+
+                var existingActiveJob = await _syncJobRepository.FindActiveDuplicateAsync(
+                    normalizedRequestedWord,
+                    assistantReply.Trim(),
+                    targetDeck,
+                    storageModeText,
+                    normalizedOverridePartOfSpeech,
+                    cancellationToken);
+
+                if (existingActiveJob is null)
                 {
-                    RequestedWord = requestedWord.Trim(),
-                    AssistantReply = assistantReply,
-                    TargetDeckFileName = targetDeck,
-                    TargetDeckPath = appendResult.Entry?.DeckPath,
-                    OverridePartOfSpeech = overridePartOfSpeech,
-                    StorageMode = storageModeText,
-                    Status = VocabularySyncJobStatus.Pending,
-                    AttemptCount = 0,
-                    LastError = appendResult.Message,
-                    CreatedAtUtc = now,
-                    LastAttemptAtUtc = null,
-                    CompletedAtUtc = null
-                }, cancellationToken);
+                    await _syncJobRepository.AddAsync(new VocabularySyncJob
+                    {
+                        RequestedWord = normalizedRequestedWord,
+                        AssistantReply = assistantReply.Trim(),
+                        TargetDeckFileName = targetDeck,
+                        TargetDeckPath = appendResult.Entry?.DeckPath,
+                        OverridePartOfSpeech = normalizedOverridePartOfSpeech,
+                        StorageMode = storageModeText,
+                        Status = VocabularySyncJobStatus.Pending,
+                        AttemptCount = 0,
+                        LastError = appendResult.Message,
+                        CreatedAtUtc = now,
+                        LastAttemptAtUtc = null,
+                        CompletedAtUtc = null
+                    }, cancellationToken);
+                }
+                else
+                {
+                    existingActiveJob.LastError = appendResult.Message;
+                    if (string.IsNullOrWhiteSpace(existingActiveJob.TargetDeckPath))
+                    {
+                        existingActiveJob.TargetDeckPath = appendResult.Entry?.DeckPath;
+                    }
+                }
 
                 if (_replyParser.TryParse(assistantReply, out var parsed) && parsed is not null)
                 {
@@ -180,7 +256,7 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
         if (appendResult.Status == VocabularyAppendStatus.Error)
         {
             _logger.LogWarning(
-                "Vocabulary append failed and will not be queued because error is not recoverable. Message: {Message}",
+                "Vocabulary append failed and will not be queued by policy. Message: {Message}",
                 appendResult.Message);
         }
     }
@@ -262,6 +338,74 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
             card.Examples);
     }
 
+    private static IReadOnlyList<VocabularyDeckEntry> BuildMatches(
+        IReadOnlyList<VocabularyCard> cards,
+        IReadOnlyCollection<string> tokens)
+    {
+        var tokenSet = tokens.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return cards
+            .Where(card => card.Tokens.Any(token => tokenSet.Contains(token.TokenNormalized)))
+            .OrderByDescending(card => card.LastSeenAtUtc)
+            .ThenBy(card => card.DeckFileName, StringComparer.OrdinalIgnoreCase)
+            .Select(MapToEntry)
+            .ToList();
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<VocabularyCard>> BuildCardsByToken(
+        IReadOnlyList<VocabularyCard> cards)
+    {
+        var map = new Dictionary<string, List<VocabularyCard>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var card in cards)
+        {
+            foreach (var token in card.Tokens)
+            {
+                if (string.IsNullOrWhiteSpace(token.TokenNormalized))
+                {
+                    continue;
+                }
+
+                if (!map.TryGetValue(token.TokenNormalized, out var bucket))
+                {
+                    bucket = [];
+                    map[token.TokenNormalized] = bucket;
+                }
+
+                bucket.Add(card);
+            }
+        }
+
+        return map.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<VocabularyCard>)pair.Value,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<VocabularyDeckEntry> BuildMatches(
+        IReadOnlyDictionary<string, IReadOnlyList<VocabularyCard>> cardsByToken,
+        IReadOnlyCollection<string> tokens)
+    {
+        var matchedCards = new HashSet<VocabularyCard>();
+        foreach (var token in tokens)
+        {
+            if (!cardsByToken.TryGetValue(token, out var cards))
+            {
+                continue;
+            }
+
+            foreach (var card in cards)
+            {
+                matchedCards.Add(card);
+            }
+        }
+
+        return matchedCards
+            .OrderByDescending(card => card.LastSeenAtUtc)
+            .ThenBy(card => card.DeckFileName, StringComparer.OrdinalIgnoreCase)
+            .Select(MapToEntry)
+            .ToList();
+    }
+
     private string? ResolvePartOfSpeech(string assistantReply, string? overridePartOfSpeech, string meaning)
     {
         if (!string.IsNullOrWhiteSpace(overridePartOfSpeech))
@@ -309,18 +453,17 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
         return null;
     }
 
-    private static bool IsRecoverableWriteFailure(string? message)
+    private static string? NormalizeOptionalPartOfSpeech(string? overridePartOfSpeech)
     {
-        if (string.IsNullOrWhiteSpace(message))
+        if (string.IsNullOrWhiteSpace(overridePartOfSpeech))
         {
-            return false;
+            return null;
         }
 
-        return message.Contains("open in another app", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("currently in use", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("file is locked", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("locked right now", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("version conflict", StringComparison.OrdinalIgnoreCase);
+        var normalized = NormalizeToken(overridePartOfSpeech);
+        return string.IsNullOrWhiteSpace(normalized)
+            ? null
+            : normalized;
     }
 
     private static IReadOnlyList<string> BuildTokens(params string?[] values)
@@ -340,9 +483,7 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
                 continue;
             }
 
-            var parts = value
-                .Replace('–', '-')
-                .Replace('—', '-')
+            var parts = ReplaceDashVariants(value)
                 .Split(WordFormSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
             foreach (var part in parts)
@@ -385,13 +526,22 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
             return string.Empty;
         }
 
-        var normalized = value
-            .Replace('–', '-')
-            .Replace('—', '-')
+        var normalized = ReplaceDashVariants(value)
             .Trim()
             .Trim(TokenTrimChars);
 
         normalized = Regex.Replace(normalized, "\\s+", " ");
         return normalized.ToLowerInvariant();
+    }
+
+    private static string ReplaceDashVariants(string value)
+    {
+        var normalized = value;
+        foreach (var dash in DashVariants)
+        {
+            normalized = normalized.Replace(dash, '-');
+        }
+
+        return normalized;
     }
 }

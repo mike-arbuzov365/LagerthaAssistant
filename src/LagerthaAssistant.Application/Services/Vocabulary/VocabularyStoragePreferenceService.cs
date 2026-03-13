@@ -6,7 +6,6 @@ using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
-using LagerthaAssistant.Domain.Entities;
 
 public sealed class VocabularyStoragePreferenceService : IVocabularyStoragePreferenceService
 {
@@ -22,11 +21,23 @@ public sealed class VocabularyStoragePreferenceService : IVocabularyStoragePrefe
         _userMemoryRepository = userMemoryRepository;
         _unitOfWork = unitOfWork;
         _storageModeProvider = storageModeProvider;
+
+        SupportedModes = Enum.GetValues<VocabularyStorageMode>()
+            .Select(_storageModeProvider.ToText)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
+
+    public IReadOnlyList<string> SupportedModes { get; }
 
     public async Task<VocabularyStorageMode> GetModeAsync(ConversationScope scope, CancellationToken cancellationToken = default)
     {
-        var entry = await GetScopedOrLegacyEntryAsync(scope, cancellationToken);
+        var entry = await VocabularyScopedPreferenceMemory.GetScopedOrLegacyEntryAsync(
+            _userMemoryRepository,
+            UserPreferenceMemoryKeys.StorageMode,
+            scope,
+            cancellationToken);
+
         if (entry is not null && _storageModeProvider.TryParse(entry.Value, out var parsedMode))
         {
             return parsedMode;
@@ -41,58 +52,15 @@ public sealed class VocabularyStoragePreferenceService : IVocabularyStoragePrefe
         CancellationToken cancellationToken = default)
     {
         var modeValue = _storageModeProvider.ToText(mode);
-        var now = DateTimeOffset.UtcNow;
-
-        var entry = await _userMemoryRepository.GetByKeyAsync(
+        await VocabularyScopedPreferenceMemory.UpsertScopedEntryAsync(
+            _userMemoryRepository,
+            _unitOfWork,
             UserPreferenceMemoryKeys.StorageMode,
-            scope.Channel,
-            scope.UserId,
+            modeValue,
+            scope,
+            DateTimeOffset.UtcNow,
             cancellationToken);
 
-        if (entry is null)
-        {
-            await _userMemoryRepository.AddAsync(new UserMemoryEntry
-            {
-                Key = UserPreferenceMemoryKeys.StorageMode,
-                Value = modeValue,
-                Confidence = 1.0,
-                IsActive = false,
-                LastSeenAtUtc = now,
-                Channel = scope.Channel,
-                UserId = scope.UserId
-            }, cancellationToken);
-        }
-        else
-        {
-            entry.Value = modeValue;
-            entry.Confidence = 1.0;
-            entry.IsActive = false;
-            entry.LastSeenAtUtc = now;
-        }
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
         return mode;
-    }
-
-    private async Task<UserMemoryEntry?> GetScopedOrLegacyEntryAsync(ConversationScope scope, CancellationToken cancellationToken)
-    {
-        var scoped = await _userMemoryRepository.GetByKeyAsync(
-            UserPreferenceMemoryKeys.StorageMode,
-            scope.Channel,
-            scope.UserId,
-            cancellationToken);
-
-        if (scoped is not null)
-        {
-            return scoped;
-        }
-
-        if (scope.Channel.Equals(ConversationScope.DefaultChannel, StringComparison.Ordinal)
-            && scope.UserId.Equals(ConversationScope.DefaultUserId, StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        return await _userMemoryRepository.GetByKeyAsync(UserPreferenceMemoryKeys.StorageMode, cancellationToken);
     }
 }

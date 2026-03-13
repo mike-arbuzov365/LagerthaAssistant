@@ -12,6 +12,7 @@ using LagerthaAssistant.Application.Services.Memory;
 using LagerthaAssistant.Domain.AI;
 using LagerthaAssistant.Domain.Abstractions;
 using LagerthaAssistant.Domain.Entities;
+using LagerthaAssistant.Domain.Enums;
 using LagerthaAssistant.Infrastructure.Data;
 using LagerthaAssistant.Infrastructure.Repositories;
 using Xunit;
@@ -315,6 +316,221 @@ public sealed class PersistenceIntegrationTests
 
             Assert.Contains(memories, x => x.Channel == "api" && x.UserId == "user-a" && x.Value == "Lagertha");
             Assert.Contains(memories, x => x.Channel == "api" && x.UserId == "user-b" && x.Value == "Mike");
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
+
+    [Fact]
+    public async Task VocabularySyncJobRepository_ClaimPendingAsync_ShouldAvoidDoubleClaimAcrossConcurrentRuns()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            context.VocabularySyncJobs.AddRange(
+                new VocabularySyncJob
+                {
+                    RequestedWord = "void",
+                    AssistantReply = "void",
+                    TargetDeckFileName = "wm-nouns-ua-en.xlsx",
+                    StorageMode = "local",
+                    Status = VocabularySyncJobStatus.Pending,
+                    CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-3)
+                },
+                new VocabularySyncJob
+                {
+                    RequestedWord = "prepare",
+                    AssistantReply = "prepare",
+                    TargetDeckFileName = "wm-verbs-us-en.xlsx",
+                    StorageMode = "local",
+                    Status = VocabularySyncJobStatus.Pending,
+                    CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-2)
+                },
+                new VocabularySyncJob
+                {
+                    RequestedWord = "call back",
+                    AssistantReply = "call back",
+                    TargetDeckFileName = "wm-phrasal-verbs-ua-en.xlsx",
+                    StorageMode = "local",
+                    Status = VocabularySyncJobStatus.Pending,
+                    CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1)
+                });
+            await context.SaveChangesAsync();
+
+            await using var actContextA = CreateContext(connectionString);
+            await using var actContextB = CreateContext(connectionString);
+            var repoA = new VocabularySyncJobRepository(actContextA, NullLogger<VocabularySyncJobRepository>.Instance);
+            var repoB = new VocabularySyncJobRepository(actContextB, NullLogger<VocabularySyncJobRepository>.Instance);
+
+            var claimedA = await repoA.ClaimPendingAsync(2, DateTimeOffset.UtcNow);
+            var claimedB = await repoB.ClaimPendingAsync(2, DateTimeOffset.UtcNow);
+
+            var claimedIds = claimedA.Select(x => x.Id)
+                .Concat(claimedB.Select(x => x.Id))
+                .ToList();
+
+            Assert.Equal(claimedIds.Count, claimedIds.Distinct().Count());
+            Assert.Equal(3, claimedIds.Count);
+
+            await using var verifyContext = CreateContext(connectionString);
+            var jobs = await verifyContext.VocabularySyncJobs.AsNoTracking().ToListAsync();
+            Assert.All(jobs, job => Assert.Equal(VocabularySyncJobStatus.Processing, job.Status));
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
+
+    [Fact]
+    public async Task VocabularySyncJobRepository_FindActiveDuplicateAsync_ShouldFindPendingAndProcessingJobs()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            context.VocabularySyncJobs.AddRange(
+                new VocabularySyncJob
+                {
+                    RequestedWord = "void",
+                    AssistantReply = "void\n\n(n) emptiness",
+                    TargetDeckFileName = "wm-nouns-ua-en.xlsx",
+                    StorageMode = "local",
+                    Status = VocabularySyncJobStatus.Pending,
+                    CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-2)
+                },
+                new VocabularySyncJob
+                {
+                    RequestedWord = "prepare",
+                    AssistantReply = "prepare\n\n(v) get ready",
+                    TargetDeckFileName = "wm-verbs-us-en.xlsx",
+                    StorageMode = "graph",
+                    Status = VocabularySyncJobStatus.Processing,
+                    CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1)
+                });
+            await context.SaveChangesAsync();
+
+            await using var actContext = CreateContext(connectionString);
+            var repo = new VocabularySyncJobRepository(actContext, NullLogger<VocabularySyncJobRepository>.Instance);
+
+            var pending = await repo.FindActiveDuplicateAsync(
+                "void",
+                "void\n\n(n) emptiness",
+                "wm-nouns-ua-en.xlsx",
+                "local",
+                null);
+
+            var processing = await repo.FindActiveDuplicateAsync(
+                "prepare",
+                "prepare\n\n(v) get ready",
+                "wm-verbs-us-en.xlsx",
+                "graph",
+                null);
+
+            Assert.NotNull(pending);
+            Assert.NotNull(processing);
+            Assert.Equal(VocabularySyncJobStatus.Pending, pending!.Status);
+            Assert.Equal(VocabularySyncJobStatus.Processing, processing!.Status);
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
+
+    [Fact]
+    public async Task VocabularySyncJobRepository_GetFailedAsync_ShouldReturnLatestFailedJobsFirst()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            context.VocabularySyncJobs.AddRange(
+                new VocabularySyncJob
+                {
+                    RequestedWord = "old",
+                    AssistantReply = "old",
+                    TargetDeckFileName = "wm-nouns-ua-en.xlsx",
+                    StorageMode = "local",
+                    Status = VocabularySyncJobStatus.Failed,
+                    LastError = "old error",
+                    LastAttemptAtUtc = DateTimeOffset.UtcNow.AddMinutes(-10),
+                    CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-20)
+                },
+                new VocabularySyncJob
+                {
+                    RequestedWord = "new",
+                    AssistantReply = "new",
+                    TargetDeckFileName = "wm-verbs-us-en.xlsx",
+                    StorageMode = "local",
+                    Status = VocabularySyncJobStatus.Failed,
+                    LastError = "new error",
+                    LastAttemptAtUtc = DateTimeOffset.UtcNow.AddMinutes(-2),
+                    CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-3)
+                });
+            await context.SaveChangesAsync();
+
+            await using var actContext = CreateContext(connectionString);
+            var repo = new VocabularySyncJobRepository(actContext, NullLogger<VocabularySyncJobRepository>.Instance);
+
+            var failed = await repo.GetFailedAsync(10);
+
+            Assert.Equal(2, failed.Count);
+            Assert.Equal("new", failed[0].RequestedWord);
+            Assert.Equal("old", failed[1].RequestedWord);
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
+
+    [Fact]
+    public async Task VocabularySyncJobRepository_RequeueFailedAsync_ShouldMoveFailedJobsBackToPending()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            context.VocabularySyncJobs.Add(new VocabularySyncJob
+            {
+                RequestedWord = "void",
+                AssistantReply = "void",
+                TargetDeckFileName = "wm-nouns-ua-en.xlsx",
+                StorageMode = "local",
+                Status = VocabularySyncJobStatus.Failed,
+                AttemptCount = 8,
+                LastError = "Retry limit reached",
+                LastAttemptAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+                CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-2)
+            });
+            await context.SaveChangesAsync();
+
+            await using var actContext = CreateContext(connectionString);
+            var repo = new VocabularySyncJobRepository(actContext, NullLogger<VocabularySyncJobRepository>.Instance);
+            var requeued = await repo.RequeueFailedAsync(10, DateTimeOffset.UtcNow);
+            await actContext.SaveChangesAsync();
+
+            Assert.Equal(1, requeued);
+
+            await using var verifyContext = CreateContext(connectionString);
+            var job = await verifyContext.VocabularySyncJobs.AsNoTracking().SingleAsync();
+            Assert.Equal(VocabularySyncJobStatus.Pending, job.Status);
+            Assert.Equal(0, job.AttemptCount);
+            Assert.Null(job.LastError);
+            Assert.Null(job.LastAttemptAtUtc);
+            Assert.Null(job.CompletedAtUtc);
         }
         finally
         {

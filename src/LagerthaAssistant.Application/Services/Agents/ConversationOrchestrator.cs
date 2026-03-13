@@ -9,17 +9,23 @@ using Microsoft.Extensions.Logging;
 public sealed class ConversationOrchestrator : IConversationOrchestrator
 {
     private static readonly IConversationMetricsService NoopMetricsService = new NoopConversationMetricsService();
+    private static readonly IConversationIntentRouter NoopIntentRouter = new NoopConversationIntentRouter();
+    private static readonly IConversationAgentBoundaryPolicy PermissiveBoundaryPolicy = new PermissiveConversationAgentBoundaryPolicy();
 
     private readonly IReadOnlyList<IConversationAgent> _agents;
     private readonly ILogger<ConversationOrchestrator> _logger;
     private readonly IConversationMetricsService _metricsService;
     private readonly IConversationScopeAccessor _scopeAccessor;
+    private readonly IConversationIntentRouter _intentRouter;
+    private readonly IConversationAgentBoundaryPolicy _boundaryPolicy;
 
     public ConversationOrchestrator(
         IEnumerable<IConversationAgent> agents,
         ILogger<ConversationOrchestrator> logger,
         IConversationScopeAccessor scopeAccessor,
-        IConversationMetricsService? metricsService = null)
+        IConversationMetricsService? metricsService = null,
+        IConversationIntentRouter? intentRouter = null,
+        IConversationAgentBoundaryPolicy? boundaryPolicy = null)
     {
         _agents = agents
             .OrderBy(agent => agent.Order)
@@ -27,6 +33,8 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         _logger = logger;
         _scopeAccessor = scopeAccessor;
         _metricsService = metricsService ?? NoopMetricsService;
+        _intentRouter = intentRouter ?? NoopIntentRouter;
+        _boundaryPolicy = boundaryPolicy ?? PermissiveBoundaryPolicy;
     }
 
     public Task<ConversationAgentResult> ProcessAsync(string input, CancellationToken cancellationToken = default)
@@ -60,12 +68,23 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
             parsedItems = [normalizedInput];
         }
 
-        var context = new ConversationAgentContext(normalizedInput, parsedItems, scope);
+        _intentRouter.TryResolve(normalizedInput, out var resolvedIntent);
+        var context = new ConversationAgentContext(normalizedInput, parsedItems, scope, resolvedIntent);
 
         foreach (var agent in _agents)
         {
             if (!agent.CanHandle(context))
             {
+                continue;
+            }
+
+            if (!_boundaryPolicy.IsAllowed(agent, context, resolvedIntent, out var reason))
+            {
+                _logger.LogDebug(
+                    "Conversation agent skipped by boundary policy. Channel={Channel}; Agent={Agent}; Reason={Reason}",
+                    scope.Channel,
+                    agent.Name,
+                    reason);
                 continue;
             }
 
@@ -132,6 +151,28 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult<IReadOnlyList<ConversationIntentMetricSummary>>([]);
+        }
+    }
+
+    private sealed class NoopConversationIntentRouter : IConversationIntentRouter
+    {
+        public bool TryResolve(string input, out ConversationCommandIntent intent)
+        {
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.Unsupported, Raw: input);
+            return false;
+        }
+    }
+
+    private sealed class PermissiveConversationAgentBoundaryPolicy : IConversationAgentBoundaryPolicy
+    {
+        public bool IsAllowed(
+            IConversationAgent agent,
+            ConversationAgentContext context,
+            ConversationCommandIntent resolvedIntent,
+            out string reason)
+        {
+            reason = string.Empty;
+            return true;
         }
     }
 }

@@ -50,6 +50,52 @@ public sealed class CommandConversationAgentTests
     }
 
     [Fact]
+    public async Task HandleAsync_ShouldReturnFailedSyncList_ForSyncFailedCommand()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor
+        {
+            FailedJobs =
+            [
+                new VocabularySyncFailedJob(
+                    42,
+                    "void",
+                    "wm-nouns-ua-en.xlsx",
+                    "local",
+                    8,
+                    "Retry limit reached",
+                    DateTimeOffset.UtcNow,
+                    DateTimeOffset.UtcNow.AddMinutes(-5))
+            ]
+        };
+
+        var sut = CreateSut(session, sync);
+        var result = await sut.HandleAsync(new ConversationAgentContext("/sync failed", ["/sync failed"]));
+
+        Assert.Equal("command.sync.failed", result.Intent);
+        Assert.Contains("#42", result.Message);
+        Assert.Contains("void", result.Message);
+        Assert.Equal(ConversationCommandDefaults.SyncFailedPreviewTake, sync.LastFailedTake);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldRequeueFailedSyncJobs_ForSyncRetryFailedCommand()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor
+        {
+            RequeueResult = 3
+        };
+
+        var sut = CreateSut(session, sync);
+        var result = await sut.HandleAsync(new ConversationAgentContext("/sync retry failed 9", ["/sync retry failed 9"]));
+
+        Assert.Equal("command.sync.retry-failed", result.Intent);
+        Assert.Equal("Requeued failed vocabulary sync jobs: 3.", result.Message);
+        Assert.Equal(9, sync.LastRequeueTake);
+    }
+
+    [Fact]
     public async Task HandleAsync_ShouldReturnHistory_ForNaturalIntent()
     {
         var session = new FakeAssistantSessionService
@@ -290,11 +336,31 @@ public sealed class CommandConversationAgentTests
     {
         public int PendingCount { get; set; }
 
+        public IReadOnlyList<VocabularySyncFailedJob> FailedJobs { get; set; } = [];
+
+        public int RequeueResult { get; set; }
+
+        public int LastFailedTake { get; private set; }
+
+        public int LastRequeueTake { get; private set; }
+
         public Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(PendingCount);
 
         public Task<VocabularySyncRunSummary> ProcessPendingAsync(int take, CancellationToken cancellationToken = default)
             => Task.FromResult(new VocabularySyncRunSummary(0, 0, 0, 0, 0, 0));
+
+        public Task<IReadOnlyList<VocabularySyncFailedJob>> GetFailedJobsAsync(int take, CancellationToken cancellationToken = default)
+        {
+            LastFailedTake = take;
+            return Task.FromResult(FailedJobs);
+        }
+
+        public Task<int> RequeueFailedAsync(int take, CancellationToken cancellationToken = default)
+        {
+            LastRequeueTake = take;
+            return Task.FromResult(RequeueResult);
+        }
     }
 
     private sealed class FakeAssistantSessionService : IAssistantSessionService

@@ -79,6 +79,20 @@ public sealed class VocabularyPersistenceServiceTests
         public Task<VocabularyLookupResult> FindByInputAsync(string input, CancellationToken cancellationToken = default)
             => Task.FromResult(new VocabularyLookupResult(input, []));
 
+        public Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindByInputsAsync(
+            IReadOnlyList<string> inputs,
+            CancellationToken cancellationToken = default)
+        {
+            var result = inputs
+                .Where(input => !string.IsNullOrWhiteSpace(input))
+                .ToDictionary(
+                    input => input,
+                    input => new VocabularyLookupResult(input, []),
+                    StringComparer.OrdinalIgnoreCase);
+
+            return Task.FromResult<IReadOnlyDictionary<string, VocabularyLookupResult>>(result);
+        }
+
         public Task IndexLookupResultAsync(VocabularyLookupResult lookup, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 

@@ -1,7 +1,8 @@
-﻿namespace LagerthaAssistant.Application.Services.Vocabulary;
+namespace LagerthaAssistant.Application.Services.Vocabulary;
 
-using LagerthaAssistant.Application.Interfaces.Repositories;
+using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.Common;
+using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Domain.Enums;
@@ -35,10 +36,42 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
     public Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default)
         => _syncJobRepository.CountPendingAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<VocabularySyncFailedJob>> GetFailedJobsAsync(int take, CancellationToken cancellationToken = default)
+    {
+        var safeTake = Math.Clamp(take, 1, 500);
+        var jobs = await _syncJobRepository.GetFailedAsync(safeTake, cancellationToken);
+
+        return jobs
+            .Select(job => new VocabularySyncFailedJob(
+                job.Id,
+                job.RequestedWord,
+                job.TargetDeckFileName,
+                job.StorageMode,
+                job.AttemptCount,
+                job.LastError,
+                job.LastAttemptAtUtc,
+                job.CreatedAtUtc))
+            .ToList();
+    }
+
+    public async Task<int> RequeueFailedAsync(int take, CancellationToken cancellationToken = default)
+    {
+        var safeTake = Math.Clamp(take, 1, 500);
+        var requeued = await _syncJobRepository.RequeueFailedAsync(safeTake, DateTimeOffset.UtcNow, cancellationToken);
+        if (requeued > 0)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        _logger.LogInformation("Vocabulary sync requeue run finished. RequeuedFailed={RequeuedFailed}", requeued);
+        return requeued;
+    }
+
     public async Task<VocabularySyncRunSummary> ProcessPendingAsync(int take, CancellationToken cancellationToken = default)
     {
         var batchSize = Math.Max(1, take);
-        var jobs = await _syncJobRepository.GetPendingAsync(batchSize, cancellationToken);
+        var claimedAtUtc = DateTimeOffset.UtcNow;
+        var jobs = await _syncJobRepository.ClaimPendingAsync(batchSize, claimedAtUtc, cancellationToken);
 
         var requested = jobs.Count;
         var processed = 0;
@@ -55,19 +88,12 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
             {
                 job.Status = VocabularySyncJobStatus.Failed;
                 job.LastError = $"Unknown storage mode '{job.StorageMode}'.";
-                job.LastAttemptAtUtc = DateTimeOffset.UtcNow;
                 failed++;
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 continue;
             }
 
-            job.Status = VocabularySyncJobStatus.Processing;
-            job.AttemptCount += 1;
-            job.LastAttemptAtUtc = DateTimeOffset.UtcNow;
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
             VocabularyAppendResult appendResult;
-
             try
             {
                 appendResult = await _deckModeService.AppendFromAssistantReplyAsync(
@@ -81,9 +107,23 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Pending vocabulary sync job failed unexpectedly for word {Word}", job.RequestedWord);
-                job.Status = VocabularySyncJobStatus.Pending;
-                job.LastError = ex.Message;
-                requeued++;
+
+                if (VocabularyWriteFailurePolicy.ShouldRequeueQueuedJob(
+                    ex.Message,
+                    job.AttemptCount,
+                    VocabularySyncConstants.MaxRecoverableAttempts))
+                {
+                    job.Status = VocabularySyncJobStatus.Pending;
+                    job.LastError = ex.Message;
+                    requeued++;
+                }
+                else
+                {
+                    job.Status = VocabularySyncJobStatus.Failed;
+                    job.LastError = BuildRetryLimitOrTerminalError(ex.Message, job.AttemptCount);
+                    failed++;
+                }
+
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 continue;
             }
@@ -108,7 +148,11 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
                 continue;
             }
 
-            if (appendResult.Status == VocabularyAppendStatus.Error && IsRecoverableWriteFailure(appendResult.Message))
+            if (appendResult.Status == VocabularyAppendStatus.Error
+                && VocabularyWriteFailurePolicy.ShouldRequeueQueuedJob(
+                    appendResult.Message,
+                    job.AttemptCount,
+                    VocabularySyncConstants.MaxRecoverableAttempts))
             {
                 job.Status = VocabularySyncJobStatus.Pending;
                 job.LastError = appendResult.Message;
@@ -118,7 +162,9 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
             }
 
             job.Status = VocabularySyncJobStatus.Failed;
-            job.LastError = appendResult.Message ?? $"Sync failed with status '{appendResult.Status}'.";
+            job.LastError = BuildRetryLimitOrTerminalError(
+                appendResult.Message ?? $"Sync failed with status '{appendResult.Status}'.",
+                job.AttemptCount);
             failed++;
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
@@ -141,7 +187,6 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
             _logger.LogDebug("Vocabulary sync processor found no pending jobs.");
         }
 
-
         return new VocabularySyncRunSummary(
             Requested: requested,
             Processed: processed,
@@ -151,21 +196,17 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
             PendingAfterRun: pendingAfterRun);
     }
 
-    private static bool IsRecoverableWriteFailure(string? message)
+    private static string BuildRetryLimitOrTerminalError(string? message, int attemptCount)
     {
-        if (string.IsNullOrWhiteSpace(message))
+        if (attemptCount < VocabularySyncConstants.MaxRecoverableAttempts)
         {
-            return false;
+            return message ?? "Vocabulary sync job failed.";
         }
 
-        return message.Contains("open in another app", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("currently in use", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("file is locked", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("locked right now", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("version conflict", StringComparison.OrdinalIgnoreCase);
+        var safeMessage = string.IsNullOrWhiteSpace(message)
+            ? "Recoverable failure."
+            : message.Trim();
+
+        return $"{safeMessage} Retry limit reached ({VocabularySyncConstants.MaxRecoverableAttempts} attempts).";
     }
 }
-
-
-
-

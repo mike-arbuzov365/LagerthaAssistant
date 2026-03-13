@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.AI;
@@ -62,8 +62,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
 
         var normalizedTake = Math.Max(1, take);
         var history = await _assistantSessionService.GetRecentHistoryAsync(normalizedTake, cancellationToken);
@@ -87,8 +86,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? conversationId = null,
         CancellationToken cancellationToken = default)
     {
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
 
         var normalizedTake = Math.Max(1, take);
         var memory = await _assistantSessionService.GetActiveMemoryAsync(normalizedTake, cancellationToken);
@@ -278,8 +276,7 @@ public sealed class ConversationController : ControllerBase
         [FromQuery] string? userId = null,
         [FromQuery] string? conversationId = null)
     {
-        var scope = ApiConversationScopeBuilder.Build(channel, userId, conversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
         _assistantSessionService.Reset();
 
         return Ok(new ConversationActionResponse(
@@ -298,13 +295,17 @@ public sealed class ConversationController : ControllerBase
             return BadRequest("Input is required.");
         }
 
-        var scope = ApiConversationScopeBuilder.Build(request.Channel, request.UserId, request.ConversationId);
-        _scopeAccessor.Set(scope);
+        var scope = ApiConversationScopeApplier.Apply(_scopeAccessor, request.Channel, request.UserId, request.ConversationId);
 
-        var applyMode = await TryApplyStorageModeAsync(scope, request.StorageMode, cancellationToken);
+        var applyMode = await ApiVocabularyStorageModeApplier.TryApplyAsync(
+            _storageModeProvider,
+            _storagePreferenceService,
+            scope,
+            request.StorageMode,
+            cancellationToken);
         if (!applyMode.Success)
         {
-            return applyMode.Error!;
+            return BadRequest(applyMode.Error);
         }
 
         var result = await _orchestrator.ProcessAsync(
@@ -316,28 +317,6 @@ public sealed class ConversationController : ControllerBase
         return Ok(Map(result));
     }
 
-    private async Task<(bool Success, ActionResult? Error)> TryApplyStorageModeAsync(
-        ConversationScope scope,
-        string? requestedStorageMode,
-        CancellationToken cancellationToken)
-    {
-        VocabularyStorageMode mode;
-
-        if (!string.IsNullOrWhiteSpace(requestedStorageMode))
-        {
-            if (!_storageModeProvider.TryParse(requestedStorageMode, out mode))
-            {
-                return (false, BadRequest($"Unsupported mode '{requestedStorageMode}'. Use local or graph."));
-            }
-        }
-        else
-        {
-            mode = await _storagePreferenceService.GetModeAsync(scope, cancellationToken);
-        }
-
-        _storageModeProvider.SetMode(mode);
-        return (true, null);
-    }
     private static ConversationMessageResponse Map(ConversationAgentResult result)
     {
         var items = result.Items

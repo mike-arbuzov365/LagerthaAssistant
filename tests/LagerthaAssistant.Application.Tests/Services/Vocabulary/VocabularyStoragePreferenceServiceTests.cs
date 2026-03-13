@@ -39,6 +39,24 @@ public sealed class VocabularyStoragePreferenceServiceTests
     }
 
     [Fact]
+    public async Task GetModeAsync_ShouldFallbackToLegacyEntry_WhenScopedEntryMissing()
+    {
+        var repo = new FakeUserMemoryRepository();
+        repo.SetEntry(
+            UserPreferenceMemoryKeys.StorageMode,
+            "graph",
+            ConversationScope.DefaultChannel,
+            ConversationScope.DefaultUserId);
+
+        var modeProvider = new FakeStorageModeProvider(VocabularyStorageMode.Local);
+        var sut = new VocabularyStoragePreferenceService(repo, new FakeUnitOfWork(), modeProvider);
+
+        var result = await sut.GetModeAsync(ConversationScope.Create("telegram", "mike", "chat-1"), CancellationToken.None);
+
+        Assert.Equal(VocabularyStorageMode.Graph, result);
+    }
+
+    [Fact]
     public async Task SetModeAsync_ShouldPersistEntry_ForScope()
     {
         var repo = new FakeUserMemoryRepository();

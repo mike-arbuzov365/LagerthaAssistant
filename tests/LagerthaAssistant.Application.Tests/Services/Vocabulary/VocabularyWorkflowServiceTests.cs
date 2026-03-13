@@ -48,7 +48,8 @@ public sealed class VocabularyWorkflowServiceTests
             ])
         };
 
-        var sut = new VocabularyWorkflowService(assistant, deck, new FakeVocabularyIndexService(), new FakeStorageModeProvider());
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
 
         var result = await sut.ProcessAsync("void");
 
@@ -79,7 +80,8 @@ public sealed class VocabularyWorkflowServiceTests
                 "C:/deck/wm-verbs-us-en.xlsx")
         };
 
-        var sut = new VocabularyWorkflowService(assistant, deck, new FakeVocabularyIndexService(), new FakeStorageModeProvider());
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
 
         var result = await sut.ProcessAsync("prepare");
 
@@ -110,7 +112,8 @@ public sealed class VocabularyWorkflowServiceTests
                 "C:/deck/wm-verbs-us-en.xlsx")
         };
 
-        var sut = new VocabularyWorkflowService(assistant, deck, new FakeVocabularyIndexService(), new FakeStorageModeProvider());
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
 
         var results = await sut.ProcessBatchAsync(["void", "prepare"]);
 
@@ -125,6 +128,207 @@ public sealed class VocabularyWorkflowServiceTests
                 "preview:prepare"
             ],
             order);
+        Assert.Equal(1, index.BatchLookupCalls);
+        Assert.Equal(0, index.SingleLookupCalls);
+    }
+
+    [Fact]
+    public async Task ProcessBatchAsync_ShouldUseBatchDeckLookup_WhenServiceSupportsIt()
+    {
+        var order = new List<string>();
+        var assistant = new FakeAssistantSessionService(order)
+        {
+            CompletionFactory = input => new AssistantCompletionResult($"{input}\n\n(v) test\n\nExample.", "test-model", null)
+        };
+
+        var deck = new FakeBatchVocabularyDeckService(order)
+        {
+            BatchLookupFactory = inputs =>
+            {
+                var result = inputs.ToDictionary(
+                    input => input,
+                    input => new VocabularyLookupResult(input, []),
+                    StringComparer.OrdinalIgnoreCase);
+
+                result["void"] = new VocabularyLookupResult("void",
+                [
+                    new VocabularyDeckEntry("wm-nouns-ua-en.xlsx", "path", 11, "void", "(n) indexed", "Indexed example")
+                ]);
+
+                return result;
+            },
+            PreviewFactory = (word, _) => new VocabularyAppendPreviewResult(
+                VocabularyAppendPreviewStatus.ReadyToAppend,
+                word,
+                "wm-verbs-us-en.xlsx",
+                "C:/deck/wm-verbs-us-en.xlsx")
+        };
+
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
+
+        var results = await sut.ProcessBatchAsync(["void", "prepare"]);
+
+        Assert.Equal(2, results.Count);
+        Assert.True(results[0].FoundInDeck);
+        Assert.False(results[1].FoundInDeck);
+        Assert.Equal(1, deck.BatchLookupCalls);
+        Assert.Equal(0, deck.LookupCalls);
+        Assert.Equal(1, assistant.AskCalls);
+        Assert.Equal(1, deck.PreviewCalls);
+        Assert.Equal(1, index.IndexLookupCalls);
+        Assert.Equal(
+            [
+                "lookup-batch:void,prepare",
+                "ask:prepare",
+                "preview:prepare"
+            ],
+            order);
+    }
+
+    [Fact]
+    public async Task ProcessBatchAsync_ShouldUseBulkIndexLookups_AndSkipPerItemIndexQueries()
+    {
+        var order = new List<string>();
+        var assistant = new FakeAssistantSessionService(order)
+        {
+            CompletionFactory = input => new AssistantCompletionResult($"{input}\n\n(v) test\n\nExample.", "test-model", null)
+        };
+
+        var deck = new FakeVocabularyDeckService(order)
+        {
+            LookupFactory = word => new VocabularyLookupResult(word, []),
+            PreviewFactory = (word, _) => new VocabularyAppendPreviewResult(
+                VocabularyAppendPreviewStatus.ReadyToAppend,
+                word,
+                "wm-verbs-us-en.xlsx",
+                "C:/deck/wm-verbs-us-en.xlsx")
+        };
+
+        var index = new FakeVocabularyIndexService
+        {
+            BatchLookupFactory = inputs =>
+            {
+                var result = inputs.ToDictionary(
+                    input => input,
+                    input => new VocabularyLookupResult(input, []),
+                    StringComparer.OrdinalIgnoreCase);
+
+                result["void"] = new VocabularyLookupResult("void",
+                [
+                    new VocabularyDeckEntry("wm-nouns-ua-en.xlsx", "path", 7, "void", "(n) indexed", "Indexed example")
+                ]);
+
+                return result;
+            }
+        };
+
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
+
+        var results = await sut.ProcessBatchAsync(["void", "prepare"]);
+
+        Assert.Equal(2, results.Count);
+        Assert.True(results[0].FoundInDeck);
+        Assert.False(results[1].FoundInDeck);
+        Assert.Equal(1, index.BatchLookupCalls);
+        Assert.Equal(0, index.SingleLookupCalls);
+        Assert.Equal(
+            [
+                "lookup:prepare",
+                "ask:prepare",
+                "preview:prepare"
+            ],
+            order);
+    }
+
+    [Fact]
+    public async Task ProcessBatchAsync_ShouldReuseGeneratedResult_ForDuplicateInputs()
+    {
+        var order = new List<string>();
+        var assistant = new FakeAssistantSessionService(order)
+        {
+            CompletionFactory = input => new AssistantCompletionResult($"{input}\n\n(v) test\n\nExample.", "test-model", null)
+        };
+
+        var deck = new FakeVocabularyDeckService(order)
+        {
+            LookupFactory = word => new VocabularyLookupResult(word, []),
+            PreviewFactory = (word, _) => new VocabularyAppendPreviewResult(
+                VocabularyAppendPreviewStatus.ReadyToAppend,
+                word,
+                "wm-verbs-us-en.xlsx",
+                "C:/deck/wm-verbs-us-en.xlsx")
+        };
+
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
+
+        var results = await sut.ProcessBatchAsync(["void", "void"]);
+
+        Assert.Equal(2, results.Count);
+        Assert.False(results[0].FoundInDeck);
+        Assert.False(results[1].FoundInDeck);
+        Assert.Equal("void", results[0].Input);
+        Assert.Equal("void", results[1].Input);
+        Assert.Equal(1, assistant.AskCalls);
+        Assert.Equal(1, deck.LookupCalls);
+        Assert.Equal(1, deck.PreviewCalls);
+        Assert.Equal(
+            [
+                "lookup:void",
+                "ask:void",
+                "preview:void"
+            ],
+            order);
+    }
+
+    [Fact]
+    public async Task ProcessBatchAsync_ShouldPreserveOriginalInputText_ForCachedDuplicates()
+    {
+        var order = new List<string>();
+        var assistant = new FakeAssistantSessionService(order)
+        {
+            CompletionFactory = input => new AssistantCompletionResult($"{input}\n\n(v) test\n\nExample.", "test-model", null)
+        };
+
+        var deck = new FakeVocabularyDeckService(order)
+        {
+            LookupFactory = word => new VocabularyLookupResult(word, []),
+            PreviewFactory = (word, _) => new VocabularyAppendPreviewResult(
+                VocabularyAppendPreviewStatus.ReadyToAppend,
+                word,
+                "wm-verbs-us-en.xlsx",
+                "C:/deck/wm-verbs-us-en.xlsx")
+        };
+
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
+
+        var results = await sut.ProcessBatchAsync(["Void", "void"]);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal("Void", results[0].Input);
+        Assert.Equal("Void", results[0].Lookup.Query);
+        Assert.Equal("void", results[1].Input);
+        Assert.Equal("void", results[1].Lookup.Query);
+        Assert.Equal(1, assistant.AskCalls);
+    }
+
+    [Fact]
+    public async Task ProcessBatchAsync_ShouldReturnEmpty_WhenAllInputsAreBlank()
+    {
+        var order = new List<string>();
+        var assistant = new FakeAssistantSessionService(order);
+        var deck = new FakeVocabularyDeckService(order);
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
+
+        var results = await sut.ProcessBatchAsync([" ", "\t", ""]);
+
+        Assert.Empty(results);
+        Assert.Equal(0, index.BatchLookupCalls);
+        Assert.Equal(0, deck.LookupCalls);
+        Assert.Equal(0, assistant.AskCalls);
     }
 
     private sealed class FakeAssistantSessionService : IAssistantSessionService
@@ -244,10 +448,42 @@ public sealed class VocabularyWorkflowServiceTests
     {
         public int IndexLookupCalls { get; private set; }
 
+        public int SingleLookupCalls { get; private set; }
+
+        public int BatchLookupCalls { get; private set; }
+
         public Func<string, VocabularyLookupResult>? LookupFactory { get; set; }
 
+        public Func<IReadOnlyList<string>, IReadOnlyDictionary<string, VocabularyLookupResult>>? BatchLookupFactory { get; set; }
+
         public Task<VocabularyLookupResult> FindByInputAsync(string input, CancellationToken cancellationToken = default)
-            => Task.FromResult(LookupFactory?.Invoke(input) ?? new VocabularyLookupResult(input, []));
+        {
+            SingleLookupCalls++;
+            return Task.FromResult(LookupFactory?.Invoke(input) ?? new VocabularyLookupResult(input, []));
+        }
+
+        public Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindByInputsAsync(
+            IReadOnlyList<string> inputs,
+            CancellationToken cancellationToken = default)
+        {
+            BatchLookupCalls++;
+
+            if (BatchLookupFactory is not null)
+            {
+                return Task.FromResult(BatchLookupFactory(inputs));
+            }
+
+            var result = inputs
+                .Where(input => !string.IsNullOrWhiteSpace(input))
+                .Select(input => input.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    input => input,
+                    input => new VocabularyLookupResult(input, []),
+                    StringComparer.OrdinalIgnoreCase);
+
+            return Task.FromResult<IReadOnlyDictionary<string, VocabularyLookupResult>>(result);
+        }
 
         public Task IndexLookupResultAsync(VocabularyLookupResult lookup, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
         {
@@ -276,4 +512,81 @@ public sealed class VocabularyWorkflowServiceTests
         public string ToText(VocabularyStorageMode mode)
             => mode.ToString().ToLowerInvariant();
     }
+
+    private sealed class FakeBatchVocabularyDeckService : IVocabularyDeckService, IVocabularyBatchDeckLookupService
+    {
+        private readonly List<string> _order;
+
+        public FakeBatchVocabularyDeckService(List<string> order)
+        {
+            _order = order;
+        }
+
+        public int LookupCalls { get; private set; }
+
+        public int BatchLookupCalls { get; private set; }
+
+        public int PreviewCalls { get; private set; }
+
+        public Func<string, VocabularyLookupResult>? LookupFactory { get; set; }
+
+        public Func<IReadOnlyList<string>, IReadOnlyDictionary<string, VocabularyLookupResult>>? BatchLookupFactory { get; set; }
+
+        public Func<string, string, VocabularyAppendPreviewResult>? PreviewFactory { get; set; }
+
+        public Task<VocabularyLookupResult> FindInWritableDecksAsync(string word, CancellationToken cancellationToken = default)
+        {
+            LookupCalls++;
+            _order.Add($"lookup:{word}");
+            return Task.FromResult(LookupFactory?.Invoke(word) ?? new VocabularyLookupResult(word, []));
+        }
+
+        public Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindInWritableDecksBatchAsync(
+            IReadOnlyList<string> words,
+            CancellationToken cancellationToken = default)
+        {
+            BatchLookupCalls++;
+            _order.Add($"lookup-batch:{string.Join(",", words)}");
+
+            if (BatchLookupFactory is not null)
+            {
+                return Task.FromResult(BatchLookupFactory(words));
+            }
+
+            var fallback = words.ToDictionary(
+                word => word,
+                word => new VocabularyLookupResult(word, []),
+                StringComparer.OrdinalIgnoreCase);
+
+            return Task.FromResult<IReadOnlyDictionary<string, VocabularyLookupResult>>(fallback);
+        }
+
+        public Task<IReadOnlyList<VocabularyDeckFile>> GetWritableDeckFilesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyDeckFile>>([]);
+
+        public Task<VocabularyAppendPreviewResult> PreviewAppendFromAssistantReplyAsync(
+            string requestedWord,
+            string assistantReply,
+            string? forcedDeckFileName = null,
+            string? overridePartOfSpeech = null,
+            CancellationToken cancellationToken = default)
+        {
+            PreviewCalls++;
+            _order.Add($"preview:{requestedWord}");
+
+            return Task.FromResult(PreviewFactory?.Invoke(requestedWord, assistantReply)
+                ?? new VocabularyAppendPreviewResult(VocabularyAppendPreviewStatus.ParseFailed, requestedWord, Message: "not set"));
+        }
+
+        public Task<VocabularyAppendResult> AppendFromAssistantReplyAsync(
+            string requestedWord,
+            string assistantReply,
+            string? forcedDeckFileName = null,
+            string? overridePartOfSpeech = null,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new VocabularyAppendResult(VocabularyAppendStatus.Error, Message: "not used"));
+        }
+    }
+
 }

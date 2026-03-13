@@ -29,13 +29,124 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
         string? overridePartOfSpeech = null,
         CancellationToken cancellationToken = default)
     {
+        return await ProcessCoreAsync(
+            input,
+            forcedDeckFileName,
+            overridePartOfSpeech,
+            skipIndexLookup: false,
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<VocabularyWorkflowItemResult>> ProcessBatchAsync(
+        IReadOnlyList<string> inputs,
+        CancellationToken cancellationToken = default)
+    {
+        if (inputs is null)
+        {
+            throw new ArgumentNullException(nameof(inputs));
+        }
+
+        var normalizedInputs = inputs
+            .Where(input => !string.IsNullOrWhiteSpace(input))
+            .Select(input => input.Trim())
+            .ToList();
+
+        if (normalizedInputs.Count == 0)
+        {
+            return [];
+        }
+
+        var indexedLookups = _vocabularyIndexService is null
+            ? null
+            : await _vocabularyIndexService.FindByInputsAsync(normalizedInputs, cancellationToken);
+
+        var unresolvedInputs = normalizedInputs
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(input => indexedLookups is null
+                || !indexedLookups.TryGetValue(input, out var indexedLookup)
+                || !indexedLookup.Found)
+            .ToList();
+
+        IReadOnlyDictionary<string, VocabularyLookupResult>? deckLookups = null;
+        if (unresolvedInputs.Count > 0
+            && _vocabularyDeckService is IVocabularyBatchDeckLookupService batchDeckLookupService)
+        {
+            deckLookups = await batchDeckLookupService.FindInWritableDecksBatchAsync(unresolvedInputs, cancellationToken);
+        }
+
+        var results = new List<VocabularyWorkflowItemResult>(normalizedInputs.Count);
+        var perInputCache = new Dictionary<string, VocabularyWorkflowItemResult>(StringComparer.OrdinalIgnoreCase);
+        var mode = _storageModeProvider?.CurrentMode ?? VocabularyStorageMode.Local;
+
+        foreach (var input in normalizedInputs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (perInputCache.TryGetValue(input, out var cached))
+            {
+                results.Add(CloneForInput(cached, input));
+                continue;
+            }
+
+            if (indexedLookups is not null
+                && indexedLookups.TryGetValue(input, out var indexedLookup)
+                && indexedLookup.Found)
+            {
+                var indexedResult = new VocabularyWorkflowItemResult(input, indexedLookup);
+                perInputCache[input] = indexedResult;
+                results.Add(indexedResult);
+                continue;
+            }
+
+            if (deckLookups is not null
+                && deckLookups.TryGetValue(input, out var deckLookup))
+            {
+                if (deckLookup.Found)
+                {
+                    if (_vocabularyIndexService is not null)
+                    {
+                        await _vocabularyIndexService.IndexLookupResultAsync(deckLookup, mode, cancellationToken);
+                    }
+
+                    var deckResult = new VocabularyWorkflowItemResult(input, deckLookup);
+                    perInputCache[input] = deckResult;
+                    results.Add(deckResult);
+                    continue;
+                }
+
+                var aiResult = await BuildAiResultAsync(input, cancellationToken);
+                perInputCache[input] = aiResult;
+                results.Add(aiResult);
+                continue;
+            }
+
+            var result = await ProcessCoreAsync(
+                input,
+                forcedDeckFileName: null,
+                overridePartOfSpeech: null,
+                skipIndexLookup: indexedLookups is not null,
+                cancellationToken);
+            perInputCache[input] = result;
+            results.Add(result);
+        }
+
+        return results;
+    }
+
+    private async Task<VocabularyWorkflowItemResult> ProcessCoreAsync(
+        string input,
+        string? forcedDeckFileName,
+        string? overridePartOfSpeech,
+        bool skipIndexLookup,
+        CancellationToken cancellationToken = default)
+    {
         var normalizedInput = input?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(normalizedInput))
         {
             throw new ArgumentException("Input cannot be empty.", nameof(input));
         }
 
-        if (_vocabularyIndexService is not null)
+        if (!skipIndexLookup && _vocabularyIndexService is not null)
         {
             var indexedLookup = await _vocabularyIndexService.FindByInputAsync(normalizedInput, cancellationToken);
             if (indexedLookup.Found)
@@ -67,30 +178,40 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
         return new VocabularyWorkflowItemResult(normalizedInput, lookup, completion, preview);
     }
 
-    public async Task<IReadOnlyList<VocabularyWorkflowItemResult>> ProcessBatchAsync(
-        IReadOnlyList<string> inputs,
-        CancellationToken cancellationToken = default)
+    private async Task<VocabularyWorkflowItemResult> BuildAiResultAsync(
+        string normalizedInput,
+        CancellationToken cancellationToken)
     {
-        if (inputs is null)
+        var lookup = new VocabularyLookupResult(normalizedInput, []);
+        var completion = await _assistantSessionService.AskAsync(normalizedInput, cancellationToken);
+        var preview = await _vocabularyDeckService.PreviewAppendFromAssistantReplyAsync(
+            normalizedInput,
+            completion.Content,
+            forcedDeckFileName: null,
+            overridePartOfSpeech: null,
+            cancellationToken);
+
+        return new VocabularyWorkflowItemResult(normalizedInput, lookup, completion, preview);
+    }
+
+    private static VocabularyWorkflowItemResult CloneForInput(
+        VocabularyWorkflowItemResult source,
+        string input)
+    {
+        if (source.Input.Equals(input, StringComparison.Ordinal)
+            && source.Lookup.Query.Equals(input, StringComparison.Ordinal))
         {
-            throw new ArgumentNullException(nameof(inputs));
+            return source;
         }
 
-        var results = new List<VocabularyWorkflowItemResult>(inputs.Count);
+        var lookup = source.Lookup.Query.Equals(input, StringComparison.Ordinal)
+            ? source.Lookup
+            : source.Lookup with { Query = input };
 
-        foreach (var input in inputs)
+        return source with
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                continue;
-            }
-
-            var result = await ProcessAsync(input, cancellationToken: cancellationToken);
-            results.Add(result);
-        }
-
-        return results;
+            Input = input,
+            Lookup = lookup
+        };
     }
 }

@@ -10,7 +10,7 @@ using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Infrastructure.Options;
 
-public sealed class VocabularyDeckService : IVocabularyDeckBackend
+public sealed class VocabularyDeckService : IVocabularyDeckBackend, IVocabularyBatchDeckLookupBackend
 {
     private const int HeaderRowNumber = 10;
     private const int DataStartRowNumber = 11;
@@ -21,6 +21,7 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend
     private static readonly XNamespace WorkbookRelNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
     private static readonly char[] WordFormSeparators = ['-', ',', '/', '='];
+    private static readonly char[] DashVariants = ['\u2013', '\u2014', '\u2212'];
     private const int MinTypoMatchLength = 5;
 
     private static readonly HashSet<string> PhrasalParticles = new(StringComparer.OrdinalIgnoreCase)
@@ -89,6 +90,65 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend
         {
             var matches = FindInWritableDecksCore(normalizedWord, cancellationToken);
             return Task.FromResult(new VocabularyLookupResult(normalizedWord, matches));
+        }
+    }
+
+    public Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindInWritableDecksBatchAsync(
+        IReadOnlyList<string> words,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(words);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var inputToNormalized = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rawWord in words)
+        {
+            if (string.IsNullOrWhiteSpace(rawWord))
+            {
+                continue;
+            }
+
+            var input = rawWord.Trim();
+            if (inputToNormalized.ContainsKey(input))
+            {
+                continue;
+            }
+
+            var normalized = NormalizeWord(input);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                continue;
+            }
+
+            inputToNormalized[input] = normalized;
+        }
+
+        if (inputToNormalized.Count == 0)
+        {
+            return Task.FromResult<IReadOnlyDictionary<string, VocabularyLookupResult>>(
+                new Dictionary<string, VocabularyLookupResult>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        lock (_sync)
+        {
+            var normalizedWords = inputToNormalized.Values
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var matchesByWord = FindInWritableDecksCore(normalizedWords, cancellationToken);
+            var result = inputToNormalized.ToDictionary(
+                pair => pair.Key,
+                pair =>
+                {
+                    var matches = matchesByWord.TryGetValue(pair.Value, out var value)
+                        ? value
+                        : [];
+
+                    return new VocabularyLookupResult(pair.Key, matches);
+                },
+                StringComparer.OrdinalIgnoreCase);
+
+            return Task.FromResult<IReadOnlyDictionary<string, VocabularyLookupResult>>(result);
         }
     }
 
@@ -198,14 +258,41 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend
 
     private IReadOnlyList<VocabularyDeckEntry> FindInWritableDecksCore(string normalizedWord, CancellationToken cancellationToken)
     {
-        var matches = new List<VocabularyDeckEntry>();
+        var matchesByWord = FindInWritableDecksCore([normalizedWord], cancellationToken);
+        return matchesByWord.TryGetValue(normalizedWord, out var matches)
+            ? matches
+            : [];
+    }
+
+    private IReadOnlyDictionary<string, IReadOnlyList<VocabularyDeckEntry>> FindInWritableDecksCore(
+        IReadOnlyList<string> normalizedWords,
+        CancellationToken cancellationToken)
+    {
+        var matchesByWord = normalizedWords.ToDictionary(
+            word => word,
+            _ => new List<VocabularyDeckEntry>(),
+            StringComparer.OrdinalIgnoreCase);
+
         foreach (var deck in GetWritableDeckFilesCached())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            matches.AddRange(FindWordInDeck(deck, normalizedWord));
+
+            var deckMatches = FindWordsInDeck(deck, normalizedWords);
+            foreach (var pair in deckMatches)
+            {
+                if (!matchesByWord.TryGetValue(pair.Key, out var bucket))
+                {
+                    continue;
+                }
+
+                bucket.AddRange(pair.Value);
+            }
         }
 
-        return matches;
+        return matchesByWord.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<VocabularyDeckEntry>)pair.Value,
+            StringComparer.OrdinalIgnoreCase);
     }
 
     private VocabularyAppendResult AppendPreparedCardCore(
@@ -780,6 +867,23 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend
 
     private IReadOnlyList<VocabularyDeckEntry> FindWordInDeck(DeckFile deck, string normalizedWord)
     {
+        var matchesByLookup = FindWordsInDeck(deck, [normalizedWord]);
+        return matchesByLookup.TryGetValue(normalizedWord, out var matches)
+            ? matches
+            : [];
+    }
+
+    private IReadOnlyDictionary<string, IReadOnlyList<VocabularyDeckEntry>> FindWordsInDeck(
+        DeckFile deck,
+        IReadOnlyList<string> normalizedLookups)
+    {
+        if (normalizedLookups.Count == 0)
+        {
+            return new Dictionary<string, IReadOnlyList<VocabularyDeckEntry>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var matches = new Dictionary<string, List<VocabularyDeckEntry>>(StringComparer.OrdinalIgnoreCase);
+
         try
         {
             using var archive = OpenArchiveForSharedRead(deck.FullPath);
@@ -790,17 +894,16 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend
             if (worksheetEntry is null)
             {
                 _logger.LogWarning("Worksheet entry '{WorksheetPath}' is missing in {DeckPath}", worksheetPath, deck.FullPath);
-                return [];
+                return new Dictionary<string, IReadOnlyList<VocabularyDeckEntry>>(StringComparer.OrdinalIgnoreCase);
             }
 
             var worksheetDocument = LoadXmlDocument(worksheetEntry);
             var sheetData = worksheetDocument.Root?.Element(SpreadsheetNs + "sheetData");
             if (sheetData is null)
             {
-                return [];
+                return new Dictionary<string, IReadOnlyList<VocabularyDeckEntry>>(StringComparer.OrdinalIgnoreCase);
             }
 
-            var matches = new List<VocabularyDeckEntry>();
             foreach (var row in sheetData.Elements(SpreadsheetNs + "row"))
             {
                 var rowNumber = GetRowNumber(row);
@@ -810,24 +913,37 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend
                 }
 
                 var word = GetCellText(row, "B", rowNumber, sharedStrings);
-                if (!IsLookupMatch(word, normalizedWord))
+                VocabularyDeckEntry? entry = null;
+
+                foreach (var normalizedLookup in normalizedLookups)
                 {
-                    continue;
+                    if (!IsLookupMatch(word, normalizedLookup))
+                    {
+                        continue;
+                    }
+
+                    entry ??= new VocabularyDeckEntry(
+                        deck.FileName,
+                        deck.FullPath,
+                        rowNumber,
+                        word.Trim(),
+                        GetCellText(row, "A", rowNumber, sharedStrings).Trim(),
+                        GetCellText(row, "H", rowNumber, sharedStrings).Trim());
+
+                    if (!matches.TryGetValue(normalizedLookup, out var bucket))
+                    {
+                        bucket = [];
+                        matches[normalizedLookup] = bucket;
+                    }
+
+                    bucket.Add(entry);
                 }
-
-                var meaning = GetCellText(row, "A", rowNumber, sharedStrings);
-                var examples = GetCellText(row, "H", rowNumber, sharedStrings);
-
-                matches.Add(new VocabularyDeckEntry(
-                    deck.FileName,
-                    deck.FullPath,
-                    rowNumber,
-                    word.Trim(),
-                    meaning.Trim(),
-                    examples.Trim()));
             }
 
-            return matches;
+            return matches.ToDictionary(
+                pair => pair.Key,
+                pair => (IReadOnlyList<VocabularyDeckEntry>)pair.Value,
+                StringComparer.OrdinalIgnoreCase);
         }
         catch (Exception ex)
         {
@@ -836,11 +952,11 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend
                 _logger.LogWarning(
                     "Skipping deck {DeckPath} while searching duplicates because the file is currently in use.",
                     deck.FullPath);
-                return [];
+                return new Dictionary<string, IReadOnlyList<VocabularyDeckEntry>>(StringComparer.OrdinalIgnoreCase);
             }
 
             _logger.LogError(ex, "Failed to read deck {DeckPath}", deck.FullPath);
-            return [];
+            return new Dictionary<string, IReadOnlyList<VocabularyDeckEntry>>(StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -1296,16 +1412,17 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend
             return [];
         }
 
-        var shouldSplit = rawWord.Contains(" - ", StringComparison.Ordinal)
-            || rawWord.Contains(',', StringComparison.Ordinal)
-            || rawWord.Count(ch => ch == '-') >= 2;
+        var normalizedWord = ReplaceDashVariants(rawWord);
+        var shouldSplit = normalizedWord.Contains(" - ", StringComparison.Ordinal)
+            || normalizedWord.Contains(',', StringComparison.Ordinal)
+            || normalizedWord.Count(ch => ch == '-') >= 2;
 
         if (!shouldSplit)
         {
-            return [NormalizeWord(rawWord)];
+            return [NormalizeWord(normalizedWord)];
         }
 
-        return rawWord
+        return normalizedWord
             .ToLowerInvariant()
             .Split(WordFormSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(token => !string.IsNullOrWhiteSpace(token))
@@ -1410,7 +1527,18 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend
     }
     private static string NormalizeWord(string value)
     {
-        return value.Trim().ToLowerInvariant();
+        return ReplaceDashVariants(value).Trim().ToLowerInvariant();
+    }
+
+    private static string ReplaceDashVariants(string value)
+    {
+        var normalized = value;
+        foreach (var dash in DashVariants)
+        {
+            normalized = normalized.Replace(dash, '-');
+        }
+
+        return normalized;
     }
 
     private static HashSet<string> TokenizeFileName(string fileName)

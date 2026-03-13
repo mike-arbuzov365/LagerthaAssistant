@@ -2,22 +2,18 @@ namespace LagerthaAssistant.Infrastructure.Services.Vocabulary;
 
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
-using Microsoft.Extensions.Logging;
 
-public sealed class SwitchableVocabularyDeckService : IVocabularyDeckService
+public sealed class SwitchableVocabularyDeckService : IVocabularyDeckService, IVocabularyBatchDeckLookupService
 {
-    private readonly IReadOnlyDictionary<VocabularyStorageMode, IVocabularyDeckBackend> _backends;
+    private readonly IVocabularyDeckBackendResolver _backendResolver;
     private readonly IVocabularyStorageModeProvider _modeProvider;
-    private readonly ILogger<SwitchableVocabularyDeckService> _logger;
 
     public SwitchableVocabularyDeckService(
-        IEnumerable<IVocabularyDeckBackend> backends,
-        IVocabularyStorageModeProvider modeProvider,
-        ILogger<SwitchableVocabularyDeckService> logger)
+        IVocabularyDeckBackendResolver backendResolver,
+        IVocabularyStorageModeProvider modeProvider)
     {
-        _backends = backends.ToDictionary(x => x.Mode);
+        _backendResolver = backendResolver;
         _modeProvider = modeProvider;
-        _logger = logger;
     }
 
     public Task<VocabularyLookupResult> FindInWritableDecksAsync(string word, CancellationToken cancellationToken = default)
@@ -28,6 +24,39 @@ public sealed class SwitchableVocabularyDeckService : IVocabularyDeckService
     public Task<IReadOnlyList<VocabularyDeckFile>> GetWritableDeckFilesAsync(CancellationToken cancellationToken = default)
     {
         return GetBackend().GetWritableDeckFilesAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindInWritableDecksBatchAsync(
+        IReadOnlyList<string> words,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(words);
+
+        var normalizedWords = words
+            .Where(word => !string.IsNullOrWhiteSpace(word))
+            .Select(word => word.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalizedWords.Count == 0)
+        {
+            return new Dictionary<string, VocabularyLookupResult>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var backend = GetBackend();
+        if (backend is IVocabularyBatchDeckLookupBackend batchBackend)
+        {
+            return await batchBackend.FindInWritableDecksBatchAsync(normalizedWords, cancellationToken);
+        }
+
+        var fallback = new Dictionary<string, VocabularyLookupResult>(StringComparer.OrdinalIgnoreCase);
+        foreach (var word in normalizedWords)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            fallback[word] = await backend.FindInWritableDecksAsync(word, cancellationToken);
+        }
+
+        return fallback;
     }
 
     public Task<VocabularyAppendPreviewResult> PreviewAppendFromAssistantReplyAsync(
@@ -62,20 +91,6 @@ public sealed class SwitchableVocabularyDeckService : IVocabularyDeckService
 
     private IVocabularyDeckBackend GetBackend()
     {
-        var mode = _modeProvider.CurrentMode;
-
-        if (_backends.TryGetValue(mode, out var backend))
-        {
-            return backend;
-        }
-
-        _logger.LogWarning("Vocabulary backend for mode {Mode} is not registered. Falling back to local.", mode);
-
-        if (_backends.TryGetValue(VocabularyStorageMode.Local, out var localBackend))
-        {
-            return localBackend;
-        }
-
-        throw new InvalidOperationException("No vocabulary backends are registered.");
+        return _backendResolver.Resolve(_modeProvider.CurrentMode);
     }
 }

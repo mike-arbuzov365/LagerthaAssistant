@@ -113,6 +113,7 @@ public static class DependencyInjection
         services.AddScoped<GraphVocabularyDeckService>();
         services.AddScoped<IVocabularyDeckBackend>(sp => sp.GetRequiredService<VocabularyDeckService>());
         services.AddScoped<IVocabularyDeckBackend>(sp => sp.GetRequiredService<GraphVocabularyDeckService>());
+        services.AddScoped<IVocabularyDeckBackendResolver, VocabularyDeckBackendResolver>();
         services.AddScoped<IVocabularyDeckService, SwitchableVocabularyDeckService>();
         services.AddScoped<IVocabularyDeckModeService, VocabularyDeckModeService>();
 

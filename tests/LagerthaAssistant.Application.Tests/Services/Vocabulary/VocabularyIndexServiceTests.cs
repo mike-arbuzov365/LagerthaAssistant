@@ -50,6 +50,136 @@ public sealed class VocabularyIndexServiceTests
     }
 
     [Fact]
+    public async Task FindByInputsAsync_ShouldReturnLookupPerInput_UsingSingleTokenQuery()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var voidCard = new VocabularyCard
+        {
+            Id = 1,
+            Word = "void",
+            NormalizedWord = "void",
+            Meaning = "(n) emptiness",
+            Examples = "The function returns void.",
+            DeckFileName = "wm-nouns-ua-en.xlsx",
+            DeckPath = "C:/deck/wm-nouns-ua-en.xlsx",
+            LastKnownRowNumber = 11,
+            StorageMode = "local",
+            SyncStatus = VocabularySyncStatus.Synced,
+            FirstSeenAtUtc = DateTimeOffset.UtcNow,
+            LastSeenAtUtc = DateTimeOffset.UtcNow
+        };
+        voidCard.Tokens.Add(new VocabularyCardToken { TokenNormalized = "void" });
+        cardRepo.Cards.Add(voidCard);
+
+        var prepareCard = new VocabularyCard
+        {
+            Id = 2,
+            Word = "prepare",
+            NormalizedWord = "prepare",
+            Meaning = "(v) get ready",
+            Examples = "We prepare release notes.",
+            DeckFileName = "wm-verbs-us-en.xlsx",
+            DeckPath = "C:/deck/wm-verbs-us-en.xlsx",
+            LastKnownRowNumber = 27,
+            StorageMode = "local",
+            SyncStatus = VocabularySyncStatus.Synced,
+            FirstSeenAtUtc = DateTimeOffset.UtcNow,
+            LastSeenAtUtc = DateTimeOffset.UtcNow
+        };
+        prepareCard.Tokens.Add(new VocabularyCardToken { TokenNormalized = "prepare" });
+        cardRepo.Cards.Add(prepareCard);
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var lookups = await sut.FindByInputsAsync(["void", "prepare", "unknown"]);
+
+        Assert.Equal(1, cardRepo.FindByAnyTokenCalls);
+        Assert.Equal(3, lookups.Count);
+        Assert.True(lookups["void"].Found);
+        Assert.True(lookups["prepare"].Found);
+        Assert.False(lookups["unknown"].Found);
+    }
+
+    [Fact]
+    public async Task FindByInputAsync_ShouldNormalizeUnicodeDashVariants_WhenTokenizing()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var card = new VocabularyCard
+        {
+            Id = 1,
+            Word = "undertake - undertook - undertaken",
+            NormalizedWord = "undertake - undertook - undertaken",
+            Meaning = "(iv) братися за щось",
+            Examples = "The team undertook a redesign.",
+            DeckFileName = "wm-irregular-verbs-ua-en.xlsx",
+            DeckPath = "C:/deck/wm-irregular-verbs-ua-en.xlsx",
+            LastKnownRowNumber = 81,
+            StorageMode = "local",
+            SyncStatus = VocabularySyncStatus.Synced,
+            FirstSeenAtUtc = DateTimeOffset.UtcNow,
+            LastSeenAtUtc = DateTimeOffset.UtcNow
+        };
+
+        card.Tokens.Add(new VocabularyCardToken { TokenNormalized = "undertook" });
+        cardRepo.Cards.Add(card);
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var query = "undertake \u2013 undertook \u2014 undertaken";
+        var lookup = await sut.FindByInputAsync(query);
+
+        Assert.True(lookup.Found);
+        var match = Assert.Single(lookup.Matches);
+        Assert.Equal("undertake - undertook - undertaken", match.Word);
+    }
+
+    [Fact]
+    public async Task FindByInputsAsync_ShouldNotDuplicateMatches_WhenSeveralTokensPointToSameCard()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var card = new VocabularyCard
+        {
+            Id = 1,
+            Word = "undertake - undertook - undertaken",
+            NormalizedWord = "undertake - undertook - undertaken",
+            Meaning = "(iv) братися за щось",
+            Examples = "The team undertook a redesign.",
+            DeckFileName = "wm-irregular-verbs-ua-en.xlsx",
+            DeckPath = "C:/deck/wm-irregular-verbs-ua-en.xlsx",
+            LastKnownRowNumber = 81,
+            StorageMode = "local",
+            SyncStatus = VocabularySyncStatus.Synced,
+            FirstSeenAtUtc = DateTimeOffset.UtcNow,
+            LastSeenAtUtc = DateTimeOffset.UtcNow
+        };
+
+        card.Tokens.Add(new VocabularyCardToken { TokenNormalized = "undertake" });
+        card.Tokens.Add(new VocabularyCardToken { TokenNormalized = "undertook" });
+        card.Tokens.Add(new VocabularyCardToken { TokenNormalized = "undertaken" });
+        cardRepo.Cards.Add(card);
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var lookups = await sut.FindByInputsAsync(["undertake - undertook - undertaken"]);
+
+        var lookup = lookups["undertake - undertook - undertaken"];
+        Assert.True(lookup.Found);
+        Assert.Single(lookup.Matches);
+    }
+
+    [Fact]
     public async Task HandleAppendResultAsync_ShouldUpsertSyncedCard_WhenAppendSucceeded()
     {
         var cardRepo = new FakeVocabularyCardRepository();
@@ -137,12 +267,55 @@ The function returns void when there is no value to return
         Assert.Equal(1, unitOfWork.SaveCalls);
     }
 
+    [Fact]
+    public async Task HandleAppendResultAsync_ShouldReuseActivePendingJob_WhenDuplicateQueuedJobExists()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        syncRepo.Jobs.Add(new VocabularySyncJob
+        {
+            RequestedWord = "void",
+            AssistantReply = "void\n\n(n) emptiness",
+            TargetDeckFileName = "wm-nouns-ua-en.xlsx",
+            StorageMode = "local",
+            OverridePartOfSpeech = null,
+            Status = VocabularySyncJobStatus.Pending,
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-3)
+        });
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var errorResult = new VocabularyAppendResult(
+            VocabularyAppendStatus.Error,
+            Message: "Failed to append vocabulary card: file is open in another app.");
+
+        await sut.HandleAppendResultAsync(
+            "void",
+            "void\n\n(n) emptiness",
+            "wm-nouns-ua-en.xlsx",
+            null,
+            errorResult,
+            VocabularyStorageMode.Local);
+
+        Assert.Single(syncRepo.Jobs);
+        var job = syncRepo.Jobs[0];
+        Assert.Equal(VocabularySyncJobStatus.Pending, job.Status);
+        Assert.Contains("open in another app", job.LastError ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class FakeVocabularyCardRepository : IVocabularyCardRepository
     {
         public List<VocabularyCard> Cards { get; } = [];
 
+        public int FindByAnyTokenCalls { get; private set; }
+
         public Task<IReadOnlyList<VocabularyCard>> FindByAnyTokenAsync(IReadOnlyCollection<string> normalizedTokens, CancellationToken cancellationToken = default)
         {
+            FindByAnyTokenCalls++;
+
             var set = normalizedTokens.ToHashSet(StringComparer.OrdinalIgnoreCase);
             var result = Cards
                 .Where(card => card.Tokens.Any(token => set.Contains(token.TokenNormalized)))
@@ -193,10 +366,84 @@ The function returns void when there is no value to return
             return Task.FromResult<IReadOnlyList<VocabularySyncJob>>(pending);
         }
 
+        public Task<IReadOnlyList<VocabularySyncJob>> ClaimPendingAsync(
+            int take,
+            DateTimeOffset claimedAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            var pending = Jobs
+                .Where(job => job.Status == VocabularySyncJobStatus.Pending)
+                .OrderBy(job => job.CreatedAtUtc)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            foreach (var job in pending)
+            {
+                job.Status = VocabularySyncJobStatus.Processing;
+                job.AttemptCount += 1;
+                job.LastAttemptAtUtc = claimedAtUtc;
+            }
+
+            return Task.FromResult<IReadOnlyList<VocabularySyncJob>>(pending);
+        }
+
+        public Task<VocabularySyncJob?> FindActiveDuplicateAsync(
+            string requestedWord,
+            string assistantReply,
+            string targetDeckFileName,
+            string storageMode,
+            string? overridePartOfSpeech,
+            CancellationToken cancellationToken = default)
+        {
+            var job = Jobs.FirstOrDefault(x =>
+                (x.Status == VocabularySyncJobStatus.Pending || x.Status == VocabularySyncJobStatus.Processing)
+                && x.RequestedWord == requestedWord
+                && x.AssistantReply == assistantReply
+                && x.TargetDeckFileName == targetDeckFileName
+                && x.StorageMode == storageMode
+                && x.OverridePartOfSpeech == overridePartOfSpeech);
+
+            return Task.FromResult(job);
+        }
+
         public Task<int> CountPendingAsync(CancellationToken cancellationToken = default)
         {
             var count = Jobs.Count(job => job.Status == VocabularySyncJobStatus.Pending);
             return Task.FromResult(count);
+        }
+
+        public Task<IReadOnlyList<VocabularySyncJob>> GetFailedAsync(int take, CancellationToken cancellationToken = default)
+        {
+            var failed = Jobs
+                .Where(job => job.Status == VocabularySyncJobStatus.Failed)
+                .OrderByDescending(job => job.LastAttemptAtUtc ?? job.CreatedAtUtc)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            return Task.FromResult<IReadOnlyList<VocabularySyncJob>>(failed);
+        }
+
+        public Task<int> RequeueFailedAsync(
+            int take,
+            DateTimeOffset requeuedAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            var failed = Jobs
+                .Where(job => job.Status == VocabularySyncJobStatus.Failed)
+                .OrderByDescending(job => job.LastAttemptAtUtc ?? job.CreatedAtUtc)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            foreach (var job in failed)
+            {
+                job.Status = VocabularySyncJobStatus.Pending;
+                job.AttemptCount = 0;
+                job.LastError = null;
+                job.LastAttemptAtUtc = null;
+                job.CompletedAtUtc = null;
+            }
+
+            return Task.FromResult(failed.Count);
         }
     }
 

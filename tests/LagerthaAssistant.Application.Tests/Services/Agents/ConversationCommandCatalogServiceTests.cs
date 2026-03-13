@@ -16,6 +16,8 @@ public sealed class ConversationCommandCatalogServiceTests
         Assert.NotEmpty(commands);
         Assert.Contains(commands, item => item.Command == ConversationSlashCommands.Help);
         Assert.Contains(commands, item => item.Command == $"{ConversationSlashCommands.SyncRun} <n>");
+        Assert.Contains(commands, item => item.Command == ConversationSlashCommands.SyncFailed);
+        Assert.Contains(commands, item => item.Command == $"{ConversationSlashCommands.SyncRetryFailed} <n>");
     }
 
     [Fact]

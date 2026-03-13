@@ -7,10 +7,12 @@ using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 
-public sealed class CommandConversationAgent : IConversationAgent
+public sealed class CommandConversationAgent : IConversationAgent, IConversationAgentProfile
 {
     private const int DefaultPreviewTake = 20;
     private const int DefaultSyncRunTake = ConversationCommandDefaults.SyncRunTake;
+    private const int DefaultSyncFailedTake = ConversationCommandDefaults.SyncFailedPreviewTake;
+    private const int DefaultSyncRetryFailedTake = ConversationCommandDefaults.SyncRetryFailedTake;
 
     private readonly IConversationIntentRouter _intentRouter;
     private readonly IConversationCommandCatalogService _commandCatalogService;
@@ -33,14 +35,31 @@ public sealed class CommandConversationAgent : IConversationAgent
 
     public int Order => 10;
 
+    public ConversationAgentRole Role => ConversationAgentRole.Command;
+
+    public bool SupportsSlashCommands => true;
+
+    public bool SupportsBatchInputs => false;
+
     public bool CanHandle(ConversationAgentContext context)
-        => _intentRouter.TryResolve(context.Input, out _);
+    {
+        if (context.HasResolvedCommandIntent)
+        {
+            return true;
+        }
+
+        return _intentRouter.TryResolve(context.Input, out _);
+    }
 
     public async Task<ConversationAgentResult> HandleAsync(ConversationAgentContext context, CancellationToken cancellationToken = default)
     {
-        _intentRouter.TryResolve(context.Input, out var intent);
+        var intent = context.ResolvedIntent;
+        if (intent is null || intent.Type == ConversationCommandIntentType.Unsupported)
+        {
+            _intentRouter.TryResolve(context.Input, out intent);
+        }
 
-        return intent.Type switch
+        return intent!.Type switch
         {
             ConversationCommandIntentType.Help => ConversationAgentResult.Empty(Name, "command.help", BuildHelpMessage()),
             ConversationCommandIntentType.History => await BuildHistoryResultAsync(cancellationToken),
@@ -55,7 +74,9 @@ public sealed class CommandConversationAgent : IConversationAgent
             ConversationCommandIntentType.PromptApply => await ApplyPromptResultAsync(intent, cancellationToken),
             ConversationCommandIntentType.PromptReject => await RejectPromptResultAsync(intent, cancellationToken),
             ConversationCommandIntentType.SyncStatus => await BuildSyncStatusResultAsync(cancellationToken),
+            ConversationCommandIntentType.SyncFailed => await BuildSyncFailedResultAsync(intent.Number ?? DefaultSyncFailedTake, cancellationToken),
             ConversationCommandIntentType.SyncRun => await BuildSyncRunResultAsync(intent.Number ?? DefaultSyncRunTake, cancellationToken),
+            ConversationCommandIntentType.SyncRetryFailed => await BuildSyncRetryFailedResultAsync(intent.Number ?? DefaultSyncRetryFailedTake, cancellationToken),
             ConversationCommandIntentType.ResetConversation => ResetConversationResult(),
             _ => ConversationAgentResult.Empty(
                 Name,
@@ -251,6 +272,28 @@ public sealed class CommandConversationAgent : IConversationAgent
 
         var message = $"Sync run processed {summary.Processed}/{summary.Requested} job(s): completed={summary.Completed}, requeued={summary.Requeued}, failed={summary.Failed}, pending={summary.PendingAfterRun}.";
         return ConversationAgentResult.Empty(Name, "command.sync.run", message);
+    }
+
+    private async Task<ConversationAgentResult> BuildSyncFailedResultAsync(int take, CancellationToken cancellationToken)
+    {
+        var safeTake = Math.Clamp(take, 1, 500);
+        var failed = await _vocabularySyncProcessor.GetFailedJobsAsync(safeTake, cancellationToken);
+        if (failed.Count == 0)
+        {
+            return ConversationAgentResult.Empty(Name, "command.sync.failed", "Failed vocabulary sync jobs: 0.");
+        }
+
+        var lines = failed.Select(job =>
+            $"- #{job.Id} word='{job.RequestedWord}' deck='{job.TargetDeckFileName}' mode={job.StorageMode} attempts={job.AttemptCount} last='{job.LastError ?? "n/a"}'");
+        var message = string.Join(Environment.NewLine, lines);
+        return ConversationAgentResult.Empty(Name, "command.sync.failed", message);
+    }
+
+    private async Task<ConversationAgentResult> BuildSyncRetryFailedResultAsync(int take, CancellationToken cancellationToken)
+    {
+        var safeTake = Math.Clamp(take, 1, 500);
+        var requeued = await _vocabularySyncProcessor.RequeueFailedAsync(safeTake, cancellationToken);
+        return ConversationAgentResult.Empty(Name, "command.sync.retry-failed", $"Requeued failed vocabulary sync jobs: {requeued}.");
     }
 
     private ConversationAgentResult ResetConversationResult()

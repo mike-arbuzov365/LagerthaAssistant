@@ -197,12 +197,17 @@ public sealed class VocabularyControllerTests
         var persistence = new FakeVocabularyPersistenceService();
         var batchInput = new FakeVocabularyBatchInputService();
         var storageModeProvider = new FakeVocabularyStorageModeProvider();
+        var storagePreferenceService = new FakeVocabularyStoragePreferenceService
+        {
+            SupportedModes = ["local", "graph", "hybrid"]
+        };
         var scopeAccessor = new FakeConversationScopeAccessor();
-        var sut = new VocabularyController(workflow, persistence, batchInput, new FakeVocabularyDeckService(), storageModeProvider, new FakeVocabularyStoragePreferenceService(), scopeAccessor);
+        var sut = new VocabularyController(workflow, persistence, batchInput, new FakeVocabularyDeckService(), storageModeProvider, storagePreferenceService, scopeAccessor);
 
         var response = await sut.SetStorageMode(new VocabularySetStorageModeRequest("cloud"), cancellationToken: CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(response.Result);
+        var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal("Unsupported mode 'cloud'. Use one of: local, graph, hybrid.", badRequest.Value);
         Assert.Equal(VocabularyStorageMode.Local, storageModeProvider.CurrentMode);
     }
 
@@ -592,6 +597,8 @@ public sealed class VocabularyControllerTests
     }
     private sealed class FakeVocabularyStoragePreferenceService : IVocabularyStoragePreferenceService
     {
+        public IReadOnlyList<string> SupportedModes { get; set; } = ["local", "graph"];
+
         public VocabularyStorageMode CurrentMode { get; set; } = VocabularyStorageMode.Graph;
 
         public ConversationScope? LastGetScope { get; private set; }

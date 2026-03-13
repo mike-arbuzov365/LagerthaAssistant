@@ -138,6 +138,29 @@ public sealed class ConversationOrchestratorTests
         Assert.Equal("chat-42", scopeAccessor.Current.ConversationId);
     }
 
+    [Fact]
+    public async Task ProcessAsync_ShouldSkipVocabularyAgent_WhenCommandIntentDetectedByBoundaryPolicy()
+    {
+        var agents = new IConversationAgent[]
+        {
+            new FakeAlwaysVocabularyAgent(),
+            new FakeAlwaysCommandAgent()
+        };
+
+        var sut = new ConversationOrchestrator(
+            agents,
+            NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor(),
+            metricsService: null,
+            intentRouter: new ConversationIntentRouter(),
+            boundaryPolicy: new ConversationAgentBoundaryPolicy());
+
+        var result = await sut.ProcessAsync("show conversation history");
+
+        Assert.Equal("command-agent", result.AgentName);
+        Assert.Equal("command", result.Intent);
+    }
+
     private static VocabularyWorkflowItemResult BuildSingle(string input)
     {
         var lookup = new VocabularyLookupResult(input, []);
@@ -162,6 +185,44 @@ public sealed class ConversationOrchestratorTests
 
         public Task<ConversationAgentResult> HandleAsync(ConversationAgentContext context, CancellationToken cancellationToken = default)
             => Task.FromResult(ConversationAgentResult.Empty(Name, "command", "Slash command"));
+    }
+
+    private sealed class FakeAlwaysVocabularyAgent : IConversationAgent, IConversationAgentProfile
+    {
+        public string Name => "vocabulary-agent";
+
+        public int Order => 1;
+
+        public ConversationAgentRole Role => ConversationAgentRole.Vocabulary;
+
+        public bool SupportsSlashCommands => false;
+
+        public bool SupportsBatchInputs => true;
+
+        public bool CanHandle(ConversationAgentContext context)
+            => true;
+
+        public Task<ConversationAgentResult> HandleAsync(ConversationAgentContext context, CancellationToken cancellationToken = default)
+            => Task.FromResult(ConversationAgentResult.Empty(Name, "vocabulary"));
+    }
+
+    private sealed class FakeAlwaysCommandAgent : IConversationAgent, IConversationAgentProfile
+    {
+        public string Name => "command-agent";
+
+        public int Order => 2;
+
+        public ConversationAgentRole Role => ConversationAgentRole.Command;
+
+        public bool SupportsSlashCommands => true;
+
+        public bool SupportsBatchInputs => false;
+
+        public bool CanHandle(ConversationAgentContext context)
+            => true;
+
+        public Task<ConversationAgentResult> HandleAsync(ConversationAgentContext context, CancellationToken cancellationToken = default)
+            => Task.FromResult(ConversationAgentResult.Empty(Name, "command"));
     }
 
     private sealed class FakeVocabularyWorkflowService : IVocabularyWorkflowService

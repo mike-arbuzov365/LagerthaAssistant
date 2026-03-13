@@ -35,6 +35,8 @@ public sealed class ConversationControllerTests
         Assert.Contains(payload, item => item.Command == ConversationSlashCommands.Help && item.Category == ConversationCommandCategories.General);
         Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.PromptSet} <text>" && item.Category == ConversationCommandCategories.SystemPrompt);
         Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.SyncRun} <n>" && item.Category == ConversationCommandCategories.SyncQueue);
+        Assert.Contains(payload, item => item.Command == ConversationSlashCommands.SyncFailed && item.Category == ConversationCommandCategories.SyncQueue);
+        Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.SyncRetryFailed} <n>" && item.Category == ConversationCommandCategories.SyncQueue);
     }
 
     [Fact]
@@ -57,6 +59,7 @@ public sealed class ConversationControllerTests
 
         var syncGroup = Assert.Single(payload, group => group.Category == ConversationCommandCategories.SyncQueue);
         Assert.Contains(syncGroup.Commands, item => item.Command == ConversationSlashCommands.SyncRun);
+        Assert.Contains(syncGroup.Commands, item => item.Command == ConversationSlashCommands.SyncFailed);
     }
 
     [Fact]
@@ -504,14 +507,18 @@ public sealed class ConversationControllerTests
         var sessionService = new FakeAssistantSessionService();
         var scopeAccessor = new FakeConversationScopeAccessor();
         var storageModeProvider = new FakeVocabularyStorageModeProvider();
-        var storagePreferenceService = new FakeVocabularyStoragePreferenceService();
+        var storagePreferenceService = new FakeVocabularyStoragePreferenceService
+        {
+            SupportedModes = ["local", "graph", "hybrid"]
+        };
         var sut = new ConversationController(orchestrator, sessionService, scopeAccessor, storageModeProvider, storagePreferenceService, new FakeConversationCommandCatalogService());
 
         var response = await sut.PostMessage(
             new ConversationMessageRequest("void", "api", "Mike", "chat-42", "cloud"),
             CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(response.Result);
+        var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal("Unsupported mode 'cloud'. Use one of: local, graph, hybrid.", badRequest.Value);
         Assert.Equal(0, orchestrator.Calls);
     }
 
@@ -706,6 +713,8 @@ public sealed class ConversationControllerTests
 
     private sealed class FakeVocabularyStoragePreferenceService : IVocabularyStoragePreferenceService
     {
+        public IReadOnlyList<string> SupportedModes { get; set; } = ["local", "graph"];
+
         public VocabularyStorageMode CurrentMode { get; set; } = VocabularyStorageMode.Local;
 
         public ConversationScope? LastGetScope { get; private set; }
