@@ -10,7 +10,16 @@ using LagerthaAssistant.Domain.Entities;
 
 public sealed class VocabularySaveModePreferenceService : IVocabularySaveModePreferenceService
 {
-    private static readonly IReadOnlyList<string> SaveModes = ["ask", "auto", "off"];
+    private static readonly IReadOnlyList<VocabularySaveMode> OrderedModes = Enum.GetValues<VocabularySaveMode>()
+        .ToList();
+
+    private static readonly IReadOnlyDictionary<string, VocabularySaveMode> ParseMap = OrderedModes
+        .ToDictionary(ModeToText, mode => mode, StringComparer.OrdinalIgnoreCase);
+
+    private static readonly IReadOnlyList<string> SaveModes = OrderedModes
+        .Select(ModeToText)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     private readonly IUserMemoryRepository _userMemoryRepository;
     private readonly IUnitOfWork _unitOfWork;
@@ -27,32 +36,19 @@ public sealed class VocabularySaveModePreferenceService : IVocabularySaveModePre
 
     public bool TryParse(string? value, out VocabularySaveMode mode)
     {
-        switch (value?.Trim().ToLowerInvariant())
+        mode = VocabularySaveMode.Ask;
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
         {
-            case "ask":
-                mode = VocabularySaveMode.Ask;
-                return true;
-            case "auto":
-                mode = VocabularySaveMode.Auto;
-                return true;
-            case "off":
-                mode = VocabularySaveMode.Off;
-                return true;
-            default:
-                mode = VocabularySaveMode.Ask;
-                return false;
+            return false;
         }
+
+        return ParseMap.TryGetValue(normalized, out mode);
     }
 
     public string ToText(VocabularySaveMode mode)
     {
-        return mode switch
-        {
-            VocabularySaveMode.Ask => "ask",
-            VocabularySaveMode.Auto => "auto",
-            VocabularySaveMode.Off => "off",
-            _ => "ask"
-        };
+        return ModeToText(mode);
     }
 
     public async Task<VocabularySaveMode> GetModeAsync(ConversationScope scope, CancellationToken cancellationToken = default)
@@ -125,5 +121,16 @@ public sealed class VocabularySaveModePreferenceService : IVocabularySaveModePre
         }
 
         return await _userMemoryRepository.GetByKeyAsync(UserPreferenceMemoryKeys.SaveMode, cancellationToken);
+    }
+
+    private static string ModeToText(VocabularySaveMode mode)
+    {
+        return mode switch
+        {
+            VocabularySaveMode.Ask => "ask",
+            VocabularySaveMode.Auto => "auto",
+            VocabularySaveMode.Off => "off",
+            _ => "ask"
+        };
     }
 }

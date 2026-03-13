@@ -80,6 +80,20 @@ public sealed class VocabularySaveModePreferenceServiceTests
         Assert.Equal(VocabularySaveMode.Ask, mode);
     }
 
+    [Fact]
+    public void SupportedModes_ShouldReflectSaveModeEnumValues()
+    {
+        var sut = new VocabularySaveModePreferenceService(new FakeUserMemoryRepository(), new FakeUnitOfWork());
+
+        var expected = Enum
+            .GetValues<VocabularySaveMode>()
+            .Select(sut.ToText)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        Assert.Equal(expected, sut.SupportedModes);
+    }
+
     private sealed class FakeUserMemoryRepository : IUserMemoryRepository
     {
         private readonly Dictionary<(string Key, string Channel, string UserId), UserMemoryEntry> _entries = new();
