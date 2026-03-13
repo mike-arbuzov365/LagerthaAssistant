@@ -199,6 +199,8 @@ curl "http://localhost:5000/api/vocabulary/storage-mode?channel=api&userId=anony
 curl -X PUT http://localhost:5000/api/vocabulary/storage-mode -H "Content-Type: application/json" -d "{\"mode\":\"graph\",\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
 curl "http://localhost:5000/api/preferences/save-mode?channel=api&userId=anonymous&conversationId=default"
 curl -X PUT http://localhost:5000/api/preferences/save-mode -H "Content-Type: application/json" -d "{\"mode\":\"auto\",\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
+curl "http://localhost:5000/api/preferences/session?channel=api&userId=anonymous&conversationId=default"
+curl -X PUT http://localhost:5000/api/preferences/session -H "Content-Type: application/json" -d "{\"saveMode\":\"auto\",\"storageMode\":\"graph\",\"channel\":\"api\",\"userId\":\"anonymous\",\"conversationId\":\"default\"}"
 curl "http://localhost:5000/api/vocabulary/decks?channel=api&userId=anonymous&conversationId=default"
 curl http://localhost:5000/api/vocabulary/markers
 curl -X POST http://localhost:5000/api/vocabulary/parse-batch -H "Content-Type: application/json" -d "{\"input\":\"void prepare\",\"applySpaceSplit\":false}"
@@ -257,6 +259,8 @@ Command catalog endpoints (for external clients):
 - `POST /api/graph/logout` (clear Graph token cache and return fresh auth status)
 - `GET /api/preferences/save-mode` (get scoped save mode preference: `ask|auto|off`)
 - `PUT /api/preferences/save-mode` (set scoped save mode preference: `ask|auto|off`)
+- `GET /api/preferences/session` (get combined scoped preferences: save mode + storage mode)
+- `PUT /api/preferences/session` (set one or both scoped preferences: `saveMode`, `storageMode`)
 - `POST /api/vocabulary/analyze` (process one vocabulary item using scoped conversation context)
 - `POST /api/vocabulary/analyze-batch` (process multiple items sequentially in one scope)
 - `GET /api/vocabulary/storage-mode` (get active vocabulary storage mode and supported values)
