@@ -98,7 +98,7 @@ public static class DependencyInjection
             LastSeenPropertyName = notionSection[NotionConstants.LastSeenPropertyNameKey] ?? "LastSeenAtUtc"
         };
 
-        services.AddDbContext<AppDbContext>(db => db.UseSqlServer(connectionString));
+        services.AddDbContext<AppDbContext>(db => db.UseNpgsql(connectionString));
 
         services.AddSingleton(options);
         services.AddSingleton(vocabularyOptions);

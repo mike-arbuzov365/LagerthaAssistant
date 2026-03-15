@@ -1,12 +1,13 @@
-﻿# LagerthaAssistant
+# LagerthaAssistant
 
-Console AI assistant prototype built with Clean Architecture and SQL Server persistence.
+Console and Telegram AI assistant built with Clean Architecture and PostgreSQL persistence.
 
 ## Projects
 
 - `src/LagerthaAssistant.Domain` - domain rules, entities, shared abstractions.
 - `src/LagerthaAssistant.Application` - use-case services, interfaces, prompt/memory/vocabulary parsing logic.
 - `src/LagerthaAssistant.Infrastructure` - EF Core, repositories, migrations, OpenAI HTTP client, local Excel + OneDrive Graph deck integration.
+- `src/LagerthaAssistant.Api` - ASP.NET Core Web API with Telegram webhook adapter and background sync workers.
 - `src/LagerthaAssistant.UI` - interactive console app and command routing.
 - `tests/LagerthaAssistant.*` - domain, application, and integration tests.
 
@@ -20,6 +21,7 @@ Console AI assistant prototype built with Clean Architecture and SQL Server pers
 - Vocabulary workflow with Excel (`.xlsx`) decks in two storage modes:
   - `local` (direct filesystem access)
   - `graph` (OneDrive via Microsoft Graph)
+- Telegram channel adapter via webhook (`POST /api/telegram/webhook`).
 - Agent orchestration boundaries:
   - command intent is resolved once in orchestrator and reused by agents,
   - boundary policy blocks vocabulary agent from slash commands and command intents,
@@ -57,9 +59,9 @@ Read-only (composite) decks are configured via `VocabularyDecks.ReadOnlyFileName
 
 SQL index + sync queue:
 
-- App stores indexed vocabulary records in SQL Server (`VocabularyCards`, `VocabularyCardTokens`) for fast duplicate lookup before Excel scan.
+- App stores indexed vocabulary records in PostgreSQL (`VocabularyCards`, `VocabularyCardTokens`) for fast duplicate lookup before Excel scan.
 - Excel/OneDrive remains the final export source for your mobile app workflow.
-- If write to Excel fails due lock/conflict, app stores a pending sync job in SQL (`VocabularySyncJobs`) so data is not lost and can be retried by worker flow.
+- If write to Excel fails due lock/conflict, app stores a pending sync job in PostgreSQL (`VocabularySyncJobs`) so data is not lost and can be retried by worker flow.
 - Pending sync jobs are deduplicated by payload for active states (`pending`/`processing`) to reduce queue spam from repeated save attempts.
 - Sync processors claim pending jobs before execution to avoid double-processing when UI/API/manual runs overlap.
 - Recoverable failures are retried up to 8 attempts; after the limit the job is marked `failed` with terminal error details.
@@ -76,6 +78,22 @@ Connection string and deck settings are configured in:
 
 - `src/LagerthaAssistant.UI/appsettings.json`
 - `src/LagerthaAssistant.Api/appsettings.json`
+
+### PostgreSQL connection string
+
+Local development:
+
+```json
+"ConnectionStrings": {
+  "DefaultConnection": "Host=localhost;Database=LagerthaAssistantDb;Username=postgres;Password=your_password"
+}
+```
+
+Railway.app (use environment variable `ConnectionStrings__DefaultConnection`):
+
+```
+Host=<host>.railway.app;Port=5432;Database=railway;Username=postgres;Password=<password>
+```
 
 ### Storage mode
 
@@ -225,7 +243,32 @@ Notes:
 }
 ```
 
-## Run
+## Local development
+
+### Prerequisites
+
+- .NET 10 SDK
+- PostgreSQL 16+ (or any 14+)
+- OpenAI API key
+
+### Database setup (first time)
+
+After cloning the repo, generate and apply migrations:
+
+```powershell
+# Generate initial migration for PostgreSQL
+dotnet ef migrations add InitialCreate `
+  --project src/LagerthaAssistant.Infrastructure/LagerthaAssistant.Infrastructure.csproj `
+  --startup-project src/LagerthaAssistant.Api/LagerthaAssistant.Api.csproj
+
+# Migrations are applied automatically on app startup (MigrateAsync in Program.cs)
+# To apply manually:
+dotnet ef database update `
+  --project src/LagerthaAssistant.Infrastructure/LagerthaAssistant.Infrastructure.csproj `
+  --startup-project src/LagerthaAssistant.Api/LagerthaAssistant.Api.csproj
+```
+
+### Run
 
 Console UI:
 
@@ -233,7 +276,7 @@ Console UI:
 dotnet run --project src/LagerthaAssistant.UI/LagerthaAssistant.UI.csproj
 ```
 
-API service (Phase A foundation for multi-channel clients and agents):
+API service:
 
 ```powershell
 dotnet run --project src/LagerthaAssistant.Api/LagerthaAssistant.Api.csproj
@@ -292,6 +335,91 @@ curl -X POST "http://localhost:5000/api/vocabulary/save-batch?channel=api&userId
 ```
 
 On startup both UI and API apply EF migrations automatically.
+
+## Deploy to Railway.app
+
+### Step 1 — Create Telegram bot
+
+1. Open Telegram, find `@BotFather`.
+2. Send `/newbot`, enter a name and username (must end with `bot`).
+3. Save the token: `1234567890:ABCDEFabcdef...`
+4. Choose a `WebhookSecret` — any random string, e.g. `my-secret-42`.
+
+### Step 2 — Create Railway project
+
+1. Go to [railway.app](https://railway.app) and sign in with GitHub.
+2. Click **New Project → Deploy from GitHub repo** and select this repository.
+3. Railway detects .NET automatically. Set the **Root Directory** to `src/LagerthaAssistant.Api`.
+
+### Step 3 — Add PostgreSQL
+
+1. In your Railway project click **New → Database → Add PostgreSQL**.
+2. Go to the PostgreSQL service → **Variables** tab and copy `DATABASE_URL`.
+
+### Step 4 — Set environment variables
+
+In your API service → **Variables** tab, add:
+
+```
+ConnectionStrings__DefaultConnection = <value of DATABASE_URL from step 3, but convert to Npgsql format>
+OpenAI__ApiKey                       = sk-...
+Telegram__Enabled                    = true
+Telegram__BotToken                   = <token from BotFather>
+Telegram__WebhookSecret              = <your secret>
+```
+
+> Railway provides `DATABASE_URL` in the format `postgresql://user:pass@host:port/db`.
+> Convert it to Npgsql format: `Host=<host>;Port=<port>;Database=<db>;Username=<user>;Password=<pass>`
+> Or set the `DATABASE_URL` env var directly and read it in code (Npgsql also accepts URI format if configured).
+
+### Step 5 — Generate PostgreSQL migrations
+
+Run locally before pushing (migrations directory was cleared when switching from SQL Server):
+
+```powershell
+dotnet ef migrations add InitialCreate `
+  --project src/LagerthaAssistant.Infrastructure/LagerthaAssistant.Infrastructure.csproj `
+  --startup-project src/LagerthaAssistant.Api/LagerthaAssistant.Api.csproj
+
+git add src/LagerthaAssistant.Infrastructure/Migrations/
+git commit -m "feat(db): add postgres initial migration"
+git push
+```
+
+Railway will redeploy automatically on push. Migrations run at startup.
+
+### Step 6 — Register Telegram webhook
+
+After deploy, get your Railway URL (e.g. `https://your-app.up.railway.app`) and run:
+
+```
+https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://your-app.up.railway.app/api/telegram/webhook&secret_token=<WEBHOOK_SECRET>
+```
+
+Check status:
+
+```
+https://api.telegram.org/bot<TOKEN>/getWebhookInfo
+```
+
+Or use the helper script:
+
+```powershell
+./scripts/telegram-webhook.ps1 `
+  -BotToken "<token>" `
+  -PublicBaseUrl "https://your-app.up.railway.app" `
+  -WebhookSecret "<secret>"
+```
+
+### Step 7 — Verify
+
+```
+https://your-app.up.railway.app/health
+```
+
+Send a message to your bot in Telegram — it should reply.
+
+---
 
 ## API natural intents
 
@@ -381,6 +509,7 @@ Query parameters:
 - `days` (optional, default `7`, range `1..90`)
 - `top` (optional, default `20`, range `1..200`)
 - `channel` (optional, case-insensitive; examples: `api`, `ui`)
+
 ## Commands
 
 Use `/help` to see full command reference in the console.
@@ -431,4 +560,3 @@ Mode hints:
 dotnet build LagerthaAssistant.slnx
 dotnet test LagerthaAssistant.slnx -v minimal
 ```
-
