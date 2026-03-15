@@ -6,6 +6,7 @@ using LagerthaAssistant.Api.Interfaces;
 using LagerthaAssistant.Api.Options;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
+using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
@@ -157,7 +158,8 @@ public sealed class TelegramControllerTests
         FakeVocabularyStoragePreferenceService storagePreferenceService,
         FakeTelegramFormatter formatter,
         FakeTelegramBotSender sender,
-        TelegramOptions options)
+        TelegramOptions options,
+        FakeTelegramProcessedUpdateRepository? processedUpdates = null)
     {
         return new TelegramController(
             orchestrator,
@@ -166,6 +168,7 @@ public sealed class TelegramControllerTests
             storagePreferenceService,
             formatter,
             sender,
+            processedUpdates ?? new FakeTelegramProcessedUpdateRepository(),
             Options.Create(options),
             NullLogger<TelegramController>.Instance);
     }
@@ -309,6 +312,8 @@ public sealed class TelegramControllerTests
 
         public int? LastMessageThreadId { get; private set; }
 
+        public bool SimulateFailure { get; set; }
+
         public Task<TelegramSendResult> SendTextAsync(
             long chatId,
             string text,
@@ -319,7 +324,166 @@ public sealed class TelegramControllerTests
             LastChatId = chatId;
             LastText = text;
             LastMessageThreadId = messageThreadId;
-            return Task.FromResult(new TelegramSendResult(true));
+            var result = SimulateFailure
+                ? new TelegramSendResult(false, "Simulated send failure")
+                : new TelegramSendResult(true);
+            return Task.FromResult(result);
         }
+    }
+
+    private sealed class FakeTelegramProcessedUpdateRepository : ITelegramProcessedUpdateRepository
+    {
+        private readonly HashSet<long> _processed = [];
+
+        public int MarkCalls { get; private set; }
+
+        public void Seed(long updateId) => _processed.Add(updateId);
+
+        public Task<bool> IsProcessedAsync(long updateId, CancellationToken cancellationToken = default)
+            => Task.FromResult(_processed.Contains(updateId));
+
+        public Task MarkProcessedAsync(long updateId, CancellationToken cancellationToken = default)
+        {
+            MarkCalls++;
+            _processed.Add(updateId);
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteOlderThanAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldReturnProcessedWithoutReply_WhenUpdateAlreadyProcessed()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var processedUpdates = new FakeTelegramProcessedUpdateRepository();
+        processedUpdates.Seed(updateId: 1);
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("reply"),
+            new FakeTelegramBotSender(),
+            new TelegramOptions { Enabled = true },
+            processedUpdates);
+
+        var update = BuildTextUpdate(chatId: 1001, userId: 2002, text: "void", messageThreadId: null);
+
+        var response = await sut.Webhook(update, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Processed);
+        Assert.False(payload.Replied);
+        Assert.Equal(0, orchestrator.Calls);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldReturn500AndNotMarkProcessed_WhenSendFails()
+    {
+        var processedUpdates = new FakeTelegramProcessedUpdateRepository();
+        var sender = new FakeTelegramBotSender { SimulateFailure = true };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("reply"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            processedUpdates);
+
+        var update = BuildTextUpdate(chatId: 1001, userId: 2002, text: "void", messageThreadId: null);
+
+        var response = await sut.Webhook(update, CancellationToken.None);
+
+        var result = Assert.IsType<ObjectResult>(response.Result);
+        Assert.Equal(StatusCodes.Status500InternalServerError, result.StatusCode);
+
+        var payload = Assert.IsType<TelegramWebhookResponse>(result.Value);
+        Assert.True(payload.Processed);
+        Assert.False(payload.Replied);
+        Assert.NotNull(payload.Error);
+        Assert.Equal(0, processedUpdates.MarkCalls);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldProcessAndReply_WhenOnlyEditedMessagePresent()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("edited reply"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var editedMessage = new TelegramIncomingMessage(
+            MessageId: 20,
+            From: new TelegramUserInfo(2002, false, "mike", "Mike", null),
+            Chat: new TelegramChatInfo(1001, "private", "mike", null),
+            Text: "corrected",
+            Caption: null,
+            MessageThreadId: null);
+
+        var update = new TelegramWebhookUpdateRequest(
+            UpdateId: 99,
+            Message: null,
+            EditedMessage: editedMessage);
+
+        var response = await sut.Webhook(update, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Processed);
+        Assert.True(payload.Replied);
+        Assert.Equal("corrected", orchestrator.LastInput);
+        Assert.Equal(1001, sender.LastChatId);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldPassWithNoSecret_WhenSecretNotConfigured()
+    {
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("reply"),
+            new FakeTelegramBotSender(),
+            new TelegramOptions { Enabled = true, WebhookSecret = null });
+
+        // No secret header set — should still pass when no secret is configured
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null), CancellationToken.None);
+        Assert.IsType<OkObjectResult>(response.Result);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldReturnUnauthorized_WhenSecretHeaderMissing()
+    {
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("reply"),
+            new FakeTelegramBotSender(),
+            new TelegramOptions { Enabled = true, WebhookSecret = "required-secret" });
+
+        // Set up HttpContext without the secret header
+        sut.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null), CancellationToken.None);
+        Assert.IsType<UnauthorizedResult>(response.Result);
     }
 }

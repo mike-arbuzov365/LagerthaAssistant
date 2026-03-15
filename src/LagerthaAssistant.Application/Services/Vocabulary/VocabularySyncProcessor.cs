@@ -89,7 +89,6 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
                 job.Status = VocabularySyncJobStatus.Failed;
                 job.LastError = $"Unknown storage mode '{job.StorageMode}'.";
                 failed++;
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 continue;
             }
 
@@ -124,7 +123,6 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
                     failed++;
                 }
 
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 continue;
             }
 
@@ -143,8 +141,6 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
                 job.CompletedAtUtc = DateTimeOffset.UtcNow;
                 job.LastError = null;
                 completed++;
-
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 continue;
             }
 
@@ -157,7 +153,6 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
                 job.Status = VocabularySyncJobStatus.Pending;
                 job.LastError = appendResult.Message;
                 requeued++;
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 continue;
             }
 
@@ -166,6 +161,10 @@ public sealed class VocabularySyncProcessor : IVocabularySyncProcessor
                 appendResult.Message ?? $"Sync failed with status '{appendResult.Status}'.",
                 job.AttemptCount);
             failed++;
+        }
+
+        if (processed > 0)
+        {
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 

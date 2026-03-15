@@ -21,6 +21,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<VocabularyCardToken> VocabularyCardTokens => Set<VocabularyCardToken>();
     public DbSet<VocabularySyncJob> VocabularySyncJobs => Set<VocabularySyncJob>();
     public DbSet<ConversationIntentMetric> ConversationIntentMetrics => Set<ConversationIntentMetric>();
+    public DbSet<TelegramProcessedUpdate> TelegramProcessedUpdates => Set<TelegramProcessedUpdate>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +36,7 @@ public sealed class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new VocabularyCardTokenConfiguration());
         modelBuilder.ApplyConfiguration(new VocabularySyncJobConfiguration());
         modelBuilder.ApplyConfiguration(new ConversationIntentMetricConfiguration());
+        modelBuilder.ApplyConfiguration(new TelegramProcessedUpdateConfiguration());
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
