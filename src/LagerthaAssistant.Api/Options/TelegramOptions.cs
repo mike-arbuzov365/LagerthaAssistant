@@ -9,4 +9,6 @@ public sealed class TelegramOptions
     public string ApiBaseUrl { get; set; } = "https://api.telegram.org";
 
     public string? WebhookSecret { get; set; }
+
+    public int TextLengthLimit { get; set; } = 3900;
 }

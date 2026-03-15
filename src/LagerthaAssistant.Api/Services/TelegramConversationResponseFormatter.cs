@@ -1,18 +1,25 @@
 using System.Text;
 using LagerthaAssistant.Api.Interfaces;
+using LagerthaAssistant.Api.Options;
 using LagerthaAssistant.Application.Models.Agents;
+using Microsoft.Extensions.Options;
 
 namespace LagerthaAssistant.Api.Services;
 
 public sealed class TelegramConversationResponseFormatter : ITelegramConversationResponseFormatter
 {
-    private const int TelegramTextLimit = 3900;
+    private readonly int _textLengthLimit;
+
+    public TelegramConversationResponseFormatter(IOptions<TelegramOptions> options)
+    {
+        _textLengthLimit = options.Value.TextLengthLimit;
+    }
 
     public string Format(ConversationAgentResult result)
     {
         if (!string.IsNullOrWhiteSpace(result.Message))
         {
-            return TrimToTelegramLimit(result.Message);
+            return TrimToLimit(result.Message);
         }
 
         if (result.Items.Count == 0)
@@ -22,7 +29,7 @@ public sealed class TelegramConversationResponseFormatter : ITelegramConversatio
 
         if (!result.IsBatch || result.Items.Count == 1)
         {
-            return TrimToTelegramLimit(FormatItem(result.Items[0]));
+            return TrimToLimit(FormatItem(result.Items[0]));
         }
 
         var builder = new StringBuilder();
@@ -38,7 +45,7 @@ public sealed class TelegramConversationResponseFormatter : ITelegramConversatio
             }
         }
 
-        return TrimToTelegramLimit(builder.ToString());
+        return TrimToLimit(builder.ToString());
     }
 
     private static string FormatItem(ConversationAgentItemResult item)
@@ -73,14 +80,14 @@ public sealed class TelegramConversationResponseFormatter : ITelegramConversatio
         return "Processed.";
     }
 
-    private static string TrimToTelegramLimit(string text)
+    private string TrimToLimit(string text)
     {
         var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
-        if (normalized.Length <= TelegramTextLimit)
+        if (normalized.Length <= _textLengthLimit)
         {
             return normalized;
         }
 
-        return normalized[..(TelegramTextLimit - 3)] + "...";
+        return normalized[..(_textLengthLimit - 3)] + "...";
     }
 }

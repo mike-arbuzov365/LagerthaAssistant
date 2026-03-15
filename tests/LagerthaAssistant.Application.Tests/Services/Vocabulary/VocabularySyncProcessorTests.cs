@@ -224,6 +224,54 @@ public sealed class VocabularySyncProcessorTests
     }
 
     [Fact]
+    public async Task ProcessPendingAsync_ShouldSaveOnceForMultipleJobs_BatchSave()
+    {
+        var repository = new FakeVocabularySyncJobRepository();
+        var deckModeService = new FakeVocabularyDeckModeService
+        {
+            AppendResult = new VocabularyAppendResult(
+                VocabularyAppendStatus.Added,
+                new VocabularyDeckEntry(
+                    "wm-verbs-us-en.xlsx",
+                    "C:/deck/wm-verbs-us-en.xlsx",
+                    11,
+                    "word",
+                    "(v) word",
+                    "We word things."))
+        };
+
+        var indexService = new FakeVocabularyIndexService();
+        var storageModeProvider = new FakeStorageModeProvider();
+        var unitOfWork = new FakeUnitOfWork();
+
+        for (var i = 1; i <= 5; i++)
+        {
+            repository.Jobs.Add(new VocabularySyncJob
+            {
+                RequestedWord = $"word{i}",
+                AssistantReply = $"word{i}\n\n(v) word{i}",
+                TargetDeckFileName = "wm-verbs-us-en.xlsx",
+                StorageMode = "local",
+                Status = VocabularySyncJobStatus.Pending,
+                CreatedAtUtc = DateTimeOffset.UtcNow.AddSeconds(-i)
+            });
+        }
+
+        var sut = new VocabularySyncProcessor(
+            repository,
+            deckModeService,
+            indexService,
+            storageModeProvider,
+            unitOfWork,
+            NullLogger<VocabularySyncProcessor>.Instance);
+
+        var summary = await sut.ProcessPendingAsync(10);
+
+        Assert.Equal(5, summary.Completed);
+        Assert.Equal(1, unitOfWork.SaveCalls);
+    }
+
+    [Fact]
     public async Task GetFailedJobsAsync_ShouldReturnMappedFailedJobs()
     {
         var repository = new FakeVocabularySyncJobRepository();
