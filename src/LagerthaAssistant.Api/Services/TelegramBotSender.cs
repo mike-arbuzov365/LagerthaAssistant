@@ -10,12 +10,14 @@ namespace LagerthaAssistant.Api.Services;
 public sealed class TelegramBotSender : ITelegramBotSender, IDisposable
 {
     private readonly TelegramOptions _options;
-    private readonly HttpClient _httpClient;
-    private readonly bool _ownsHttpClient;
+    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly HttpClient? _directClient;
+    private readonly bool _ownsDirectClient;
 
-    public TelegramBotSender(IOptions<TelegramOptions> options)
-        : this(options.Value, null)
+    public TelegramBotSender(IOptions<TelegramOptions> options, IHttpClientFactory httpClientFactory)
     {
+        _options = options.Value;
+        _httpClientFactory = httpClientFactory;
     }
 
     internal TelegramBotSender(TelegramOptions options, HttpClient? httpClient)
@@ -24,16 +26,12 @@ public sealed class TelegramBotSender : ITelegramBotSender, IDisposable
 
         if (httpClient is null)
         {
-            _httpClient = new HttpClient
-            {
-                Timeout = TimeSpan.FromSeconds(30)
-            };
-            _ownsHttpClient = true;
+            _directClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            _ownsDirectClient = true;
         }
         else
         {
-            _httpClient = httpClient;
-            _ownsHttpClient = false;
+            _directClient = httpClient;
         }
     }
 
@@ -70,27 +68,49 @@ public sealed class TelegramBotSender : ITelegramBotSender, IDisposable
 
         try
         {
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            if (response.IsSuccessStatusCode)
+            if (_httpClientFactory is not null)
             {
-                return new TelegramSendResult(true, HttpStatusCode: (int)response.StatusCode);
+                using var factoryClient = _httpClientFactory.CreateClient("telegram");
+                return await ExecuteSendAsync(factoryClient, request, cancellationToken);
             }
 
-            var error = await response.Content.ReadAsStringAsync(cancellationToken);
-            return new TelegramSendResult(false, error, (int)response.StatusCode);
+            return await ExecuteSendAsync(_directClient!, request, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return new TelegramSendResult(false, "Request timed out or was cancelled.");
+        }
+        catch (HttpRequestException ex)
+        {
+            return new TelegramSendResult(false, $"HTTP error: {ex.Message}");
         }
         catch (Exception ex)
         {
-            return new TelegramSendResult(false, ex.Message);
+            return new TelegramSendResult(false, $"Unexpected error ({ex.GetType().Name}): {ex.Message}");
         }
     }
 
     public void Dispose()
     {
-        if (_ownsHttpClient)
+        if (_ownsDirectClient)
         {
-            _httpClient.Dispose();
+            _directClient?.Dispose();
         }
+    }
+
+    private static async Task<TelegramSendResult> ExecuteSendAsync(
+        HttpClient client,
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        using var response = await client.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return new TelegramSendResult(true, HttpStatusCode: (int)response.StatusCode);
+        }
+
+        var error = await response.Content.ReadAsStringAsync(cancellationToken);
+        return new TelegramSendResult(false, error, (int)response.StatusCode);
     }
 
     private static string BuildSendMessageUrl(string apiBaseUrl, string botToken)
