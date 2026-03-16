@@ -23,4 +23,11 @@ public interface IVocabularyIndexService
         VocabularyAppendResult appendResult,
         VocabularyStorageMode storageMode,
         CancellationToken cancellationToken = default);
+
+    Task<int> ClearAsync(CancellationToken cancellationToken = default);
+
+    Task<int> RebuildAsync(
+        IReadOnlyList<VocabularyDeckEntry> entries,
+        VocabularyStorageMode storageMode,
+        CancellationToken cancellationToken = default);
 }

@@ -271,4 +271,18 @@ public sealed class VocabularyCardRepository : IVocabularyCardRepository
             throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.Update, "Failed to requeue failed Notion sync cards", ex);
         }
     }
+
+    public async Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Executing {Operation} for all vocabulary cards", RepositoryOperations.Delete);
+            return await _context.VocabularyCards.ExecuteDeleteAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for deleting all vocabulary cards", RepositoryOperations.Delete);
+            throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.Delete, "Failed to delete all vocabulary cards", ex);
+        }
+    }
 }

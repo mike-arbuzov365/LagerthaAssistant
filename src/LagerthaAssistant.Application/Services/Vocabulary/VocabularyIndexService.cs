@@ -270,6 +270,58 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
         }
     }
 
+    public async Task<int> ClearAsync(CancellationToken cancellationToken = default)
+    {
+        var deleted = await _cardRepository.DeleteAllAsync(cancellationToken);
+        _logger.LogInformation("Vocabulary index cleared: {Count} card(s) deleted", deleted);
+        return deleted;
+    }
+
+    public async Task<int> RebuildAsync(
+        IReadOnlyList<VocabularyDeckEntry> entries,
+        VocabularyStorageMode storageMode,
+        CancellationToken cancellationToken = default)
+    {
+        await _cardRepository.DeleteAllAsync(cancellationToken);
+
+        if (entries.Count == 0)
+        {
+            _logger.LogInformation("Vocabulary index rebuild complete: no entries found in decks");
+            return 0;
+        }
+
+        var storageModeText = storageMode.ToString().ToLowerInvariant();
+        var now = DateTimeOffset.UtcNow;
+        var indexed = 0;
+
+        foreach (var entry in entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await UpsertCardAsync(
+                query: entry.Word,
+                entry.Word,
+                entry.Meaning,
+                entry.Examples,
+                entry.DeckFileName,
+                entry.DeckPath,
+                entry.RowNumber,
+                storageModeText,
+                ExtractPartOfSpeechFromMeaning(entry.Meaning),
+                VocabularySyncStatus.Synced,
+                errorMessage: null,
+                syncedAtUtc: now,
+                now,
+                cancellationToken);
+
+            indexed++;
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Vocabulary index rebuilt: {Count} card(s) indexed", indexed);
+        return indexed;
+    }
+
     private async Task UpsertCardAsync(
         string query,
         string word,

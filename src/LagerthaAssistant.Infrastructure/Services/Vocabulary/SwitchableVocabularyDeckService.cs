@@ -89,6 +89,11 @@ public sealed class SwitchableVocabularyDeckService : IVocabularyDeckService, IV
             cancellationToken);
     }
 
+    public Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
+    {
+        return GetBackend().GetAllEntriesAsync(cancellationToken);
+    }
+
     private IVocabularyDeckBackend GetBackend()
     {
         return _backendResolver.Resolve(_modeProvider.CurrentMode);

@@ -21,4 +21,6 @@ public interface IVocabularyDeckService
         string? forcedDeckFileName = null,
         string? overridePartOfSpeech = null,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default);
 }

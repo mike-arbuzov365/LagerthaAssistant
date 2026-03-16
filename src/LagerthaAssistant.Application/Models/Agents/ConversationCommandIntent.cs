@@ -19,6 +19,8 @@ public enum ConversationCommandIntentType
     SyncRun,
     SyncRetryFailed,
     ResetConversation,
+    IndexClear,
+    IndexRebuild,
     Unsupported
 }
 

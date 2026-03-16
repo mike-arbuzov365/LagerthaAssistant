@@ -146,6 +146,11 @@ public sealed class VocabularyPersistenceServiceTests
             LastRequestedWord = requestedWord;
             return Task.CompletedTask;
         }
+
+        public Task<int> ClearAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+
+        public Task<int> RebuildAsync(IReadOnlyList<VocabularyDeckEntry> entries, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
+            => Task.FromResult(entries.Count);
     }
 
     private sealed class FakeStorageModeProvider : IVocabularyStorageModeProvider
@@ -185,6 +190,12 @@ public sealed class VocabularyPersistenceServiceTests
             => throw new InvalidOperationException("Index unavailable");
 
         public Task HandleAppendResultAsync(string requestedWord, string assistantReply, string? targetDeckFileName, string? overridePartOfSpeech, VocabularyAppendResult appendResult, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Index unavailable");
+
+        public Task<int> ClearAsync(CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Index unavailable");
+
+        public Task<int> RebuildAsync(IReadOnlyList<VocabularyDeckEntry> entries, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("Index unavailable");
     }
 }

@@ -33,4 +33,6 @@ public interface IVocabularyCardRepository
         int take,
         DateTimeOffset requeuedAtUtc,
         CancellationToken cancellationToken = default);
+
+    Task<int> DeleteAllAsync(CancellationToken cancellationToken = default);
 }

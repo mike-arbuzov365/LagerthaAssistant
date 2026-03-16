@@ -256,5 +256,8 @@ public sealed class ConversationBootstrapServiceTests
                 null,
                 "not implemented"));
         }
+
+        public Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyDeckEntry>>([]);
     }
 }

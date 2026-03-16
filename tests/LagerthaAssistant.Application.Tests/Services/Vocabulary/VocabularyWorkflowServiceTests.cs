@@ -442,6 +442,9 @@ public sealed class VocabularyWorkflowServiceTests
         {
             return Task.FromResult(new VocabularyAppendResult(VocabularyAppendStatus.Error, Message: "not used"));
         }
+
+        public Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyDeckEntry>>([]);
     }
 
     private sealed class FakeVocabularyIndexService : IVocabularyIndexService
@@ -493,6 +496,11 @@ public sealed class VocabularyWorkflowServiceTests
 
         public Task HandleAppendResultAsync(string requestedWord, string assistantReply, string? targetDeckFileName, string? overridePartOfSpeech, VocabularyAppendResult appendResult, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
+
+        public Task<int> ClearAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+
+        public Task<int> RebuildAsync(IReadOnlyList<VocabularyDeckEntry> entries, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
+            => Task.FromResult(entries.Count);
     }
 
     private sealed class FakeStorageModeProvider : IVocabularyStorageModeProvider
@@ -587,6 +595,9 @@ public sealed class VocabularyWorkflowServiceTests
         {
             return Task.FromResult(new VocabularyAppendResult(VocabularyAppendStatus.Error, Message: "not used"));
         }
+
+        public Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyDeckEntry>>([]);
     }
 
 }

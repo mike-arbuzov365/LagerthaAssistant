@@ -165,6 +165,23 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend, IVocabularyB
         }
     }
 
+    public Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            var result = new List<VocabularyDeckEntry>();
+            foreach (var deck in GetWritableDeckFilesCached())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                result.AddRange(ReadAllEntriesFromDeck(deck));
+            }
+
+            return Task.FromResult<IReadOnlyList<VocabularyDeckEntry>>(result);
+        }
+    }
+
     public Task<VocabularyAppendPreviewResult> PreviewAppendFromAssistantReplyAsync(
         string requestedWord,
         string assistantReply,
@@ -889,6 +906,68 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend, IVocabularyB
         return matchesByLookup.TryGetValue(normalizedWord, out var matches)
             ? matches
             : [];
+    }
+
+    private IReadOnlyList<VocabularyDeckEntry> ReadAllEntriesFromDeck(DeckFile deck)
+    {
+        var entries = new List<VocabularyDeckEntry>();
+
+        try
+        {
+            using var archive = OpenArchiveForSharedRead(deck.FullPath);
+            var sharedStrings = LoadSharedStrings(archive);
+
+            var worksheetPath = ResolveFirstWorksheetPath(archive);
+            var worksheetEntry = archive.GetEntry(worksheetPath);
+            if (worksheetEntry is null)
+            {
+                return entries;
+            }
+
+            var worksheetDocument = LoadXmlDocument(worksheetEntry);
+            var sheetData = worksheetDocument.Root?.Element(SpreadsheetNs + "sheetData");
+            if (sheetData is null)
+            {
+                return entries;
+            }
+
+            foreach (var row in sheetData.Elements(SpreadsheetNs + "row"))
+            {
+                var rowNumber = GetRowNumber(row);
+                if (rowNumber < DataStartRowNumber)
+                {
+                    continue;
+                }
+
+                var word = GetCellText(row, "B", rowNumber, sharedStrings).Trim();
+                if (string.IsNullOrWhiteSpace(word))
+                {
+                    continue;
+                }
+
+                entries.Add(new VocabularyDeckEntry(
+                    deck.FileName,
+                    deck.FullPath,
+                    rowNumber,
+                    word,
+                    GetCellText(row, "A", rowNumber, sharedStrings).Trim(),
+                    GetCellText(row, "H", rowNumber, sharedStrings).Trim()));
+            }
+        }
+        catch (Exception ex)
+        {
+            if (IsFileLockedException(ex))
+            {
+                _logger.LogWarning(
+                    "Skipping deck {DeckPath} while reading all entries because the file is currently in use.",
+                    deck.FullPath);
+                return entries;
+            }
+
+            _logger.LogError(ex, "Failed to read all entries from deck {DeckPath}", deck.FullPath);
+        }
+
+        return entries;
     }
 
     private IReadOnlyDictionary<string, IReadOnlyList<VocabularyDeckEntry>> FindWordsInDeck(
