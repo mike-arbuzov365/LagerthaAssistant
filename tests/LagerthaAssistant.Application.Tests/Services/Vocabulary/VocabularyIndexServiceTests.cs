@@ -353,6 +353,34 @@ The function returns void when there is no value to return
     }
 
     [Fact]
+    public async Task RebuildAsync_ShouldMergeDuplicateWordRows_WhenSameWordAppearsInMultipleRowsOfSameDeck()
+    {
+        // Verifies that a word stored on separate rows (e.g. verb row + noun row) is merged into a
+        // single card so the unique index (NormalizedWord, DeckFileName, StorageMode) is not violated.
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var entries = new List<VocabularyDeckEntry>
+        {
+            new("wm-vocabulary-ua-en.xlsx", "C:/deck.xlsx", 11, "watch", "(v) дивитися", "Watch the video."),
+            new("wm-vocabulary-ua-en.xlsx", "C:/deck.xlsx", 12, "watch", "(n) годинник",  "My watch stopped.")
+        };
+
+        var indexed = await sut.RebuildAsync(entries, VocabularyStorageMode.Local);
+
+        // Two source rows collapse into one card
+        Assert.Equal(1, indexed);
+        var card = Assert.Single(cardRepo.Cards);
+        Assert.Equal("watch", card.NormalizedWord);
+        Assert.Contains("(v) дивитися", card.Meaning);
+        Assert.Contains("(n) годинник", card.Meaning);
+    }
+
+    [Fact]
     public async Task RebuildAsync_ShouldReturnZero_WhenNoEntries()
     {
         var cardRepo = new FakeVocabularyCardRepository();

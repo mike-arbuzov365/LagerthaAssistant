@@ -294,20 +294,36 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
         var now = DateTimeOffset.UtcNow;
         var indexed = 0;
 
-        foreach (var entry in entries)
+        // Group entries by (NormalizedWord, DeckFileName) so that words spread across multiple
+        // rows in the same deck (e.g. a verb row and a noun row for "watch") are merged into a
+        // single card. Without this grouping, the second INSERT would violate the unique index
+        // IX_VocabularyCards_NormalizedWord_DeckFileName_StorageMode.
+        var groups = entries
+            .GroupBy(e => (NormalizedWord: NormalizeToken(e.Word), e.DeckFileName))
+            .ToList();
+
+        foreach (var group in groups)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            var first = group.First();
+            var mergedMeaning = string.Join(
+                Environment.NewLine + Environment.NewLine,
+                group.Select(e => e.Meaning).Where(m => !string.IsNullOrWhiteSpace(m)).Distinct());
+            var mergedExamples = string.Join(
+                Environment.NewLine + Environment.NewLine,
+                group.Select(e => e.Examples).Where(ex => !string.IsNullOrWhiteSpace(ex)).Distinct());
+
             await UpsertCardAsync(
-                query: entry.Word,
-                entry.Word,
-                entry.Meaning,
-                entry.Examples,
-                entry.DeckFileName,
-                entry.DeckPath,
-                entry.RowNumber,
+                query: first.Word,
+                first.Word,
+                mergedMeaning,
+                mergedExamples,
+                first.DeckFileName,
+                first.DeckPath,
+                first.RowNumber,
                 storageModeText,
-                ExtractPartOfSpeechFromMeaning(entry.Meaning),
+                ExtractPartOfSpeechFromMeaning(mergedMeaning),
                 VocabularySyncStatus.Synced,
                 errorMessage: null,
                 syncedAtUtc: now,
