@@ -537,15 +537,92 @@ public sealed class PersistenceIntegrationTests
             await CleanupDatabaseAsync(connectionString);
         }
     }
+    [Fact]
+    public async Task TelegramProcessedUpdateRepository_IsProcessedAsync_ShouldReturnFalseForUnseenUpdate()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            var sut = new TelegramProcessedUpdateRepository(context, NullLogger<TelegramProcessedUpdateRepository>.Instance);
+
+            var result = await sut.IsProcessedAsync(999L);
+
+            Assert.False(result);
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
+
+    [Fact]
+    public async Task TelegramProcessedUpdateRepository_MarkProcessedAsync_ShouldPersistAndBeDetectedAsProcessed()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            var sut = new TelegramProcessedUpdateRepository(context, NullLogger<TelegramProcessedUpdateRepository>.Instance);
+
+            await sut.MarkProcessedAsync(42L);
+
+            await using var verifyContext = CreateContext(connectionString);
+            var verifySut = new TelegramProcessedUpdateRepository(verifyContext, NullLogger<TelegramProcessedUpdateRepository>.Instance);
+            Assert.True(await verifySut.IsProcessedAsync(42L));
+            Assert.False(await verifySut.IsProcessedAsync(43L));
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
+
+    [Fact]
+    public async Task TelegramProcessedUpdateRepository_DeleteOlderThanAsync_ShouldRemoveOldRecordsAndKeepRecent()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            var cutoff = new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero);
+
+            context.TelegramProcessedUpdates.AddRange(
+                new TelegramProcessedUpdate { UpdateId = 1, ProcessedAtUtc = cutoff.AddDays(-2) },
+                new TelegramProcessedUpdate { UpdateId = 2, ProcessedAtUtc = cutoff.AddDays(-1) },
+                new TelegramProcessedUpdate { UpdateId = 3, ProcessedAtUtc = cutoff.AddHours(1) });
+            await context.SaveChangesAsync();
+
+            await using var actContext = CreateContext(connectionString);
+            var sut = new TelegramProcessedUpdateRepository(actContext, NullLogger<TelegramProcessedUpdateRepository>.Instance);
+            await sut.DeleteOlderThanAsync(cutoff);
+
+            await using var verifyContext = CreateContext(connectionString);
+            var remaining = await verifyContext.TelegramProcessedUpdates.AsNoTracking().ToListAsync();
+            Assert.Single(remaining);
+            Assert.Equal(3L, remaining[0].UpdateId);
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
+
     private static string CreateConnectionString()
     {
-        return $"Server=(localdb)\\MSSQLLocalDB;Database=LagerthaAssistant_Integration_{Guid.NewGuid():N};Trusted_Connection=True;TrustServerCertificate=True;";
+        return $"Host=localhost;Database=lagertha_integration_{Guid.NewGuid():N};Username=postgres;Password=masterkey";
     }
 
     private static AppDbContext CreateContext(string connectionString)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(connectionString)
+            .UseNpgsql(connectionString)
             .Options;
 
         return new AppDbContext(options);

@@ -44,6 +44,47 @@ public sealed class VocabularyPersistenceServiceTests
         Assert.Equal("prepare", indexService.LastRequestedWord);
     }
 
+    [Fact]
+    public async Task AppendFromAssistantReplyAsync_ShouldReturnResult_EvenWhenIndexServiceThrows()
+    {
+        var expectedResult = new VocabularyAppendResult(VocabularyAppendStatus.Added);
+
+        var deckService = new FakeVocabularyDeckModeService(expectedResult);
+        var indexService = new ThrowingVocabularyIndexService();
+        var modeProvider = new FakeStorageModeProvider();
+
+        var sut = new VocabularyPersistenceService(
+            deckService,
+            indexService,
+            modeProvider,
+            NullLogger<VocabularyPersistenceService>.Instance);
+
+        var result = await sut.AppendFromAssistantReplyAsync("prepare", "prepare\n\n(v) prepare\n\nWe prepare.");
+
+        Assert.Same(expectedResult, result);
+        Assert.Equal(1, deckService.Calls);
+    }
+
+    [Fact]
+    public async Task AppendFromAssistantReplyAsync_ShouldPassCurrentStorageMode_ToDeckService()
+    {
+        var expectedResult = new VocabularyAppendResult(VocabularyAppendStatus.Added);
+        var deckService = new FakeVocabularyDeckModeService(expectedResult);
+        var indexService = new FakeVocabularyIndexService();
+        var modeProvider = new FakeStorageModeProvider(VocabularyStorageMode.Local);
+
+        var sut = new VocabularyPersistenceService(
+            deckService,
+            indexService,
+            modeProvider,
+            NullLogger<VocabularyPersistenceService>.Instance);
+
+        await sut.AppendFromAssistantReplyAsync("prepare", "prepare\n\n(v) prepare\n\nWe prepare.");
+
+        Assert.Equal(VocabularyStorageMode.Local, deckService.LastMode);
+        Assert.Equal(VocabularyStorageMode.Local, indexService.LastMode);
+    }
+
     private sealed class FakeVocabularyDeckModeService : IVocabularyDeckModeService
     {
         private readonly VocabularyAppendResult _result;
@@ -54,6 +95,7 @@ public sealed class VocabularyPersistenceServiceTests
         }
 
         public int Calls { get; private set; }
+        public VocabularyStorageMode LastMode { get; private set; }
 
         public Task<VocabularyAppendResult> AppendFromAssistantReplyAsync(
             VocabularyStorageMode mode,
@@ -64,6 +106,7 @@ public sealed class VocabularyPersistenceServiceTests
             CancellationToken cancellationToken = default)
         {
             Calls++;
+            LastMode = mode;
             return Task.FromResult(_result);
         }
     }
@@ -107,20 +150,42 @@ public sealed class VocabularyPersistenceServiceTests
 
     private sealed class FakeStorageModeProvider : IVocabularyStorageModeProvider
     {
-        public VocabularyStorageMode CurrentMode => VocabularyStorageMode.Graph;
+        private readonly VocabularyStorageMode _mode;
 
-        public void SetMode(VocabularyStorageMode mode)
+        public FakeStorageModeProvider(VocabularyStorageMode mode = VocabularyStorageMode.Graph)
         {
+            _mode = mode;
         }
+
+        public VocabularyStorageMode CurrentMode => _mode;
+
+        public void SetMode(VocabularyStorageMode mode) { }
 
         public bool TryParse(string? value, out VocabularyStorageMode mode)
         {
-            mode = VocabularyStorageMode.Graph;
+            mode = _mode;
             return true;
         }
 
         public string ToText(VocabularyStorageMode mode)
             => mode.ToString().ToLowerInvariant();
+    }
+
+    private sealed class ThrowingVocabularyIndexService : IVocabularyIndexService
+    {
+        public Task<VocabularyLookupResult> FindByInputAsync(string input, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Index unavailable");
+
+        public Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindByInputsAsync(
+            IReadOnlyList<string> inputs,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Index unavailable");
+
+        public Task IndexLookupResultAsync(VocabularyLookupResult lookup, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Index unavailable");
+
+        public Task HandleAppendResultAsync(string requestedWord, string assistantReply, string? targetDeckFileName, string? overridePartOfSpeech, VocabularyAppendResult appendResult, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Index unavailable");
     }
 }
 

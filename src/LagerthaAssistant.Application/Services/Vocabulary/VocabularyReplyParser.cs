@@ -49,7 +49,6 @@ public sealed class VocabularyReplyParser : IVocabularyReplyParser
         var examples = new List<string>();
         var partsOfSpeech = new List<string>();
         var seenPartsOfSpeech = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var isExamplesSection = false;
 
         foreach (var rawLine in lines.Skip(1))
         {
@@ -60,7 +59,7 @@ public sealed class VocabularyReplyParser : IVocabularyReplyParser
             }
 
             var match = MeaningLineRegex.Match(line);
-            if (!isExamplesSection && match.Success)
+            if (match.Success)
             {
                 meanings.Add(line);
 
@@ -73,7 +72,6 @@ public sealed class VocabularyReplyParser : IVocabularyReplyParser
                 continue;
             }
 
-            isExamplesSection = true;
             examples.Add(line);
         }
 

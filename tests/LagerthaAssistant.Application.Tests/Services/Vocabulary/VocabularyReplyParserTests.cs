@@ -101,4 +101,31 @@ On the same page
         Assert.False(parsed);
         Assert.Null(result);
     }
+
+    [Fact]
+    public void TryParse_ShouldParseBothMeanings_WhenMeaningsAndExamplesAreInterleaved()
+    {
+        const string response = """
+watch
+
+(v) дивитися, спостерігати
+
+We watch system logs to detect anomalies early.
+
+(n) годинник
+
+He checked his watch during the long deployment process.
+""";
+
+        var parsed = _sut.TryParse(response, out var result);
+
+        Assert.True(parsed);
+        Assert.NotNull(result);
+        Assert.Equal("watch", result!.Word);
+        Assert.Equal(2, result.Meanings.Count);
+        Assert.Equal("(v) дивитися, спостерігати", result.Meanings[0]);
+        Assert.Equal("(n) годинник", result.Meanings[1]);
+        Assert.Equal(2, result.Examples.Count);
+        Assert.Equal(["v", "n"], result.PartsOfSpeech);
+    }
 }

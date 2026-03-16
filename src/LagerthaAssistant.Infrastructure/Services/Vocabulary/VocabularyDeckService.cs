@@ -337,11 +337,30 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend, IVocabularyB
 
         try
         {
-            var rowNumber = AppendRow(preparation.SelectedDeck.FullPath, preparation.TargetWord, preparation.MeaningText, preparation.ExamplesText);
+            var meanings = preparation.MeaningText.Split(
+                ["\r\n\r\n", "\n\n"],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (meanings.Length == 0)
+            {
+                meanings = [preparation.MeaningText];
+            }
+
+            int firstRowNumber = -1;
+            for (int i = 0; i < meanings.Length; i++)
+            {
+                var examples = i == 0 ? preparation.ExamplesText : string.Empty;
+                var rowNumber = AppendRow(preparation.SelectedDeck.FullPath, preparation.TargetWord, meanings[i], examples);
+                if (i == 0)
+                {
+                    firstRowNumber = rowNumber;
+                }
+            }
+
             var addedEntry = new VocabularyDeckEntry(
                 preparation.SelectedDeck.FileName,
                 preparation.SelectedDeck.FullPath,
-                rowNumber,
+                firstRowNumber,
                 preparation.TargetWord,
                 preparation.MeaningText,
                 preparation.ExamplesText);
@@ -1301,10 +1320,50 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend, IVocabularyB
         var forms = SplitWordForms(storedWord);
         if (forms.Count <= 1)
         {
-            return false;
+            return IsMinorTypo(normalizedStoredWord, normalizedLookup);
         }
 
         return forms.Any(form => form.Equals(normalizedLookup, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsMinorTypo(string a, string b)
+    {
+        if (a.Length < 5 || b.Length < 5)
+        {
+            return false;
+        }
+
+        if (Math.Abs(a.Length - b.Length) > 1)
+        {
+            return false;
+        }
+
+        return ComputeLevenshtein(a, b) <= 1;
+    }
+
+    private static int ComputeLevenshtein(string a, string b)
+    {
+        var prev = new int[b.Length + 1];
+        var curr = new int[b.Length + 1];
+
+        for (var j = 0; j <= b.Length; j++)
+        {
+            prev[j] = j;
+        }
+
+        for (var i = 1; i <= a.Length; i++)
+        {
+            curr[0] = i;
+            for (var j = 1; j <= b.Length; j++)
+            {
+                var cost = char.ToLowerInvariant(a[i - 1]) == char.ToLowerInvariant(b[j - 1]) ? 0 : 1;
+                curr[j] = Math.Min(Math.Min(prev[j] + 1, curr[j - 1] + 1), prev[j - 1] + cost);
+            }
+
+            (prev, curr) = (curr, prev);
+        }
+
+        return prev[b.Length];
     }
 
     private static bool IsPersistentExpressionCandidate(
