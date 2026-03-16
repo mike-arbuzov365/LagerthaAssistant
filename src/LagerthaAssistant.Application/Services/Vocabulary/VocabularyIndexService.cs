@@ -121,6 +121,15 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
 
         foreach (var entry in lookup.Matches)
         {
+            // Only index entries where the query is a valid word form of the stored word.
+            // This prevents fuzzy-match artifacts (e.g. query="watch" matching word="hatch")
+            // from polluting the index with wrong tokens.
+            var wordForms = BuildTokens(entry.Word);
+            if (!wordForms.Contains(lookup.Query, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             await UpsertCardAsync(
                 query: lookup.Query,
                 entry.Word,
