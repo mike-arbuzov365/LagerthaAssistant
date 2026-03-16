@@ -133,6 +133,7 @@ public static class DependencyInjection
         services.AddScoped<IConversationIntentMetricRepository, ConversationIntentMetricRepository>();
         services.AddScoped<ITelegramProcessedUpdateRepository, TelegramProcessedUpdateRepository>();
 
+        services.AddSingleton<IWordValidationService, WordValidationService>();
         services.AddScoped<VocabularyDeckService>();
         services.AddScoped<GraphVocabularyDeckService>();
         services.AddScoped<IVocabularyDeckBackend>(sp => sp.GetRequiredService<VocabularyDeckService>());

@@ -22,7 +22,6 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend, IVocabularyB
 
     private static readonly char[] WordFormSeparators = ['-', ',', '/', '='];
     private static readonly char[] DashVariants = ['\u2013', '\u2014', '\u2212'];
-    private const int MinTypoMatchLength = 5;
 
     private static readonly HashSet<string> PhrasalParticles = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -1294,7 +1293,7 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend, IVocabularyB
         }
 
         var normalizedStoredWord = NormalizeWord(storedWord);
-        if (AreEquivalentOrMinorTypo(normalizedStoredWord, normalizedLookup))
+        if (normalizedStoredWord.Equals(normalizedLookup, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
@@ -1305,7 +1304,7 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend, IVocabularyB
             return false;
         }
 
-        return forms.Any(form => AreEquivalentOrMinorTypo(form, normalizedLookup));
+        return forms.Any(form => form.Equals(normalizedLookup, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsPersistentExpressionCandidate(
@@ -1430,101 +1429,6 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend, IVocabularyB
             .ToList();
     }
 
-    private static bool AreEquivalentOrMinorTypo(string left, string right)
-    {
-        if (left.Equals(right, StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        return IsMinorSingleWordTypo(left, right);
-    }
-
-    private static bool IsMinorSingleWordTypo(string left, string right)
-    {
-        if (!CanUseTypoMatching(left) || !CanUseTypoMatching(right))
-        {
-            return false;
-        }
-
-        if (left[0] != right[0])
-        {
-            return false;
-        }
-
-        return HasEditDistanceAtMostOne(left, right);
-    }
-
-    private static bool CanUseTypoMatching(string value)
-    {
-        if (value.Length < MinTypoMatchLength)
-        {
-            return false;
-        }
-
-        return value.All(char.IsLetter);
-    }
-
-    private static bool HasEditDistanceAtMostOne(string left, string right)
-    {
-        if (left.Equals(right, StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        var lengthDiff = Math.Abs(left.Length - right.Length);
-        if (lengthDiff > 1)
-        {
-            return false;
-        }
-
-        if (left.Length == right.Length)
-        {
-            var mismatchCount = 0;
-            for (var i = 0; i < left.Length; i++)
-            {
-                if (left[i] == right[i])
-                {
-                    continue;
-                }
-
-                mismatchCount++;
-                if (mismatchCount > 1)
-                {
-                    return false;
-                }
-            }
-
-            return mismatchCount == 1;
-        }
-
-        var shorter = left.Length < right.Length ? left : right;
-        var longer = left.Length < right.Length ? right : left;
-
-        var shortIndex = 0;
-        var longIndex = 0;
-        var skipped = false;
-
-        while (shortIndex < shorter.Length && longIndex < longer.Length)
-        {
-            if (shorter[shortIndex] == longer[longIndex])
-            {
-                shortIndex++;
-                longIndex++;
-                continue;
-            }
-
-            if (skipped)
-            {
-                return false;
-            }
-
-            skipped = true;
-            longIndex++;
-        }
-
-        return true;
-    }
     private static string NormalizeWord(string value)
     {
         return ReplaceDashVariants(value).Trim().ToLowerInvariant();

@@ -239,6 +239,7 @@ public sealed class ConversationOrchestratorTests
             string input,
             string? forcedDeckFileName = null,
             string? overridePartOfSpeech = null,
+            bool bypassValidation = false,
             CancellationToken cancellationToken = default)
         {
             SingleCalls++;

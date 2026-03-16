@@ -11,4 +11,8 @@ public sealed record VocabularyWorkflowItemResult(
     public bool FoundInDeck => Lookup.Found;
 
     public bool GeneratedByAssistant => AssistantCompletion is not null;
+
+    public bool IsWordUnrecognized { get; init; }
+
+    public IReadOnlyList<string> WordSuggestions { get; init; } = [];
 }

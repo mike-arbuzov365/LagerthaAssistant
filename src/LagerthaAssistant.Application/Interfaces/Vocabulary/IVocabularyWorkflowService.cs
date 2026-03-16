@@ -8,6 +8,7 @@ public interface IVocabularyWorkflowService
         string input,
         string? forcedDeckFileName = null,
         string? overridePartOfSpeech = null,
+        bool bypassValidation = false,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<VocabularyWorkflowItemResult>> ProcessBatchAsync(

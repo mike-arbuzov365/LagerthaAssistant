@@ -25,6 +25,10 @@
     <ProjectReference Include="..\LagerthaAssistant.Application\LagerthaAssistant.Application.csproj" />
     <ProjectReference Include="..\LagerthaAssistant.Domain\LagerthaAssistant.Domain.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\words_en_us.txt" />
+  </ItemGroup>
 </Project>
 
 

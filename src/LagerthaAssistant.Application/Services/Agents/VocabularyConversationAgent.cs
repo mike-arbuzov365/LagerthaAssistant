@@ -48,6 +48,10 @@ public sealed class VocabularyConversationAgent : IConversationAgent, IConversat
             item.Input,
             item.Lookup,
             item.AssistantCompletion,
-            item.AppendPreview);
+            item.AppendPreview)
+        {
+            IsWordUnrecognized = item.IsWordUnrecognized,
+            WordSuggestions = item.WordSuggestions
+        };
     }
 }
