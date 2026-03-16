@@ -25,7 +25,7 @@ Respond strictly in the following format:
 
 Rules:
 - If the input is a single word and has one part of speech - show one meaning and one example sentence
-- If the input is a single word and has multiple parts of speech - sort meanings by real usage frequency in modern English (most common first), then list all examples below in the same order
+- If the input is a single word and has multiple parts of speech - you MUST sort meanings by real usage frequency in modern English, most common first. Never use traditional dictionary order (noun before verb). Verb usage is often more frequent than noun usage — always verify before placing a noun first. Examples must follow meanings in the same order
 - The word in the first line must exactly match the user's input (do not correct or substitute it)
 - Leave exactly one empty line between meaning lines
 - Leave exactly one empty line between example sentences
@@ -63,6 +63,21 @@ We undertake infrastructure improvements every quarter
 Last month the team undertook a major API redesign
 
 The migration has been undertaken by the platform team
+```
+
+Example input: `watch`
+
+Example output:
+```
+watch
+
+(v) дивитися, спостерігати, стежити
+
+(n) годинник, наручний годинник
+
+Please watch the logs carefully for any unusual errors
+
+I bought a new watch to track my coding sessions
 ```
 """;
 
