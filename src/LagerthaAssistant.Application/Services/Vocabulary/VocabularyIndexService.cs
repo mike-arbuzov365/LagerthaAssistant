@@ -16,6 +16,11 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
     private static readonly Regex PosFromMeaningRegex = new("^\\((?<pos>[a-z]+)\\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly char[] DashVariants = ['\u2013', '\u2014', '\u2212'];
 
+    // Hard limits matching DB column definitions to prevent overflow on unusual input.
+    private const int MaxTokenNormalizedLength = 256;   // VocabularyCardTokens.TokenNormalized varchar(256)
+    private const int MaxWordLength = 512;              // VocabularyCards.Word / NormalizedWord varchar(512)
+    private const int MaxDeckFileNameLength = 256;      // VocabularyCards.DeckFileName varchar(256)
+
     private readonly IVocabularyCardRepository _cardRepository;
     private readonly IVocabularySyncJobRepository _syncJobRepository;
     private readonly IVocabularyReplyParser _replyParser;
@@ -360,17 +365,26 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
             return;
         }
 
-        var card = await _cardRepository.GetByIdentityAsync(normalizedWord, deckFileName, storageMode, cancellationToken);
+        // Guard against malformed data exceeding DB column limits.
+        if (normalizedWord.Length > MaxWordLength)
+        {
+            normalizedWord = normalizedWord[..MaxWordLength];
+        }
+
+        var safeWord = word.Trim().Length > MaxWordLength ? word.Trim()[..MaxWordLength] : word.Trim();
+        var safeDeckFileName = deckFileName.Length > MaxDeckFileNameLength ? deckFileName[..MaxDeckFileNameLength] : deckFileName;
+
+        var card = await _cardRepository.GetByIdentityAsync(normalizedWord, safeDeckFileName, storageMode, cancellationToken);
         if (card is null)
         {
             card = new VocabularyCard
             {
-                Word = word.Trim(),
+                Word = safeWord,
                 NormalizedWord = normalizedWord,
                 Meaning = meaning,
                 Examples = examples,
                 PartOfSpeechMarker = partOfSpeech,
-                DeckFileName = deckFileName,
+                DeckFileName = safeDeckFileName,
                 DeckPath = deckPath,
                 LastKnownRowNumber = rowNumber,
                 StorageMode = storageMode,
@@ -399,7 +413,7 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
             partOfSpeech,
             rowNumber);
 
-        card.Word = word.Trim();
+        card.Word = safeWord;
         card.Meaning = meaning;
         card.Examples = examples;
         card.PartOfSpeechMarker = partOfSpeech;
@@ -622,6 +636,13 @@ public sealed class VocabularyIndexService : IVocabularyIndexService
 
         foreach (var token in tokens)
         {
+            // Skip tokens that exceed the DB column limit – they are not useful for lookup
+            // and would cause a varchar(256) overflow on unusual or malformed deck entries.
+            if (token.Length > MaxTokenNormalizedLength)
+            {
+                continue;
+            }
+
             if (!existing.Add(token))
             {
                 continue;
