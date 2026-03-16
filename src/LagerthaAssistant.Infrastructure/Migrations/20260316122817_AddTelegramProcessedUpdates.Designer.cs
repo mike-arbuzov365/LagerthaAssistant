@@ -199,7 +199,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
 
                     b.HasIndex("IsActive")
                         .IsUnique()
-                        .HasFilter("[IsActive] = 1");
+                        .HasFilter("\"IsActive\" = TRUE");
 
                     b.HasIndex("Version")
                         .IsUnique();

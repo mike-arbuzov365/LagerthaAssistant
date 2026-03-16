@@ -251,7 +251,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                 table: "SystemPromptEntries",
                 column: "IsActive",
                 unique: true,
-                filter: "[IsActive] = 1");
+                filter: "\"IsActive\" = TRUE");
 
             migrationBuilder.CreateIndex(
                 name: "IX_SystemPromptEntries_Version",
