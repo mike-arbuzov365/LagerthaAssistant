@@ -131,6 +131,7 @@ public static class DependencyInjection
         services.AddScoped<IVocabularyCardRepository, VocabularyCardRepository>();
         services.AddScoped<IVocabularySyncJobRepository, VocabularySyncJobRepository>();
         services.AddScoped<IConversationIntentMetricRepository, ConversationIntentMetricRepository>();
+        services.AddScoped<ITelegramProcessedUpdateRepository, TelegramProcessedUpdateRepository>();
 
         services.AddScoped<VocabularyDeckService>();
         services.AddScoped<GraphVocabularyDeckService>();

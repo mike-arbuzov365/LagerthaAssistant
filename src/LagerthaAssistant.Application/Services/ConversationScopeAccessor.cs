@@ -5,12 +5,12 @@ using LagerthaAssistant.Application.Models.Agents;
 
 public sealed class ConversationScopeAccessor : IConversationScopeAccessor
 {
-    private ConversationScope _current = ConversationScope.Default;
+    private static readonly AsyncLocal<ConversationScope?> _asyncLocal = new();
 
-    public ConversationScope Current => _current;
+    public ConversationScope Current => _asyncLocal.Value ?? ConversationScope.Default;
 
     public void Set(ConversationScope scope)
     {
-        _current = scope ?? ConversationScope.Default;
+        _asyncLocal.Value = scope ?? ConversationScope.Default;
     }
 }
