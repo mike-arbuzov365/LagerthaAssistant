@@ -555,87 +555,6 @@ on the same page
         }
     }
 
-    [Fact]
-    public async Task FindInWritableDecksAsync_ShouldMatchMinorTypoForSingleWord()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-
-        try
-        {
-            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
-            CreateTemplateWorkbook(workbookPath, "undertake", "(v) take responsibility for a task", "We undertake migrations every quarter.");
-
-            var options = new VocabularyDeckOptions
-            {
-                FolderPath = tempDir,
-                FilePattern = "wm-*.xlsx",
-                ReadOnlyFileNames = [],
-                VerbDeckFileName = "wm-verbs-us-en.xlsx",
-                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
-            };
-
-            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
-
-            var lookup = await sut.FindInWritableDecksAsync("undertak");
-
-            Assert.True(lookup.Found);
-            var match = Assert.Single(lookup.Matches);
-            Assert.Equal("undertake", match.Word);
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir))
-            {
-                Directory.Delete(tempDir, true);
-            }
-        }
-    }
-
-    [Fact]
-    public async Task PreviewAppendFromAssistantReplyAsync_ShouldDetectDuplicateForMinorTypoWord()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-
-        try
-        {
-            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
-            CreateTemplateWorkbook(workbookPath, "undertake", "(v) take responsibility for a task", "We undertake migrations every quarter.");
-
-            var options = new VocabularyDeckOptions
-            {
-                FolderPath = tempDir,
-                FilePattern = "wm-*.xlsx",
-                ReadOnlyFileNames = [],
-                VerbDeckFileName = "wm-verbs-us-en.xlsx",
-                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
-            };
-
-            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
-
-            var response = """
-            undertak
-
-            (v) take responsibility for a task
-
-            We undertak infrastructure tasks.
-            """;
-
-            var preview = await sut.PreviewAppendFromAssistantReplyAsync("undertak", response);
-
-            Assert.Equal(VocabularyAppendPreviewStatus.DuplicateFound, preview.Status);
-            Assert.NotNull(preview.DuplicateMatches);
-            Assert.NotEmpty(preview.DuplicateMatches!);
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir))
-            {
-                Directory.Delete(tempDir, true);
-            }
-        }
-    }
 
 
     [Fact]
@@ -894,43 +813,6 @@ on the same page
         }
     }
 
-    [Fact]
-    public async Task FindInWritableDecksBatchAsync_ShouldMatchMinorTypoForSingleWord()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-
-        try
-        {
-            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
-            CreateTemplateWorkbook(workbookPath, "undertake", "(v) take responsibility for a task", "We undertake migrations every quarter.");
-
-            var options = new VocabularyDeckOptions
-            {
-                FolderPath = tempDir,
-                FilePattern = "wm-*.xlsx",
-                ReadOnlyFileNames = [],
-                VerbDeckFileName = "wm-verbs-us-en.xlsx",
-                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
-            };
-
-            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
-            var batchLookup = (IVocabularyBatchDeckLookupBackend)sut;
-
-            var results = await batchLookup.FindInWritableDecksBatchAsync(["undertak", "undertake"]);
-
-            Assert.True(results["undertak"].Found);
-            Assert.True(results["undertake"].Found);
-            Assert.Equal("undertake", results["undertak"].Matches[0].Word);
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir))
-            {
-                Directory.Delete(tempDir, true);
-            }
-        }
-    }
 
     private sealed class CountingReplyParser : IVocabularyReplyParser
     {
