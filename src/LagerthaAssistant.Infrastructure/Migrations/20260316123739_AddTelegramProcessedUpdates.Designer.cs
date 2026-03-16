@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LagerthaAssistant.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260316122817_AddTelegramProcessedUpdates")]
+    [Migration("20260316123739_AddTelegramProcessedUpdates")]
     partial class AddTelegramProcessedUpdates
     {
         /// <inheritdoc />

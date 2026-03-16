@@ -19,7 +19,7 @@ public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
             .Build();
 
         var connectionString = configuration.GetConnectionString(PersistenceConstants.ConnectionStringName)
-            ?? "Host=localhost;Database=LagerthaAssistantDb;Username=postgres;Password=postgres";
+            ?? "Host=localhost;Database=LagerthaAssistantDb;Username=postgres;Password=masterkey";
 
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
         optionsBuilder.UseNpgsql(connectionString);

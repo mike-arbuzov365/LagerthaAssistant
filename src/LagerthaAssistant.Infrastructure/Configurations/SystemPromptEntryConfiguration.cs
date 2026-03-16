@@ -39,7 +39,7 @@ public sealed class SystemPromptEntryConfiguration : IEntityTypeConfiguration<Sy
             .IsUnique();
 
         builder.HasIndex(x => x.IsActive)
-            .HasFilter("[IsActive] = 1")
+            .HasFilter("\"IsActive\" = TRUE")
             .IsUnique();
     }
 }
