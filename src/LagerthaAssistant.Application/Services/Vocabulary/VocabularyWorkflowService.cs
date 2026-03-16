@@ -10,29 +10,34 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
     private readonly IVocabularyDeckService _vocabularyDeckService;
     private readonly IVocabularyIndexService? _vocabularyIndexService;
     private readonly IVocabularyStorageModeProvider? _storageModeProvider;
+    private readonly IWordValidationService? _wordValidationService;
 
     public VocabularyWorkflowService(
         IAssistantSessionService assistantSessionService,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyIndexService? vocabularyIndexService = null,
-        IVocabularyStorageModeProvider? storageModeProvider = null)
+        IVocabularyStorageModeProvider? storageModeProvider = null,
+        IWordValidationService? wordValidationService = null)
     {
         _assistantSessionService = assistantSessionService;
         _vocabularyDeckService = vocabularyDeckService;
         _vocabularyIndexService = vocabularyIndexService;
         _storageModeProvider = storageModeProvider;
+        _wordValidationService = wordValidationService;
     }
 
     public async Task<VocabularyWorkflowItemResult> ProcessAsync(
         string input,
         string? forcedDeckFileName = null,
         string? overridePartOfSpeech = null,
+        bool bypassValidation = false,
         CancellationToken cancellationToken = default)
     {
         return await ProcessCoreAsync(
             input,
             forcedDeckFileName,
             overridePartOfSpeech,
+            bypassValidation,
             skipIndexLookup: false,
             cancellationToken);
     }
@@ -124,6 +129,7 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
                 input,
                 forcedDeckFileName: null,
                 overridePartOfSpeech: null,
+                bypassValidation: false,
                 skipIndexLookup: indexedLookups is not null,
                 cancellationToken);
             perInputCache[input] = result;
@@ -137,6 +143,7 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
         string input,
         string? forcedDeckFileName,
         string? overridePartOfSpeech,
+        bool bypassValidation,
         bool skipIndexLookup,
         CancellationToken cancellationToken = default)
     {
@@ -144,6 +151,20 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
         if (string.IsNullOrWhiteSpace(normalizedInput))
         {
             throw new ArgumentException("Input cannot be empty.", nameof(input));
+        }
+
+        if (!bypassValidation && _wordValidationService is not null)
+        {
+            var lower = normalizedInput.ToLowerInvariant();
+            if (!lower.Contains(' ') && !_wordValidationService.IsValidWord(lower))
+            {
+                var suggestions = _wordValidationService.GetSuggestions(lower);
+                return new VocabularyWorkflowItemResult(normalizedInput, new VocabularyLookupResult(normalizedInput, []))
+                {
+                    IsWordUnrecognized = true,
+                    WordSuggestions = suggestions
+                };
+            }
         }
 
         if (!skipIndexLookup && _vocabularyIndexService is not null)

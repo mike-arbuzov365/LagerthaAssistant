@@ -19,10 +19,10 @@ public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
             .Build();
 
         var connectionString = configuration.GetConnectionString(PersistenceConstants.ConnectionStringName)
-            ?? "Server=(localdb)\\MSSQLLocalDB;Database=LagerthaAssistantDb;Trusted_Connection=True;TrustServerCertificate=True;";
+            ?? "Host=localhost;Database=LagerthaAssistantDb;Username=postgres;Password=masterkey";
 
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-        optionsBuilder.UseSqlServer(connectionString);
+        optionsBuilder.UseNpgsql(connectionString);
 
         return new AppDbContext(optionsBuilder.Options);
     }

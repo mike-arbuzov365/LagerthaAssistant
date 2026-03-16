@@ -68,6 +68,7 @@ public sealed class VocabularyController : ControllerBase
             request.Input,
             request.ForcedDeckFileName,
             request.OverridePartOfSpeech,
+            bypassValidation: false,
             cancellationToken);
 
         return Ok(MapWorkflowItem(result));

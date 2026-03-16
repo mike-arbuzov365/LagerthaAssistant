@@ -10,4 +10,8 @@ public sealed record ConversationAgentItemResult(
     VocabularyAppendPreviewResult? AppendPreview = null)
 {
     public bool FoundInDeck => Lookup.Found;
+
+    public bool IsWordUnrecognized { get; init; }
+
+    public IReadOnlyList<string> WordSuggestions { get; init; } = [];
 }

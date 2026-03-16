@@ -16,7 +16,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                 columns: table => new
                 {
                     UpdateId = table.Column<long>(type: "bigint", nullable: false),
-                    ProcessedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                    ProcessedAtUtc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {

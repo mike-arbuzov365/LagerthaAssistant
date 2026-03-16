@@ -98,7 +98,7 @@ public static class DependencyInjection
             LastSeenPropertyName = notionSection[NotionConstants.LastSeenPropertyNameKey] ?? "LastSeenAtUtc"
         };
 
-        services.AddDbContext<AppDbContext>(db => db.UseSqlServer(connectionString));
+        services.AddDbContext<AppDbContext>(db => db.UseNpgsql(connectionString));
 
         services.AddSingleton(options);
         services.AddSingleton(vocabularyOptions);
@@ -133,6 +133,7 @@ public static class DependencyInjection
         services.AddScoped<IConversationIntentMetricRepository, ConversationIntentMetricRepository>();
         services.AddScoped<ITelegramProcessedUpdateRepository, TelegramProcessedUpdateRepository>();
 
+        services.AddSingleton<IWordValidationService, WordValidationService>();
         services.AddScoped<VocabularyDeckService>();
         services.AddScoped<GraphVocabularyDeckService>();
         services.AddScoped<IVocabularyDeckBackend>(sp => sp.GetRequiredService<VocabularyDeckService>());

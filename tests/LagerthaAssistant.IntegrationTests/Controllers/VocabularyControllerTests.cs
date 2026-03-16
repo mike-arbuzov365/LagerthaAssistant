@@ -498,6 +498,7 @@ public sealed class VocabularyControllerTests
             string input,
             string? forcedDeckFileName = null,
             string? overridePartOfSpeech = null,
+            bool bypassValidation = false,
             CancellationToken cancellationToken = default)
         {
             LastSingleInput = input;

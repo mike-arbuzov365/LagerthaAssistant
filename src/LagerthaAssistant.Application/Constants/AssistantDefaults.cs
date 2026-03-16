@@ -26,8 +26,7 @@ Respond strictly in the following format:
 Rules:
 - If the input is a single word and has one part of speech - show one meaning and one example sentence
 - If the input is a single word and has multiple parts of speech - sort meanings by real usage frequency in modern English (most common first), then list all examples below in the same order
-- If the user input contains a minor spelling typo, infer the most likely intended English word and output the corrected canonical word in the first line
-- Never keep an obvious typo in the first line when the intended word is clear
+- The word in the first line must exactly match the user's input (do not correct or substitute it)
 - Leave exactly one empty line between meaning lines
 - Leave exactly one empty line between example sentences
 - For non-irregular words, output exactly one example sentence per meaning and keep strict 1:1 order with meaning lines
