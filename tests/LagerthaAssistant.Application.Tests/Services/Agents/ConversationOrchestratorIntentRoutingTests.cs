@@ -229,6 +229,7 @@ public sealed class ConversationOrchestratorIntentRoutingTests
             string input,
             string? forcedDeckFileName = null,
             string? overridePartOfSpeech = null,
+            bool bypassValidation = false,
             CancellationToken cancellationToken = default)
         {
             SingleCalls++;

@@ -242,6 +242,7 @@ internal static partial class Program
                     orchestrationResult,
                     vocabularyDeckService,
                     vocabularyPersistenceService,
+                    vocabularyWorkflowService,
                     saveMode);
             }
             catch (Exception ex)

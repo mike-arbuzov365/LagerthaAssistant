@@ -1,6 +1,7 @@
 ﻿using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
+using LagerthaAssistant.Application.Models.AI;
 
 namespace LagerthaAssistant.UI;
 
@@ -26,6 +27,7 @@ internal static partial class Program
         ConversationAgentResult result,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
+        IVocabularyWorkflowService vocabularyWorkflowService,
         VocabularySaveMode saveMode)
     {
         if (result.Items.Count == 0)
@@ -43,6 +45,7 @@ internal static partial class Program
                 result.Items[0],
                 vocabularyDeckService,
                 vocabularyPersistenceService,
+                vocabularyWorkflowService,
                 saveMode);
         }
 
@@ -57,8 +60,33 @@ internal static partial class Program
         ConversationAgentItemResult item,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyPersistenceService vocabularyPersistenceService,
+        IVocabularyWorkflowService vocabularyWorkflowService,
         VocabularySaveMode saveMode)
     {
+        if (item.IsWordUnrecognized)
+        {
+            var correctedWord = AskWordCorrection(item.Input, item.WordSuggestions);
+            if (correctedWord is not null)
+            {
+                var correctedResult = await vocabularyWorkflowService.ProcessAsync(
+                    correctedWord, bypassValidation: true);
+                var mappedItem = new ConversationAgentItemResult(
+                    correctedResult.Input,
+                    correctedResult.Lookup,
+                    correctedResult.AssistantCompletion,
+                    correctedResult.AppendPreview);
+                return await HandleVocabularyAgentItemAsync(
+                    mappedItem,
+                    vocabularyDeckService,
+                    vocabularyPersistenceService,
+                    vocabularyWorkflowService,
+                    saveMode);
+            }
+
+            Console.WriteLine();
+            return saveMode;
+        }
+
         if (item.FoundInDeck)
         {
             PrintVocabularyFromDeck(item.Lookup);
@@ -572,6 +600,51 @@ internal static partial class Program
 
             Console.WriteLine("Please enter 1, 2, or 3.");
         }
+    }
+
+    private static string? AskWordCorrection(string input, IReadOnlyList<string> suggestions)
+    {
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine($"Word '{input}' not recognized.");
+        Console.ResetColor();
+
+        if (suggestions.Count > 0)
+        {
+            Console.WriteLine("Did you mean:");
+            for (var i = 0; i < suggestions.Count; i++)
+            {
+                Console.WriteLine($"  {i + 1}) {suggestions[i]}");
+            }
+            Console.WriteLine($"  {suggestions.Count + 1}) Enter word manually");
+            Console.WriteLine($"  {suggestions.Count + 2}) Skip");
+
+            while (true)
+            {
+                Console.Write($"Select [1-{suggestions.Count + 2}]: ");
+                if (!TryReadTrimmedLowerInput(out var answer))
+                    return null;
+
+                if (int.TryParse(answer, out var choice))
+                {
+                    if (choice >= 1 && choice <= suggestions.Count)
+                        return suggestions[choice - 1];
+
+                    if (choice == suggestions.Count + 1)
+                        break;
+
+                    if (choice == suggestions.Count + 2)
+                        return null;
+                }
+
+                Console.WriteLine($"Please enter a number between 1 and {suggestions.Count + 2}.");
+            }
+        }
+
+        Console.Write("Enter word: ");
+        if (!TryReadTrimmedLowerInput(out var manualWord) || string.IsNullOrWhiteSpace(manualWord))
+            return null;
+
+        return manualWord;
     }
 
 }
