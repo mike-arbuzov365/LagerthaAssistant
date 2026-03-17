@@ -306,6 +306,98 @@ The function returns void when there is no value to return
         Assert.Contains("open in another app", job.LastError ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task ClearAsync_ShouldDeleteAllCards_AndReturnCount()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        cardRepo.Cards.Add(new VocabularyCard { Id = 1, Word = "alpha", NormalizedWord = "alpha", DeckFileName = "deck.xlsx", DeckPath = "C:/deck.xlsx", StorageMode = "local", SyncStatus = VocabularySyncStatus.Synced, FirstSeenAtUtc = DateTimeOffset.UtcNow, LastSeenAtUtc = DateTimeOffset.UtcNow });
+        cardRepo.Cards.Add(new VocabularyCard { Id = 2, Word = "beta",  NormalizedWord = "beta",  DeckFileName = "deck.xlsx", DeckPath = "C:/deck.xlsx", StorageMode = "local", SyncStatus = VocabularySyncStatus.Synced, FirstSeenAtUtc = DateTimeOffset.UtcNow, LastSeenAtUtc = DateTimeOffset.UtcNow });
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var deleted = await sut.ClearAsync();
+
+        Assert.Equal(2, deleted);
+        Assert.Empty(cardRepo.Cards);
+    }
+
+    [Fact]
+    public async Task RebuildAsync_ShouldClearAndIndexAllEntries()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        // Pre-existing stale card that should be wiped
+        cardRepo.Cards.Add(new VocabularyCard { Id = 1, Word = "stale", NormalizedWord = "stale", DeckFileName = "deck.xlsx", DeckPath = "C:/deck.xlsx", StorageMode = "local", SyncStatus = VocabularySyncStatus.Synced, FirstSeenAtUtc = DateTimeOffset.UtcNow, LastSeenAtUtc = DateTimeOffset.UtcNow });
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var entries = new List<VocabularyDeckEntry>
+        {
+            new("wm-nouns-ua-en.xlsx", "C:/deck.xlsx", 11, "resolve", "(v) вирішувати", "We need to resolve the issue."),
+            new("wm-nouns-ua-en.xlsx", "C:/deck.xlsx", 12, "deploy",  "(v) розгортати",  "We deploy every Friday.")
+        };
+
+        var indexed = await sut.RebuildAsync(entries, VocabularyStorageMode.Local);
+
+        Assert.Equal(2, indexed);
+        Assert.DoesNotContain(cardRepo.Cards, c => c.NormalizedWord == "stale");
+        Assert.Contains(cardRepo.Cards, c => c.NormalizedWord == "resolve");
+        Assert.Contains(cardRepo.Cards, c => c.NormalizedWord == "deploy");
+    }
+
+    [Fact]
+    public async Task RebuildAsync_ShouldMergeDuplicateWordRows_WhenSameWordAppearsInMultipleRowsOfSameDeck()
+    {
+        // Verifies that a word stored on separate rows (e.g. verb row + noun row) is merged into a
+        // single card so the unique index (NormalizedWord, DeckFileName, StorageMode) is not violated.
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var entries = new List<VocabularyDeckEntry>
+        {
+            new("wm-vocabulary-ua-en.xlsx", "C:/deck.xlsx", 11, "watch", "(v) дивитися", "Watch the video."),
+            new("wm-vocabulary-ua-en.xlsx", "C:/deck.xlsx", 12, "watch", "(n) годинник",  "My watch stopped.")
+        };
+
+        var indexed = await sut.RebuildAsync(entries, VocabularyStorageMode.Local);
+
+        // Two source rows collapse into one card
+        Assert.Equal(1, indexed);
+        var card = Assert.Single(cardRepo.Cards);
+        Assert.Equal("watch", card.NormalizedWord);
+        Assert.Contains("(v) дивитися", card.Meaning);
+        Assert.Contains("(n) годинник", card.Meaning);
+    }
+
+    [Fact]
+    public async Task RebuildAsync_ShouldReturnZero_WhenNoEntries()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        cardRepo.Cards.Add(new VocabularyCard { Id = 1, Word = "stale", NormalizedWord = "stale", DeckFileName = "deck.xlsx", DeckPath = "C:/deck.xlsx", StorageMode = "local", SyncStatus = VocabularySyncStatus.Synced, FirstSeenAtUtc = DateTimeOffset.UtcNow, LastSeenAtUtc = DateTimeOffset.UtcNow });
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var indexed = await sut.RebuildAsync([], VocabularyStorageMode.Local);
+
+        Assert.Equal(0, indexed);
+        Assert.Empty(cardRepo.Cards); // stale card was deleted
+    }
+
     private sealed class FakeVocabularyCardRepository : IVocabularyCardRepository
     {
         public List<VocabularyCard> Cards { get; } = [];
@@ -403,6 +495,13 @@ The function returns void when there is no value to return
             }
 
             return Task.FromResult(failed.Count);
+        }
+
+        public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
+        {
+            var count = Cards.Count;
+            Cards.Clear();
+            return Task.FromResult(count);
         }
     }
 

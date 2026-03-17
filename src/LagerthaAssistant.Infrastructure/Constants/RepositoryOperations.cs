@@ -10,4 +10,5 @@ public static class RepositoryOperations
     public const string GetActive = "GetActive";
     public const string Add = "Add";
     public const string Update = "Update";
+    public const string Delete = "Delete";
 }

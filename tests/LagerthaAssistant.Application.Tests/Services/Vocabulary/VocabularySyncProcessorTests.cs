@@ -511,6 +511,11 @@ public sealed class VocabularySyncProcessorTests
             Calls++;
             return Task.CompletedTask;
         }
+
+        public Task<int> ClearAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+
+        public Task<int> RebuildAsync(IReadOnlyList<VocabularyDeckEntry> entries, VocabularyStorageMode storageMode, CancellationToken cancellationToken = default)
+            => Task.FromResult(entries.Count);
     }
 
     private sealed class FakeStorageModeProvider : IVocabularyStorageModeProvider

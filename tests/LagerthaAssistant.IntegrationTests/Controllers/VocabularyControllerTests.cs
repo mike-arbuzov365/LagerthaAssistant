@@ -564,6 +564,9 @@ public sealed class VocabularyControllerTests
             string? overridePartOfSpeech = null,
             CancellationToken cancellationToken = default)
             => Task.FromResult(new VocabularyAppendResult(VocabularyAppendStatus.Error, Message: "not used"));
+
+        public Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyDeckEntry>>([]);
     }
 
     private sealed class FakeVocabularyStorageModeProvider : IVocabularyStorageModeProvider

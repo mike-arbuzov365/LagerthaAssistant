@@ -6,6 +6,7 @@ using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
+using LagerthaAssistant.Application.Models.Vocabulary;
 
 public sealed class CommandConversationAgent : IConversationAgent, IConversationAgentProfile
 {
@@ -18,17 +19,26 @@ public sealed class CommandConversationAgent : IConversationAgent, IConversation
     private readonly IConversationCommandCatalogService _commandCatalogService;
     private readonly IAssistantSessionService _assistantSessionService;
     private readonly IVocabularySyncProcessor _vocabularySyncProcessor;
+    private readonly IVocabularyIndexService? _vocabularyIndexService;
+    private readonly IVocabularyDeckService? _vocabularyDeckService;
+    private readonly IVocabularyStorageModeProvider? _storageModeProvider;
 
     public CommandConversationAgent(
         IConversationIntentRouter intentRouter,
         IConversationCommandCatalogService commandCatalogService,
         IAssistantSessionService assistantSessionService,
-        IVocabularySyncProcessor vocabularySyncProcessor)
+        IVocabularySyncProcessor vocabularySyncProcessor,
+        IVocabularyIndexService? vocabularyIndexService = null,
+        IVocabularyDeckService? vocabularyDeckService = null,
+        IVocabularyStorageModeProvider? storageModeProvider = null)
     {
         _intentRouter = intentRouter;
         _commandCatalogService = commandCatalogService;
         _assistantSessionService = assistantSessionService;
         _vocabularySyncProcessor = vocabularySyncProcessor;
+        _vocabularyIndexService = vocabularyIndexService;
+        _vocabularyDeckService = vocabularyDeckService;
+        _storageModeProvider = storageModeProvider;
     }
 
     public string Name => "command-agent";
@@ -78,6 +88,8 @@ public sealed class CommandConversationAgent : IConversationAgent, IConversation
             ConversationCommandIntentType.SyncRun => await BuildSyncRunResultAsync(intent.Number ?? DefaultSyncRunTake, cancellationToken),
             ConversationCommandIntentType.SyncRetryFailed => await BuildSyncRetryFailedResultAsync(intent.Number ?? DefaultSyncRetryFailedTake, cancellationToken),
             ConversationCommandIntentType.ResetConversation => ResetConversationResult(),
+            ConversationCommandIntentType.IndexClear => await BuildIndexClearResultAsync(cancellationToken),
+            ConversationCommandIntentType.IndexRebuild => await BuildIndexRebuildResultAsync(cancellationToken),
             _ => ConversationAgentResult.Empty(
                 Name,
                 "command.unsupported",
@@ -300,6 +312,34 @@ public sealed class CommandConversationAgent : IConversationAgent, IConversation
     {
         _assistantSessionService.Reset();
         return ConversationAgentResult.Empty(Name, "command.reset", "Conversation has been reset.");
+    }
+
+    private async Task<ConversationAgentResult> BuildIndexClearResultAsync(CancellationToken cancellationToken)
+    {
+        if (_vocabularyIndexService is null)
+        {
+            return ConversationAgentResult.Empty(Name, "command.index.clear", "Index service is not available.");
+        }
+
+        var deleted = await _vocabularyIndexService.ClearAsync(cancellationToken);
+        return ConversationAgentResult.Empty(Name, "command.index.clear", $"Index cleared: {deleted} card(s) removed.");
+    }
+
+    private async Task<ConversationAgentResult> BuildIndexRebuildResultAsync(CancellationToken cancellationToken)
+    {
+        if (_vocabularyIndexService is null || _vocabularyDeckService is null)
+        {
+            return ConversationAgentResult.Empty(Name, "command.index.rebuild", "Index or deck service is not available.");
+        }
+
+        var entries = await _vocabularyDeckService.GetAllEntriesAsync(cancellationToken);
+        var storageMode = _storageModeProvider?.CurrentMode ?? VocabularyStorageMode.Local;
+        var indexed = await _vocabularyIndexService.RebuildAsync(entries, storageMode, cancellationToken);
+
+        return ConversationAgentResult.Empty(
+            Name,
+            "command.index.rebuild",
+            $"Index rebuilt: {entries.Count} entry/entries scanned, {indexed} card(s) indexed.");
     }
 
     private string BuildHelpMessage()

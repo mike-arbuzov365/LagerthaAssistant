@@ -27,6 +27,192 @@ Console and Telegram AI assistant built with Clean Architecture and PostgreSQL p
   - boundary policy blocks vocabulary agent from slash commands and command intents,
   - command agent is marked as non-batch to keep tool responsibilities isolated.
 
+## Database schema
+
+PostgreSQL (Npgsql). All tables use auto-increment integer primary keys unless noted. Timestamps are stored in UTC.
+
+### ConversationSessions
+
+Stores one record per logical conversation scope (channel + user + conversationId).
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | int | PK |
+| SessionKey | guid | Unique. Stable identifier for the session. |
+| Channel | varchar(64) | Source channel: `ui`, `api`, `telegram`. |
+| UserId | varchar(128) | User identity within the channel. |
+| ConversationId | varchar(128) | Conversation scope within the user. |
+| Title | varchar(200) | Optional display title. |
+| CreatedAt / UpdatedAt | datetime | Audit timestamps (UTC). |
+
+Indexes: unique on `SessionKey`; composite on `(Channel, UserId, ConversationId, UpdatedAt)`.
+
+### ConversationHistoryEntries
+
+Message log for a session. Deleted automatically when the parent session is deleted.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | int | PK |
+| ConversationSessionId | int | FK → ConversationSessions (cascade delete). |
+| Role | varchar(32) | Enum stored as string: `System`, `User`, `Assistant`. |
+| Content | varchar(8000) | Raw message text. |
+| SentAtUtc | datetimeoffset | When the message was sent. |
+| CreatedAt / UpdatedAt | datetime | Audit timestamps (UTC). |
+
+Index: composite on `(ConversationSessionId, SentAtUtc)`.
+
+### UserMemoryEntries
+
+Key/value facts learned per user. Injected into context on the next request.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | int | PK |
+| Channel | varchar(64) | |
+| UserId | varchar(128) | |
+| Key | varchar(128) | Fact name, e.g. `native_language`. |
+| Value | varchar(2000) | Fact value. |
+| Confidence | double | 0.0–1.0 confidence score. |
+| IsActive | bool | Inactive entries are excluded from context. |
+| LastSeenAtUtc | datetimeoffset | Last time this fact was confirmed. |
+| CreatedAt / UpdatedAt | datetime | Audit timestamps (UTC). |
+
+Indexes: unique on `(Channel, UserId, Key)`; composite on `(Channel, UserId, IsActive, UpdatedAt)`.
+
+### SystemPromptEntries
+
+Versioned system prompts. Only one entry can be active at a time.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | int | PK |
+| PromptText | varchar(8000) | Full prompt text. |
+| Version | int | Unique version number, auto-incremented on each change. |
+| IsActive | bool | Unique filtered index ensures at most one active row. |
+| Source | varchar(64) | Who created the version: `default`, `manual`, `applied-proposal`, etc. |
+| CreatedAtUtc | datetimeoffset | When this version was created. |
+| CreatedAt / UpdatedAt | datetime | Audit timestamps (UTC). |
+
+Indexes: unique on `Version`; unique filtered index on `IsActive WHERE IsActive = TRUE`.
+
+### SystemPromptProposals
+
+Proposed prompt changes, pending user review.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | int | PK |
+| ProposedPrompt | varchar(8000) | The proposed text. |
+| Reason | varchar(1000) | Why the change is proposed. |
+| Confidence | double | Model confidence in the proposal. |
+| Source | varchar(64) | Origin: `ai`, `manual`, etc. |
+| Status | varchar(32) | `pending`, `applied`, `rejected`. |
+| CreatedAtUtc | datetimeoffset | |
+| ReviewedAtUtc | datetimeoffset | Nullable. Set when applied or rejected. |
+| AppliedSystemPromptEntryId | int | Nullable. Points to the SystemPromptEntry created on apply. |
+| CreatedAt / UpdatedAt | datetime | Audit timestamps (UTC). |
+
+Index: composite on `(Status, CreatedAtUtc)`.
+
+### VocabularyCards
+
+SQL index cache of vocabulary entries read from Excel decks. Used for fast duplicate detection before scanning files.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | int | PK |
+| Word | varchar(512) | Original word as stored in the deck. |
+| NormalizedWord | varchar(512) | Lowercased, trimmed form used for lookups. |
+| Meaning | varchar(8000) | Full meaning cell content from Excel. |
+| Examples | varchar(8000) | Example sentences from Excel. |
+| PartOfSpeechMarker | varchar(32) | Nullable. Extracted marker: `n`, `v`, `adj`, etc. |
+| DeckFileName | varchar(256) | Name of the source `.xlsx` file. |
+| DeckPath | varchar(1000) | Full path or OneDrive path to the deck. |
+| LastKnownRowNumber | int | Row number in Excel where the entry was last seen. |
+| StorageMode | varchar(32) | `local` or `graph`. |
+| SyncStatus | varchar(32) | Enum: `Synced`, `Pending`, `Failed`. Tracks whether the card is written back to Excel. |
+| LastSyncError | varchar(2000) | Nullable. Last Excel write error message. |
+| FirstSeenAtUtc | datetimeoffset | When the card was first cached. |
+| LastSeenAtUtc | datetimeoffset | Last time the card was found during a lookup or rebuild. |
+| SyncedAtUtc | datetimeoffset | Nullable. Last successful Excel sync. |
+| NotionSyncStatus | varchar(32) | Enum: `Pending`, `Processing`, `Synced`, `Failed`. Tracks Notion export. |
+| NotionPageId | varchar(128) | Nullable. Notion page ID after successful export. |
+| NotionAttemptCount | int | Number of Notion export attempts. |
+| NotionLastError | varchar(2000) | Nullable. Last Notion export error. |
+| NotionLastAttemptAtUtc | datetimeoffset | Nullable. |
+| NotionSyncedAtUtc | datetimeoffset | Nullable. Last successful Notion export. |
+| CreatedAt / UpdatedAt | datetime | Audit timestamps (UTC). |
+
+Indexes: unique on `(NormalizedWord, DeckFileName, StorageMode)`; composite on `(StorageMode, LastSeenAtUtc)`; composite on `(SyncStatus, UpdatedAt)`; composite on `(NotionSyncStatus, NotionLastAttemptAtUtc)`.
+
+### VocabularyCardTokens
+
+Individual word tokens extracted from `VocabularyCard.Word` for fast multi-token lookup.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | int | PK |
+| VocabularyCardId | int | FK → VocabularyCards (cascade delete). |
+| TokenNormalized | varchar(256) | Lowercased individual token. |
+
+Indexes: non-unique on `TokenNormalized`; unique composite on `(VocabularyCardId, TokenNormalized)`.
+
+### VocabularySyncJobs
+
+Persistent queue for failed or deferred Excel write operations. Ensures no data is lost if the file is locked or unavailable at save time.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | int | PK |
+| RequestedWord | varchar(512) | The word the user requested. |
+| AssistantReply | varchar(8000) | Full AI response to parse and write. |
+| TargetDeckFileName | varchar(256) | Target `.xlsx` file name. |
+| TargetDeckPath | varchar(1000) | Nullable. Resolved full path. |
+| OverridePartOfSpeech | varchar(32) | Nullable. User-specified POS override. |
+| StorageMode | varchar(32) | `local` or `graph`. |
+| Status | varchar(32) | Enum: `Pending`, `Processing`, `Completed`, `Failed`. |
+| AttemptCount | int | Total number of processing attempts. |
+| LastError | varchar(2000) | Nullable. Last failure reason. |
+| CreatedAtUtc | datetimeoffset | When the job was created. |
+| LastAttemptAtUtc | datetimeoffset | Nullable. |
+| CompletedAtUtc | datetimeoffset | Nullable. Set on success. |
+| CreatedAt / UpdatedAt | datetime | Audit timestamps (UTC). |
+
+Index: composite on `(Status, CreatedAtUtc)`.
+
+### ConversationIntentMetrics
+
+Daily aggregated counters for channel/agent/intent combinations. Used by the telemetry API.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | int | PK |
+| MetricDateUtc | date | Date portion only (no time). |
+| Channel | varchar(64) | |
+| AgentName | varchar(128) | Which agent handled the request. |
+| Intent | varchar(128) | Detected intent name. |
+| IsBatch | bool | Whether it was a batch request. |
+| Count | int | Number of requests in this bucket. |
+| TotalItems | int | Total vocabulary items processed (batch). |
+| LastSeenAtUtc | datetimeoffset | Last time this bucket was incremented. |
+| CreatedAt / UpdatedAt | datetime | Audit timestamps (UTC). |
+
+Indexes: unique on `(MetricDateUtc, Channel, AgentName, Intent, IsBatch)`; composite on `(MetricDateUtc, Channel, Count)`.
+
+### TelegramProcessedUpdates
+
+Deduplication table for Telegram webhook updates. Prevents double-processing when Telegram retries delivery.
+
+| Column | Type | Notes |
+|---|---|---|
+| UpdateId | long | PK (not auto-generated; value comes from Telegram). |
+| ProcessedAtUtc | datetimeoffset | When the update was first processed. |
+
+Index: non-unique on `ProcessedAtUtc`.
+
+---
+
 ## Vocabulary workflow
 
 When you type a word or phrase (non-command input):

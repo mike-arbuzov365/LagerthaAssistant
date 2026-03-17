@@ -172,7 +172,17 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
             var indexedLookup = await _vocabularyIndexService.FindByInputAsync(normalizedInput, cancellationToken);
             if (indexedLookup.Found)
             {
-                return new VocabularyWorkflowItemResult(normalizedInput, indexedLookup);
+                // Validate: filter out stale entries where the stored word is not a legitimate
+                // match for the query (can happen if fuzzy-matched results were previously indexed).
+                var validatedMatches = indexedLookup.Matches
+                    .Where(m => IsWordFormMatch(m.Word, normalizedInput))
+                    .ToList();
+
+                if (validatedMatches.Count > 0)
+                {
+                    var validatedLookup = new VocabularyLookupResult(normalizedInput, validatedMatches);
+                    return new VocabularyWorkflowItemResult(normalizedInput, validatedLookup);
+                }
             }
         }
 
@@ -213,6 +223,31 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
             cancellationToken);
 
         return new VocabularyWorkflowItemResult(normalizedInput, lookup, completion, preview);
+    }
+
+    /// <summary>
+    /// Returns true if <paramref name="query"/> is an exact match or a word form of <paramref name="storedWord"/>.
+    /// Word forms are separated by " - " (e.g. "go - went - gone").
+    /// </summary>
+    private static bool IsWordFormMatch(string storedWord, string query)
+    {
+        if (string.IsNullOrWhiteSpace(storedWord) || string.IsNullOrWhiteSpace(query))
+        {
+            return false;
+        }
+
+        var normalized = storedWord.Trim().ToLowerInvariant();
+        var normalizedQuery = query.Trim().ToLowerInvariant();
+
+        if (normalized.Equals(normalizedQuery, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // Check individual word forms (e.g. "go - went - gone")
+        var separators = new[] { " - ", ", ", "," };
+        var forms = normalized.Split(separators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return forms.Any(f => f.Equals(normalizedQuery, StringComparison.Ordinal));
     }
 
     private static VocabularyWorkflowItemResult CloneForInput(

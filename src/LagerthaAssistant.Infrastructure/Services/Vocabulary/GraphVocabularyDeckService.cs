@@ -317,6 +317,20 @@ public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IVocabu
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
+    {
+        await _operationSync.WaitAsync(cancellationToken);
+        try
+        {
+            var mirror = await GetOrCreateMirrorAsync(cancellationToken);
+            return await mirror.LocalService.GetAllEntriesAsync(cancellationToken);
+        }
+        finally
+        {
+            _operationSync.Release();
+        }
+    }
+
     private async Task<GraphUploadResult> UploadLocalDeckCopyAsync(
         GraphDriveFile remoteFile,
         MirrorContext mirror,

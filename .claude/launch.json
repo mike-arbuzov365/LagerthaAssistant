@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "LagerthaAssistant.Api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/LagerthaAssistant.Api/LagerthaAssistant.Api.csproj"],
+      "port": 1833
+    }
+  ]
+}

@@ -182,5 +182,8 @@ public sealed class VocabularyStorageModeProviderTests
                     "(n) test",
                     "Example sentence.")));
         }
+
+        public Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyDeckEntry>>([]);
     }
 }

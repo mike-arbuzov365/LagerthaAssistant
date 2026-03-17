@@ -36,7 +36,7 @@ internal static partial class Program
         No,
         SaveToOtherDeck
     }
-
+    
     private enum BatchSaveConfirmationChoice
     {
         SaveAll,

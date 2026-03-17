@@ -555,87 +555,6 @@ on the same page
         }
     }
 
-    [Fact]
-    public async Task FindInWritableDecksAsync_ShouldMatchMinorTypoForSingleWord()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-
-        try
-        {
-            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
-            CreateTemplateWorkbook(workbookPath, "undertake", "(v) take responsibility for a task", "We undertake migrations every quarter.");
-
-            var options = new VocabularyDeckOptions
-            {
-                FolderPath = tempDir,
-                FilePattern = "wm-*.xlsx",
-                ReadOnlyFileNames = [],
-                VerbDeckFileName = "wm-verbs-us-en.xlsx",
-                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
-            };
-
-            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
-
-            var lookup = await sut.FindInWritableDecksAsync("undertak");
-
-            Assert.True(lookup.Found);
-            var match = Assert.Single(lookup.Matches);
-            Assert.Equal("undertake", match.Word);
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir))
-            {
-                Directory.Delete(tempDir, true);
-            }
-        }
-    }
-
-    [Fact]
-    public async Task PreviewAppendFromAssistantReplyAsync_ShouldDetectDuplicateForMinorTypoWord()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-
-        try
-        {
-            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
-            CreateTemplateWorkbook(workbookPath, "undertake", "(v) take responsibility for a task", "We undertake migrations every quarter.");
-
-            var options = new VocabularyDeckOptions
-            {
-                FolderPath = tempDir,
-                FilePattern = "wm-*.xlsx",
-                ReadOnlyFileNames = [],
-                VerbDeckFileName = "wm-verbs-us-en.xlsx",
-                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
-            };
-
-            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
-
-            var response = """
-            undertak
-
-            (v) take responsibility for a task
-
-            We undertak infrastructure tasks.
-            """;
-
-            var preview = await sut.PreviewAppendFromAssistantReplyAsync("undertak", response);
-
-            Assert.Equal(VocabularyAppendPreviewStatus.DuplicateFound, preview.Status);
-            Assert.NotNull(preview.DuplicateMatches);
-            Assert.NotEmpty(preview.DuplicateMatches!);
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir))
-            {
-                Directory.Delete(tempDir, true);
-            }
-        }
-    }
 
 
     [Fact]
@@ -684,6 +603,216 @@ on the same page
             }
         }
     }
+
+    [Fact]
+    public async Task AppendFromAssistantReplyAsync_ShouldSaveMultipleMeaningsAsSeperateRows()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
+            CreateTemplateWorkbook(workbookPath, "travel", "(v) подорожувати", "Developers often travel to conferences.");
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                VerbDeckFileName = "wm-verbs-us-en.xlsx",
+                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+
+            var response = """
+            watch
+
+            (v) дивитися, спостерігати
+            (n) годинник
+
+            We watch system logs to detect anomalies early.
+            He checked his watch during the long deployment process.
+            """;
+
+            var result = await sut.AppendFromAssistantReplyAsync("watch", response);
+
+            Assert.Equal(VocabularyAppendStatus.Added, result.Status);
+
+            using var archive = ZipFile.OpenRead(workbookPath);
+            var sheetEntry = archive.GetEntry("xl/worksheets/sheet1.xml");
+            Assert.NotNull(sheetEntry);
+            using var reader = new StreamReader(sheetEntry!.Open());
+            var sheetXml = reader.ReadToEnd();
+
+            var doc = XDocument.Parse(sheetXml);
+            XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+            var rows = doc.Descendants(ns + "row")
+                .Where(r => (int?)r.Attribute("r") >= 12)
+                .OrderBy(r => (int)r.Attribute("r")!)
+                .ToList();
+
+            Assert.Equal(2, rows.Count);
+
+            var firstRowText = rows[0].ToString();
+            var secondRowText = rows[1].ToString();
+
+            Assert.Contains("дивитися", firstRowText, StringComparison.Ordinal);
+            Assert.Contains("годинник", secondRowText, StringComparison.Ordinal);
+
+            Assert.DoesNotContain("годинник", firstRowText, StringComparison.Ordinal);
+            Assert.DoesNotContain("дивитися", secondRowText, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task AppendFromAssistantReplyAsync_ShouldPutExamplesOnlyOnFirstRow_WhenMultipleMeanings()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
+            CreateTemplateWorkbook(workbookPath, "travel", "(v) подорожувати", "Developers often travel to conferences.");
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                VerbDeckFileName = "wm-verbs-us-en.xlsx",
+                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+
+            var response = """
+            watch
+
+            (v) дивитися, спостерігати
+            (n) годинник
+
+            We watch system logs to detect anomalies early.
+            He checked his watch during the long deployment process.
+            """;
+
+            await sut.AppendFromAssistantReplyAsync("watch", response);
+
+            using var archive = ZipFile.OpenRead(workbookPath);
+            var sheetEntry = archive.GetEntry("xl/worksheets/sheet1.xml");
+            Assert.NotNull(sheetEntry);
+            using var reader = new StreamReader(sheetEntry!.Open());
+            var sheetXml = reader.ReadToEnd();
+
+            var doc = XDocument.Parse(sheetXml);
+            XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+            var newRows = doc.Descendants(ns + "row")
+                .Where(r => (int?)r.Attribute("r") >= 12)
+                .OrderBy(r => (int)r.Attribute("r")!)
+                .ToList();
+
+            Assert.Equal(2, newRows.Count);
+
+            static string? GetCellText(XElement row, string colRef, XNamespace ns)
+            {
+                var rowNum = (int)row.Attribute("r")!;
+                var cellRef = $"{colRef}{rowNum}";
+                return row.Elements(ns + "c")
+                    .FirstOrDefault(c => c.Attribute("r")?.Value == cellRef)
+                    ?.Descendants(ns + "t")
+                    .FirstOrDefault()
+                    ?.Value;
+            }
+
+            var firstRowExamples = GetCellText(newRows[0], "H", ns);
+            var secondRowExamples = GetCellText(newRows[1], "H", ns);
+
+            Assert.NotNull(firstRowExamples);
+            Assert.NotEmpty(firstRowExamples!);
+            Assert.True(string.IsNullOrEmpty(secondRowExamples));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task AppendFromAssistantReplyAsync_ShouldSaveBothMeanings_WhenResponseIsInterleaved()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
+            CreateTemplateWorkbook(workbookPath, "travel", "(v) подорожувати", "Developers travel to conferences.");
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                VerbDeckFileName = "wm-verbs-us-en.xlsx",
+                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+
+            var response = """
+            watch
+
+            (v) дивитися, спостерігати
+
+            We watch system logs to detect anomalies early.
+
+            (n) годинник
+
+            He checked his watch during the long deployment process.
+            """;
+
+            var result = await sut.AppendFromAssistantReplyAsync("watch", response);
+
+            Assert.Equal(VocabularyAppendStatus.Added, result.Status);
+
+            using var archive = ZipFile.OpenRead(workbookPath);
+            var sheetEntry = archive.GetEntry("xl/worksheets/sheet1.xml");
+            Assert.NotNull(sheetEntry);
+            using var reader = new StreamReader(sheetEntry!.Open());
+            var doc = XDocument.Parse(reader.ReadToEnd());
+            XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+
+            var newRows = doc.Descendants(ns + "row")
+                .Where(r => (int?)r.Attribute("r") >= 12)
+                .OrderBy(r => (int)r.Attribute("r")!)
+                .ToList();
+
+            Assert.Equal(2, newRows.Count);
+            Assert.Contains("дивитися", newRows[0].ToString(), StringComparison.Ordinal);
+            Assert.Contains("годинник", newRows[1].ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain("годинник", newRows[0].ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
 
     private sealed class CountingReplyParser : IVocabularyReplyParser
     {
@@ -769,6 +898,89 @@ on the same page
   </sheetData>
 </worksheet>
 """);
+    }
+
+    [Fact]
+    public async Task GetAllEntriesAsync_ShouldReturnAllRowsFromAllDecks()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var verbDeckPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
+            var nounDeckPath = Path.Combine(tempDir, "wm-nouns-ua-en.xlsx");
+
+            CreateTemplateWorkbook(verbDeckPath, "resolve", "(v) вирішувати", "We need to resolve the issue.");
+            CreateTemplateWorkbook(nounDeckPath, "batch", "(n) партія, пакет", "Process a batch of records.");
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                VerbDeckFileName = "wm-verbs-us-en.xlsx",
+                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+
+            var entries = await sut.GetAllEntriesAsync();
+
+            Assert.Equal(2, entries.Count);
+            Assert.Contains(entries, e => e.Word == "resolve");
+            Assert.Contains(entries, e => e.Word == "batch");
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task GetAllEntriesAsync_ShouldReturnEmpty_WhenDecksHaveNoDataRows()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            // Create a workbook with no data beyond the header
+            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
+            using (var archive = ZipFile.Open(workbookPath, ZipArchiveMode.Create))
+            {
+                WriteEntry(archive, "[Content_Types].xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>""");
+                WriteEntry(archive, "_rels/.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>""");
+                WriteEntry(archive, "xl/_rels/workbook.xml.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>""");
+                WriteEntry(archive, "xl/workbook.xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>""");
+                WriteEntry(archive, "xl/worksheets/sheet1.xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="10"><c r="A10" t="inlineStr"><is><t>Header</t></is></c></row></sheetData></worksheet>""");
+            }
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                VerbDeckFileName = "wm-verbs-us-en.xlsx",
+                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+
+            var entries = await sut.GetAllEntriesAsync();
+
+            Assert.Empty(entries);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
     }
 
     private static string EscapeXml(string value)

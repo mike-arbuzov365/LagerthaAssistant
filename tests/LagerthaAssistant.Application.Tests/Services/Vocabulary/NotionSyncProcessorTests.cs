@@ -290,6 +290,13 @@ public sealed class NotionSyncProcessorTests
 
             return Task.FromResult(failed.Count);
         }
+
+        public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
+        {
+            var count = Cards.Count;
+            Cards.Clear();
+            return Task.FromResult(count);
+        }
     }
 
     private sealed class FakeNotionCardExportService : INotionCardExportService
