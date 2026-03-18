@@ -1,0 +1,8 @@
+{
+  "build": {
+    "command": "dotnet publish src/LagerthaAssistant.Api/LagerthaAssistant.Api.csproj -c Release -o out"
+  },
+  "deploy": {
+    "command": "ASPNETCORE_URLS=http://0.0.0.0:$PORT ./out/LagerthaAssistant.Api"
+  }
+}
