@@ -33,6 +33,7 @@ public sealed class LocalizationService : ILocalizationService
         ["locale.switched"] = "🌐 Language set to English",
         ["vocab.add.prompt"] = "Send me a word or phrase in English and I'll look it up for you.",
         ["vocab.url.prompt"] = "Send me a URL to an article and I'll extract new words for you.",
+        ["vocab.batch.prompt"] = "Send several words or phrases in one message (new lines, commas, semicolons, or sentences), and I will process them in batch mode.",
         ["vocab.list.empty"] = "Your vocabulary list is empty.",
         ["vocab.list.title"] = "📋 *Your latest words:*"
     };
@@ -65,6 +66,7 @@ public sealed class LocalizationService : ILocalizationService
         ["locale.switched"] = "🌐 Мову змінено на українську",
         ["vocab.add.prompt"] = "Надішли слово або фразу англійською, і я знайду її для тебе.",
         ["vocab.url.prompt"] = "Надішли посилання на статтю, і я витягну нові слова.",
+        ["vocab.batch.prompt"] = "Надішли кілька слів або фраз одним повідомленням (новими рядками, комами, крапкою з комою або реченнями), і я оброблю їх у batch режимі.",
         ["vocab.list.empty"] = "Твій список слів поки порожній.",
         ["vocab.list.title"] = "📋 *Останні слова:*"
     };
