@@ -216,6 +216,31 @@ public sealed class TelegramControllerTests
         Assert.IsType<TelegramReplyKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
     }
 
+    [Fact]
+    public async Task Webhook_ShouldHandleVocabBatchCallback_WithoutUnsupportedCommandMessage()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sender = new FakeTelegramBotSender();
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(BuildCallbackUpdate(1001, 2002, "vocab:batch", null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.batch", payload.Intent);
+        Assert.DoesNotContain("Unsupported command in API mode", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, orchestrator.Calls);
+    }
+
     private static TelegramController CreateSut(
         FakeConversationOrchestrator orchestrator,
         FakeConversationScopeAccessor scopeAccessor,

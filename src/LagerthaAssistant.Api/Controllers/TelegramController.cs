@@ -292,7 +292,7 @@ public sealed class TelegramController : ControllerBase
                     "vocab.url",
                     _navigationPresenter.GetText("vocab.url.prompt", locale),
                     MarkdownWithInlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale))),
-                "vocab:batch" => await BuildBatchModeResponseAsync(scope, locale, cancellationToken),
+                "vocab:batch" => BuildBatchModeResponse(locale),
                 _ => new TelegramRouteResponse(
                     "vocab.unknown",
                     _navigationPresenter.GetText("stub.wip", locale),
@@ -362,22 +362,11 @@ public sealed class TelegramController : ControllerBase
             MarkdownWithInlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
     }
 
-    private async Task<TelegramRouteResponse> BuildBatchModeResponseAsync(
-        ConversationScope scope,
-        string locale,
-        CancellationToken cancellationToken)
+    private TelegramRouteResponse BuildBatchModeResponse(string locale)
     {
-        var result = await _orchestrator.ProcessAsync(
-            "/batch",
-            scope.Channel,
-            scope.UserId,
-            scope.ConversationId,
-            cancellationToken);
-
-        var text = _responseFormatter.Format(result);
         return new TelegramRouteResponse(
             "vocab.batch",
-            text,
+            _navigationPresenter.GetText("vocab.batch.prompt", locale),
             MarkdownWithInlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
     }
 
