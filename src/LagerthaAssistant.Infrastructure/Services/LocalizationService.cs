@@ -12,18 +12,18 @@ public sealed class LocalizationService : ILocalizationService
         ["menu.main.vocabulary"] = "📚 Vocabulary",
         ["menu.main.shopping"] = "🛒 Shopping",
         ["menu.main.menu"] = "🍽 Menu",
-        ["menu.vocabulary.title"] = "📚 *Vocabulary*\n\nYou have *{0} words*. What shall we do?",
+        ["menu.vocabulary.title"] = "📚 Vocabulary\n\nYou have {0} words. What shall we do?",
         ["menu.vocabulary.add"] = "➕ Add word",
         ["menu.vocabulary.list"] = "📋 My list",
         ["menu.vocabulary.url"] = "🔗 From URL",
         ["menu.vocabulary.batch"] = "📦 Batch mode",
         ["menu.vocabulary.back"] = "🔙 Main menu",
-        ["menu.shopping.title"] = "🛒 *Shopping*",
+        ["menu.shopping.title"] = "🛒 Shopping",
         ["menu.shopping.add"] = "➕ Add item",
         ["menu.shopping.list"] = "📋 View list",
         ["menu.shopping.delete"] = "🗑 Remove item",
         ["menu.shopping.back"] = "🔙 Main menu",
-        ["menu.weekly.title"] = "🍽 *Weekly Menu*",
+        ["menu.weekly.title"] = "🍽 Weekly Menu",
         ["menu.weekly.view"] = "📅 View menu",
         ["menu.weekly.plan"] = "🤖 Plan with AI",
         ["menu.weekly.calories"] = "📊 Calories",
@@ -35,7 +35,7 @@ public sealed class LocalizationService : ILocalizationService
         ["vocab.url.prompt"] = "Send me a URL to an article and I'll extract new words for you.",
         ["vocab.batch.prompt"] = "Send several words or phrases in one message (new lines, commas, semicolons, or sentences), and I will process them in batch mode.",
         ["vocab.list.empty"] = "Your vocabulary list is empty.",
-        ["vocab.list.title"] = "📋 *Your latest words:*"
+        ["vocab.list.title"] = "📋 Your latest words:"
     };
 
     private static readonly IReadOnlyDictionary<string, string> Ukrainian = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -45,18 +45,18 @@ public sealed class LocalizationService : ILocalizationService
         ["menu.main.vocabulary"] = "📚 Словник",
         ["menu.main.shopping"] = "🛒 Покупки",
         ["menu.main.menu"] = "🍽 Меню",
-        ["menu.vocabulary.title"] = "📚 *Словник*\n\nУ тебе *{0} слів*. Що зробимо?",
+        ["menu.vocabulary.title"] = "📚 Словник\n\nУ тебе {0} слів. Що зробимо?",
         ["menu.vocabulary.add"] = "➕ Додати слово",
         ["menu.vocabulary.list"] = "📋 Мій список",
         ["menu.vocabulary.url"] = "🔗 З посилання",
         ["menu.vocabulary.batch"] = "📦 Batch режим",
         ["menu.vocabulary.back"] = "🔙 Головне меню",
-        ["menu.shopping.title"] = "🛒 *Покупки*",
+        ["menu.shopping.title"] = "🛒 Покупки",
         ["menu.shopping.add"] = "➕ Додати товар",
         ["menu.shopping.list"] = "📋 Список",
         ["menu.shopping.delete"] = "🗑 Видалити товар",
         ["menu.shopping.back"] = "🔙 Головне меню",
-        ["menu.weekly.title"] = "🍽 *Меню на тиждень*",
+        ["menu.weekly.title"] = "🍽 Меню на тиждень",
         ["menu.weekly.view"] = "📅 Переглянути меню",
         ["menu.weekly.plan"] = "🤖 Запропонуй меню",
         ["menu.weekly.calories"] = "📊 Калорії",
@@ -68,7 +68,7 @@ public sealed class LocalizationService : ILocalizationService
         ["vocab.url.prompt"] = "Надішли посилання на статтю, і я витягну нові слова.",
         ["vocab.batch.prompt"] = "Надішли кілька слів або фраз одним повідомленням (новими рядками, комами, крапкою з комою або реченнями), і я оброблю їх у batch режимі.",
         ["vocab.list.empty"] = "Твій список слів поки порожній.",
-        ["vocab.list.title"] = "📋 *Останні слова:*"
+        ["vocab.list.title"] = "📋 Останні слова:"
     };
 
     public string Get(string key, string locale)

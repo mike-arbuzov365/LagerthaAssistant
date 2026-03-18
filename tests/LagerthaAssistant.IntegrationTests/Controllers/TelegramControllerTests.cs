@@ -191,6 +191,7 @@ public sealed class TelegramControllerTests
         Assert.True(payload.Replied);
         Assert.Equal("nav.start", payload.Intent);
         Assert.IsType<TelegramReplyKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+        Assert.Null(sender.LastOptions?.ParseMode);
     }
 
     [Fact]
@@ -214,6 +215,7 @@ public sealed class TelegramControllerTests
         Assert.True(payload.Replied);
         Assert.Equal("nav.main", payload.Intent);
         Assert.IsType<TelegramReplyKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+        Assert.Null(sender.LastOptions?.ParseMode);
     }
 
     [Fact]

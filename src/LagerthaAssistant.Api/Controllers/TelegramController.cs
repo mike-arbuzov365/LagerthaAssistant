@@ -200,14 +200,14 @@ public sealed class TelegramController : ControllerBase
                 return new TelegramRouteResponse(
                     "nav.start",
                     _navigationPresenter.GetText("start.welcome", locale),
-                    MarkdownWithReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
+                    ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
 
             case NavigationRouteKind.MainChatButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Main, cancellationToken);
                 return new TelegramRouteResponse(
                     "nav.main.chat",
                     _navigationPresenter.GetText("menu.main.title", locale),
-                    MarkdownWithReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
+                    ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
 
             case NavigationRouteKind.MainVocabularyButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Vocabulary, cancellationToken);
@@ -218,14 +218,14 @@ public sealed class TelegramController : ControllerBase
                 return new TelegramRouteResponse(
                     "nav.shopping",
                     _navigationPresenter.GetText("menu.shopping.title", locale),
-                    MarkdownWithInlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+                    InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
 
             case NavigationRouteKind.MainWeeklyMenuButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.WeeklyMenu, cancellationToken);
                 return new TelegramRouteResponse(
                     "nav.weekly",
                     _navigationPresenter.GetText("menu.weekly.title", locale),
-                    MarkdownWithInlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+                    InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
 
             case NavigationRouteKind.Callback:
                 return await HandleCallbackAsync(route.CallbackData!, scope, locale, cancellationToken);
@@ -245,13 +245,13 @@ public sealed class TelegramController : ControllerBase
                 return new TelegramRouteResponse(
                     "shopping.stub",
                     _navigationPresenter.GetText("stub.wip", locale),
-                    MarkdownWithInlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+                    InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
 
             case NavigationRouteKind.WeeklyMenuText:
                 return new TelegramRouteResponse(
                     "weekly.stub",
                     _navigationPresenter.GetText("stub.wip", locale),
-                    MarkdownWithInlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+                    InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
 
             case NavigationRouteKind.DefaultText:
             default:
@@ -274,7 +274,7 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "nav.main",
                 _navigationPresenter.GetText("menu.main.title", locale),
-                MarkdownWithReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
+                ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
         }
 
         if (callbackData.StartsWith("vocab:", StringComparison.Ordinal))
@@ -286,17 +286,17 @@ public sealed class TelegramController : ControllerBase
                 "vocab:add" => new TelegramRouteResponse(
                     "vocab.add",
                     _navigationPresenter.GetText("vocab.add.prompt", locale),
-                    MarkdownWithInlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale))),
+                    InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale))),
                 "vocab:list" => await BuildVocabularyListResponseAsync(locale, cancellationToken),
                 "vocab:url" => new TelegramRouteResponse(
                     "vocab.url",
                     _navigationPresenter.GetText("vocab.url.prompt", locale),
-                    MarkdownWithInlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale))),
+                    InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale))),
                 "vocab:batch" => BuildBatchModeResponse(locale),
                 _ => new TelegramRouteResponse(
                     "vocab.unknown",
                     _navigationPresenter.GetText("stub.wip", locale),
-                    MarkdownWithInlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)))
+                    InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)))
             };
         }
 
@@ -306,7 +306,7 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "shopping.stub",
                 _navigationPresenter.GetText("stub.wip", locale),
-                MarkdownWithInlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+                InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
         }
 
         if (callbackData.StartsWith("weekly:", StringComparison.Ordinal))
@@ -315,7 +315,7 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "weekly.stub",
                 _navigationPresenter.GetText("stub.wip", locale),
-                MarkdownWithInlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
         }
 
         return new TelegramRouteResponse("nav.unknown", _navigationPresenter.GetText("stub.wip", locale));
@@ -329,7 +329,7 @@ public sealed class TelegramController : ControllerBase
         return new TelegramRouteResponse(
             "vocab.section",
             title,
-            MarkdownWithInlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+            InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
     }
 
     private async Task<TelegramRouteResponse> BuildVocabularyListResponseAsync(string locale, CancellationToken cancellationToken)
@@ -340,7 +340,7 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "vocab.list",
                 _navigationPresenter.GetText("vocab.list.empty", locale),
-                MarkdownWithInlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
         }
 
         var lines = new List<string>
@@ -359,7 +359,7 @@ public sealed class TelegramController : ControllerBase
         return new TelegramRouteResponse(
             "vocab.list",
             string.Join(Environment.NewLine, lines),
-            MarkdownWithInlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+            InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
     }
 
     private TelegramRouteResponse BuildBatchModeResponse(string locale)
@@ -367,14 +367,14 @@ public sealed class TelegramController : ControllerBase
         return new TelegramRouteResponse(
             "vocab.batch",
             _navigationPresenter.GetText("vocab.batch.prompt", locale),
-            MarkdownWithInlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+            InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
     }
 
-    private static TelegramSendOptions MarkdownWithReplyKeyboard(TelegramReplyKeyboardMarkup keyboard)
-        => new(ParseMode: "Markdown", ReplyMarkup: keyboard);
+    private static TelegramSendOptions ReplyKeyboard(TelegramReplyKeyboardMarkup keyboard)
+        => new(ReplyMarkup: keyboard);
 
-    private static TelegramSendOptions MarkdownWithInlineKeyboard(TelegramInlineKeyboardMarkup keyboard)
-        => new(ParseMode: "Markdown", ReplyMarkup: keyboard);
+    private static TelegramSendOptions InlineKeyboard(TelegramInlineKeyboardMarkup keyboard)
+        => new(ReplyMarkup: keyboard);
 
     private async Task CleanupOldUpdatesAsync()
     {
