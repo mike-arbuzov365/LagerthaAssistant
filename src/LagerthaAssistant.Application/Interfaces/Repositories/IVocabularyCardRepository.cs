@@ -34,5 +34,11 @@ public interface IVocabularyCardRepository
         DateTimeOffset requeuedAtUtc,
         CancellationToken cancellationToken = default);
 
+    Task<int> CountAllAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<VocabularyCard>> GetRecentAsync(
+        int take,
+        CancellationToken cancellationToken = default);
+
     Task<int> DeleteAllAsync(CancellationToken cancellationToken = default);
 }

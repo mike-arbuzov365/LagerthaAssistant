@@ -497,6 +497,22 @@ The function returns void when there is no value to return
             return Task.FromResult(failed.Count);
         }
 
+        public Task<int> CountAllAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(Cards.Count);
+
+        public Task<IReadOnlyList<VocabularyCard>> GetRecentAsync(
+            int take,
+            CancellationToken cancellationToken = default)
+        {
+            var cards = Cards
+                .OrderByDescending(card => card.FirstSeenAtUtc)
+                .ThenByDescending(card => card.Id)
+                .Take(Math.Max(0, take))
+                .ToList();
+
+            return Task.FromResult<IReadOnlyList<VocabularyCard>>(cards);
+        }
+
         public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
         {
             var count = Cards.Count;

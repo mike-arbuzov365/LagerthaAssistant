@@ -4,12 +4,18 @@ using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Controllers;
 using LagerthaAssistant.Api.Interfaces;
 using LagerthaAssistant.Api.Options;
+using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
+using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
+using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Models.Agents;
+using LagerthaAssistant.Application.Models.Localization;
+using LagerthaAssistant.Application.Navigation;
 using LagerthaAssistant.Application.Models.Vocabulary;
+using LagerthaAssistant.Domain.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -30,12 +36,18 @@ public sealed class TelegramControllerTests
         };
         var formatter = new FakeTelegramFormatter("assistant reply");
         var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = "vocabulary" };
 
         var sut = CreateSut(
             orchestrator,
             scopeAccessor,
             storageModeProvider,
             storagePreferenceService,
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
             formatter,
             sender,
             new TelegramOptions { Enabled = true });
@@ -68,11 +80,17 @@ public sealed class TelegramControllerTests
     public async Task Webhook_ShouldUseThreadBasedConversationId_WhenMessageThreadProvided()
     {
         var orchestrator = new FakeConversationOrchestrator();
+        var navigationState = new FakeNavigationStateService { CurrentSection = "vocabulary" };
         var sut = CreateSut(
             orchestrator,
             new FakeConversationScopeAccessor(),
             new FakeVocabularyStorageModeProvider(),
             new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
             new FakeTelegramFormatter("assistant reply"),
             new FakeTelegramBotSender(),
             new TelegramOptions { Enabled = true });
@@ -106,12 +124,13 @@ public sealed class TelegramControllerTests
             UpdateId: 1,
             Message: new TelegramIncomingMessage(
                 MessageId: 5,
-                From: new TelegramUserInfo(2002, false, "mike", "Mike", null),
+                From: new TelegramUserInfo(2002, false, "en", "mike", "Mike", null),
                 Chat: new TelegramChatInfo(1001, "private", "mike", null),
                 Text: null,
                 Caption: null,
                 MessageThreadId: null),
-            EditedMessage: null);
+            EditedMessage: null,
+            CallbackQuery: null);
 
         var response = await sut.Webhook(update, CancellationToken.None);
 
@@ -151,6 +170,52 @@ public sealed class TelegramControllerTests
         Assert.IsType<UnauthorizedResult>(response.Result);
     }
 
+    [Fact]
+    public async Task Webhook_ShouldHandleStartCommand_AndSendMainReplyKeyboard()
+    {
+        var sender = new FakeTelegramBotSender();
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "/start", null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("nav.start", payload.Intent);
+        Assert.IsType<TelegramReplyKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldHandleNavMainCallback_AndSendMainReplyKeyboard()
+    {
+        var sender = new FakeTelegramBotSender();
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(BuildCallbackUpdate(1001, 2002, "nav:main", null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("nav.main", payload.Intent);
+        Assert.IsType<TelegramReplyKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+    }
+
     private static TelegramController CreateSut(
         FakeConversationOrchestrator orchestrator,
         FakeConversationScopeAccessor scopeAccessor,
@@ -161,11 +226,71 @@ public sealed class TelegramControllerTests
         TelegramOptions options,
         FakeTelegramProcessedUpdateRepository? processedUpdates = null)
     {
-        return new TelegramController(
+        return CreateSut(
             orchestrator,
             scopeAccessor,
             storageModeProvider,
             storagePreferenceService,
+            assistantSessionService: null,
+            formatter,
+            sender,
+            options,
+            processedUpdates);
+    }
+
+    private static TelegramController CreateSut(
+        FakeConversationOrchestrator orchestrator,
+        FakeConversationScopeAccessor scopeAccessor,
+        FakeVocabularyStorageModeProvider storageModeProvider,
+        FakeVocabularyStoragePreferenceService storagePreferenceService,
+        FakeAssistantSessionService? assistantSessionService,
+        FakeTelegramFormatter formatter,
+        FakeTelegramBotSender sender,
+        TelegramOptions options,
+        FakeTelegramProcessedUpdateRepository? processedUpdates = null)
+    {
+        return CreateSut(
+            orchestrator,
+            scopeAccessor,
+            storageModeProvider,
+            storagePreferenceService,
+            assistantSessionService,
+            localeStateService: null,
+            navigationStateService: null,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            formatter,
+            sender,
+            options,
+            processedUpdates);
+    }
+
+    private static TelegramController CreateSut(
+        FakeConversationOrchestrator orchestrator,
+        FakeConversationScopeAccessor scopeAccessor,
+        FakeVocabularyStorageModeProvider storageModeProvider,
+        FakeVocabularyStoragePreferenceService storagePreferenceService,
+        FakeAssistantSessionService? assistantSessionService,
+        FakeUserLocaleStateService? localeStateService,
+        FakeNavigationStateService? navigationStateService,
+        FakeVocabularyCardRepository? vocabularyCardRepository,
+        FakeTelegramNavigationPresenter? navigationPresenter,
+        FakeTelegramFormatter formatter,
+        FakeTelegramBotSender sender,
+        TelegramOptions options,
+        FakeTelegramProcessedUpdateRepository? processedUpdates = null)
+    {
+        return new TelegramController(
+            orchestrator,
+            assistantSessionService ?? new FakeAssistantSessionService(),
+            scopeAccessor,
+            storageModeProvider,
+            storagePreferenceService,
+            localeStateService ?? new FakeUserLocaleStateService(),
+            navigationStateService ?? new FakeNavigationStateService(),
+            new NavigationRouter(),
+            vocabularyCardRepository ?? new FakeVocabularyCardRepository(),
+            navigationPresenter ?? new FakeTelegramNavigationPresenter(),
             formatter,
             sender,
             processedUpdates ?? new FakeTelegramProcessedUpdateRepository(),
@@ -179,12 +304,32 @@ public sealed class TelegramControllerTests
             UpdateId: 1,
             Message: new TelegramIncomingMessage(
                 MessageId: 10,
-                From: new TelegramUserInfo(userId, false, "mike", "Mike", null),
+                From: new TelegramUserInfo(userId, false, "en", "mike", "Mike", null),
                 Chat: new TelegramChatInfo(chatId, "private", "mike", null),
                 Text: text,
                 Caption: null,
                 MessageThreadId: messageThreadId),
-            EditedMessage: null);
+            EditedMessage: null,
+            CallbackQuery: null);
+    }
+
+    private static TelegramWebhookUpdateRequest BuildCallbackUpdate(long chatId, long userId, string callbackData, int? messageThreadId)
+    {
+        return new TelegramWebhookUpdateRequest(
+            UpdateId: 2,
+            Message: null,
+            EditedMessage: null,
+            CallbackQuery: new TelegramCallbackQuery(
+                Id: "cb-1",
+                From: new TelegramUserInfo(userId, false, "en", "mike", "Mike", null),
+                Message: new TelegramIncomingMessage(
+                    MessageId: 99,
+                    From: new TelegramUserInfo(userId, false, "en", "mike", "Mike", null),
+                    Chat: new TelegramChatInfo(chatId, "private", "mike", null),
+                    Text: null,
+                    Caption: null,
+                    MessageThreadId: messageThreadId),
+                Data: callbackData));
     }
 
     private sealed class FakeConversationOrchestrator : IConversationOrchestrator
@@ -290,6 +435,162 @@ public sealed class TelegramControllerTests
         }
     }
 
+    private sealed class FakeAssistantSessionService : IAssistantSessionService
+    {
+        public IReadOnlyCollection<LagerthaAssistant.Domain.AI.ConversationMessage> Messages => [];
+
+        public string NextContent { get; set; } = "assistant reply";
+
+        public Task<AssistantCompletionResult> AskAsync(string userMessage, CancellationToken cancellationToken = default)
+            => Task.FromResult(new AssistantCompletionResult(NextContent, "test-model", null));
+
+        public Task<IReadOnlyCollection<LagerthaAssistant.Domain.AI.ConversationMessage>> GetRecentHistoryAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyCollection<LagerthaAssistant.Domain.AI.ConversationMessage>>([]);
+
+        public Task<IReadOnlyCollection<UserMemoryEntry>> GetActiveMemoryAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyCollection<UserMemoryEntry>>([]);
+
+        public Task<string> GetSystemPromptAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(string.Empty);
+
+        public Task<IReadOnlyCollection<SystemPromptEntry>> GetSystemPromptHistoryAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyCollection<SystemPromptEntry>>([]);
+
+        public Task<IReadOnlyCollection<SystemPromptProposal>> GetSystemPromptProposalsAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyCollection<SystemPromptProposal>>([]);
+
+        public Task<SystemPromptProposal> CreateSystemPromptProposalAsync(string prompt, string reason, double confidence, string source = "manual", CancellationToken cancellationToken = default)
+            => Task.FromResult(new SystemPromptProposal());
+
+        public Task<SystemPromptProposal> GenerateSystemPromptProposalAsync(string goal, CancellationToken cancellationToken = default)
+            => Task.FromResult(new SystemPromptProposal());
+
+        public Task<string> ApplySystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
+            => Task.FromResult(string.Empty);
+
+        public Task RejectSystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<string> SetSystemPromptAsync(string prompt, string source = "manual", CancellationToken cancellationToken = default)
+            => Task.FromResult(prompt);
+
+        public void Reset()
+        {
+        }
+    }
+
+    private sealed class FakeUserLocaleStateService : IUserLocaleStateService
+    {
+        public string NextLocale { get; set; } = "en";
+
+        public Task<UserLocaleStateResult> EnsureLocaleAsync(
+            string channel,
+            string userId,
+            string? telegramLanguageCode,
+            string? incomingText,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new UserLocaleStateResult(NextLocale, IsInitialized: false, IsSwitched: false));
+        }
+    }
+
+    private sealed class FakeNavigationStateService : INavigationStateService
+    {
+        public string CurrentSection { get; set; } = "main";
+
+        public Task<string> GetCurrentSectionAsync(
+            string channel,
+            string userId,
+            string conversationId,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(CurrentSection);
+
+        public Task<string> SetCurrentSectionAsync(
+            string channel,
+            string userId,
+            string conversationId,
+            string section,
+            CancellationToken cancellationToken = default)
+        {
+            CurrentSection = section;
+            return Task.FromResult(section);
+        }
+    }
+
+    private sealed class FakeVocabularyCardRepository : IVocabularyCardRepository
+    {
+        public Task<IReadOnlyList<VocabularyCard>> FindByAnyTokenAsync(IReadOnlyCollection<string> normalizedTokens, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyCard>>([]);
+
+        public Task<VocabularyCard?> GetByIdentityAsync(string normalizedWord, string deckFileName, string storageMode, CancellationToken cancellationToken = default)
+            => Task.FromResult<VocabularyCard?>(null);
+
+        public Task AddAsync(VocabularyCard card, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<int> CountFailedNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<IReadOnlyList<VocabularyCard>> ClaimPendingNotionSyncAsync(int take, DateTimeOffset claimedAtUtc, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyCard>>([]);
+
+        public Task<IReadOnlyList<VocabularyCard>> GetFailedNotionSyncAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyCard>>([]);
+
+        public Task<int> RequeueFailedNotionSyncAsync(int take, DateTimeOffset requeuedAtUtc, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<int> CountAllAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<IReadOnlyList<VocabularyCard>> GetRecentAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyCard>>([]);
+
+        public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+    }
+
+    private sealed class FakeTelegramNavigationPresenter : ITelegramNavigationPresenter
+    {
+        public MainMenuLabels GetMainMenuLabels(string locale)
+            => new("🗣 Chat", "📚 Vocabulary", "🛒 Shopping", "🍽 Menu");
+
+        public string GetText(string key, string locale, params object[] args)
+        {
+            var value = key switch
+            {
+                "menu.main.title" => "What can I help you with?",
+                "start.welcome" => "Welcome",
+                "stub.wip" => "WIP",
+                "menu.vocabulary.title" => "Vocabulary {0}",
+                "vocab.add.prompt" => "Add word",
+                "vocab.url.prompt" => "Send URL",
+                "vocab.list.empty" => "Empty",
+                "vocab.list.title" => "Latest words",
+                _ => key
+            };
+
+            return args.Length == 0
+                ? value
+                : string.Format(value, args);
+        }
+
+        public TelegramReplyKeyboardMarkup BuildMainReplyKeyboard(string locale)
+            => new([[new TelegramKeyboardButton("🗣 Chat"), new TelegramKeyboardButton("📚 Vocabulary")], [new TelegramKeyboardButton("🛒 Shopping"), new TelegramKeyboardButton("🍽 Menu")]]);
+
+        public TelegramInlineKeyboardMarkup BuildVocabularyKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Add", "vocab:add")]]);
+
+        public TelegramInlineKeyboardMarkup BuildShoppingKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Add", "shop:add")]]);
+
+        public TelegramInlineKeyboardMarkup BuildWeeklyMenuKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("View", "weekly:view")]]);
+    }
+
     private sealed class FakeTelegramFormatter : ITelegramConversationResponseFormatter
     {
         private readonly string _formatted;
@@ -310,6 +611,8 @@ public sealed class TelegramControllerTests
 
         public string LastText { get; private set; } = string.Empty;
 
+        public TelegramSendOptions? LastOptions { get; private set; }
+
         public int? LastMessageThreadId { get; private set; }
 
         public bool SimulateFailure { get; set; }
@@ -317,12 +620,14 @@ public sealed class TelegramControllerTests
         public Task<TelegramSendResult> SendTextAsync(
             long chatId,
             string text,
+            TelegramSendOptions? options = null,
             int? messageThreadId = null,
             CancellationToken cancellationToken = default)
         {
             Calls++;
             LastChatId = chatId;
             LastText = text;
+            LastOptions = options;
             LastMessageThreadId = messageThreadId;
             var result = SimulateFailure
                 ? new TelegramSendResult(false, "Simulated send failure")
@@ -417,19 +722,25 @@ public sealed class TelegramControllerTests
     {
         var orchestrator = new FakeConversationOrchestrator();
         var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = "vocabulary" };
 
         var sut = CreateSut(
             orchestrator,
             new FakeConversationScopeAccessor(),
             new FakeVocabularyStorageModeProvider(),
             new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
             new FakeTelegramFormatter("edited reply"),
             sender,
             new TelegramOptions { Enabled = true });
 
         var editedMessage = new TelegramIncomingMessage(
             MessageId: 20,
-            From: new TelegramUserInfo(2002, false, "mike", "Mike", null),
+            From: new TelegramUserInfo(2002, false, "en", "mike", "Mike", null),
             Chat: new TelegramChatInfo(1001, "private", "mike", null),
             Text: "corrected",
             Caption: null,
@@ -438,7 +749,8 @@ public sealed class TelegramControllerTests
         var update = new TelegramWebhookUpdateRequest(
             UpdateId: 99,
             Message: null,
-            EditedMessage: editedMessage);
+            EditedMessage: editedMessage,
+            CallbackQuery: null);
 
         var response = await sut.Webhook(update, CancellationToken.None);
 

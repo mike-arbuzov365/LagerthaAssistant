@@ -6,6 +6,8 @@ using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Memory;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Interfaces.Agents;
+using LagerthaAssistant.Application.Interfaces;
+using LagerthaAssistant.Application.Navigation;
 using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Services;
 using LagerthaAssistant.Application.Services.Memory;
@@ -30,6 +32,9 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IVocabularyStoragePreferenceService, VocabularyStoragePreferenceService>();
         services.AddScoped<IVocabularySaveModePreferenceService, VocabularySaveModePreferenceService>();
         services.AddScoped<IVocabularySessionPreferenceService, VocabularySessionPreferenceService>();
+        services.AddScoped<IUserLocaleStateService, UserLocaleStateService>();
+        services.AddScoped<INavigationStateService, NavigationStateService>();
+        services.AddSingleton<NavigationRouter>();
 
         services.AddSingleton<IConversationIntentRouter, ConversationIntentRouter>();
         services.AddSingleton<IConversationCommandCatalogService, ConversationCommandCatalogService>();

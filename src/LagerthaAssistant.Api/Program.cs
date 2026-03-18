@@ -39,6 +39,7 @@ builder.Services.AddHttpClient("telegram", client =>
 });
 builder.Services.AddSingleton<ITelegramConversationResponseFormatter, TelegramConversationResponseFormatter>();
 builder.Services.AddSingleton<ITelegramBotSender, TelegramBotSender>();
+builder.Services.AddSingleton<ITelegramNavigationPresenter, TelegramNavigationPresenter>();
 builder.Services.AddRateLimiter(opts =>
 {
     opts.AddFixedWindowLimiter("telegram-webhook", o =>

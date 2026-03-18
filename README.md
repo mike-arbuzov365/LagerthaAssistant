@@ -331,6 +331,15 @@ Notes:
   - `userId = message.from.id`
   - `conversationId = chat.id` (or `chat.id:message_thread_id` for topic threads)
 - If `WebhookSecret` is set, requests must include header `X-Telegram-Bot-Api-Secret-Token`.
+- Telegram navigation layer:
+  - persistent Reply Keyboard on `/start` and when returning to main menu,
+  - inline section actions for vocabulary/shopping/weekly-menu flows,
+  - callback routing by `callback_data` prefixes: `nav:`, `vocab:`, `shop:`, `weekly:`.
+- Locale behavior:
+  - supported locales: `en`, `uk` (Russian is never used),
+  - first locale is initialized from Telegram `language_code` (`ru*` is forced to `uk`),
+  - locale is persisted in `UserMemoryEntries` under key `locale`,
+  - auto-switch between `en` and `uk` uses consecutive-message confidence tracking.
 
 ### Notion settings (SQL-first export adapter)
 
@@ -743,6 +752,6 @@ Mode hints:
 ## Verify
 
 ```powershell
-dotnet build LagerthaAssistant.slnx
-dotnet test LagerthaAssistant.slnx -v minimal
+dotnet build LagerthaAssistant.sln
+dotnet test LagerthaAssistant.sln -v minimal
 ```

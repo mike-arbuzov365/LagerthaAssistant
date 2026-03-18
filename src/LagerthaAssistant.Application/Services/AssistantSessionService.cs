@@ -1076,9 +1076,24 @@ public sealed class AssistantSessionService : IAssistantSessionService
     private async Task<IReadOnlyCollection<ConversationMessage>> BuildContextMessagesAsync(CancellationToken cancellationToken)
     {
         var memories = await _userMemoryRepository.GetActiveAsync(MemoryContextConstants.MemoryContextTake, _activeScope.Channel, _activeScope.UserId, cancellationToken);
+        var localeEntry = memories.FirstOrDefault(x => x.Key.Equals(LocalizationConstants.LocaleMemoryKey, StringComparison.Ordinal));
+        localeEntry ??= await _userMemoryRepository.GetByKeyAsync(LocalizationConstants.LocaleMemoryKey, _activeScope.Channel, _activeScope.UserId, cancellationToken);
+
+        var locale = string.Equals(localeEntry?.Value, LocalizationConstants.UkrainianLocale, StringComparison.OrdinalIgnoreCase)
+            ? LocalizationConstants.UkrainianLocale
+            : LocalizationConstants.EnglishLocale;
+
+        var localeContextMessage = ConversationMessage.Create(
+            MessageRole.System,
+            BuildLocaleInstruction(locale),
+            _clock.UtcNow);
+
+        var messages = _conversation.Messages.ToList();
+        messages.Insert(1, localeContextMessage);
+
         if (memories.Count == 0)
         {
-            return _conversation.Messages;
+            return messages;
         }
 
         var memoryBlock = string.Join(Environment.NewLine, memories.Select(x => $"- {x.Key}: {x.Value}"));
@@ -1087,10 +1102,23 @@ public sealed class AssistantSessionService : IAssistantSessionService
             $"{MemoryContextConstants.SystemContextPrefix}{Environment.NewLine}{memoryBlock}",
             _clock.UtcNow);
 
-        var messages = _conversation.Messages.ToList();
-        messages.Insert(1, memoryContextMessage);
+        messages.Insert(2, memoryContextMessage);
 
         return messages;
+    }
+
+    private static string BuildLocaleInstruction(string locale)
+    {
+        return string.Join(
+            Environment.NewLine,
+            [
+                $"User language: {locale}",
+                $"IMPORTANT: Always respond in the user's language ({locale}).",
+                "If locale is \"en\", respond in English.",
+                "If locale is \"uk\", respond in Ukrainian.",
+                "NEVER respond in Russian under any circumstances.",
+                "If the user writes in Russian, respond in Ukrainian and continue in Ukrainian."
+            ]);
     }
 }
 
