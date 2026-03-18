@@ -12,6 +12,23 @@ using Xunit;
 public sealed class GraphVocabularyDeckServiceTests
 {
     [Fact]
+    public async Task DisposeAsync_CalledTwice_ShouldNotThrow()
+    {
+        var workbookBytes = CreateTemplateWorkbookBytes("build", "(v) to build software components", "We build services daily.");
+        var remoteFile = new GraphDriveFile("file-1", "wm-verbs-us-en.xlsx", "etag-1", "/Apps/Flashcards Deluxe/wm-verbs-us-en.xlsx");
+
+        var graphClient = new FakeGraphDriveClient(
+            [remoteFile],
+            new Dictionary<string, byte[]> { [remoteFile.Id] = workbookBytes },
+            [new GraphUploadResult(true, UpdatedETag: "etag-2")]);
+
+        var sut = CreateSut(graphClient);
+
+        await sut.DisposeAsync();
+        await sut.DisposeAsync();
+    }
+
+    [Fact]
     public async Task PreviewThenAppend_ShouldReuseSessionMirror_AndAvoidRedownload()
     {
         var workbookBytes = CreateTemplateWorkbookBytes("build", "(v) to build software components", "We build services daily.");

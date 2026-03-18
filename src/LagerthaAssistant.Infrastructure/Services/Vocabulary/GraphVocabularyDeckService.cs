@@ -15,6 +15,7 @@ public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IVocabu
     private readonly ILogger<GraphVocabularyDeckService> _logger;
     private readonly Regex _filePatternRegex;
     private readonly SemaphoreSlim _operationSync = new(1, 1);
+    private int _disposeState;
 
     private MirrorContext? _sessionMirror;
     private CachedAppendPlan? _cachedAppendPlan;
@@ -274,16 +275,33 @@ public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IVocabu
 
     public async ValueTask DisposeAsync()
     {
-        await _operationSync.WaitAsync();
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+        {
+            return;
+        }
+
+        var lockTaken = false;
+
         try
         {
+            await _operationSync.WaitAsync();
+            lockTaken = true;
             await InvalidateMirrorCoreAsync();
             _cachedAppendPlan = null;
             _pendingUpload = null;
         }
+        catch (ObjectDisposedException)
+        {
+            // Scope disposal can invoke async dispose after nested dependencies
+            // were already torn down. We treat this as an already-disposed case.
+        }
         finally
         {
-            _operationSync.Release();
+            if (lockTaken)
+            {
+                _operationSync.Release();
+            }
+
             _operationSync.Dispose();
         }
     }

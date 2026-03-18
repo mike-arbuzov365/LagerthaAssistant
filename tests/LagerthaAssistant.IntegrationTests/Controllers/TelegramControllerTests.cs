@@ -191,6 +191,7 @@ public sealed class TelegramControllerTests
         Assert.True(payload.Replied);
         Assert.Equal("nav.start", payload.Intent);
         Assert.IsType<TelegramReplyKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+        Assert.Null(sender.LastOptions?.ParseMode);
     }
 
     [Fact]
@@ -214,6 +215,9 @@ public sealed class TelegramControllerTests
         Assert.True(payload.Replied);
         Assert.Equal("nav.main", payload.Intent);
         Assert.IsType<TelegramReplyKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+        Assert.Null(sender.LastOptions?.ParseMode);
+        Assert.Equal(1, sender.CallbackAnswers);
+        Assert.Equal("cb-1", sender.LastCallbackQueryId);
     }
 
     [Fact]
@@ -631,16 +635,19 @@ public sealed class TelegramControllerTests
     private sealed class FakeTelegramBotSender : ITelegramBotSender
     {
         public int Calls { get; private set; }
+        public int CallbackAnswers { get; private set; }
 
         public long LastChatId { get; private set; }
 
         public string LastText { get; private set; } = string.Empty;
+        public string? LastCallbackQueryId { get; private set; }
 
         public TelegramSendOptions? LastOptions { get; private set; }
 
         public int? LastMessageThreadId { get; private set; }
 
         public bool SimulateFailure { get; set; }
+        public bool SimulateCallbackAnswerFailure { get; set; }
 
         public Task<TelegramSendResult> SendTextAsync(
             long chatId,
@@ -656,6 +663,19 @@ public sealed class TelegramControllerTests
             LastMessageThreadId = messageThreadId;
             var result = SimulateFailure
                 ? new TelegramSendResult(false, "Simulated send failure")
+                : new TelegramSendResult(true);
+            return Task.FromResult(result);
+        }
+
+        public Task<TelegramSendResult> AnswerCallbackQueryAsync(
+            string callbackQueryId,
+            string? text = null,
+            CancellationToken cancellationToken = default)
+        {
+            CallbackAnswers++;
+            LastCallbackQueryId = callbackQueryId;
+            var result = SimulateCallbackAnswerFailure
+                ? new TelegramSendResult(false, "Simulated callback answer failure")
                 : new TelegramSendResult(true);
             return Task.FromResult(result);
         }
@@ -713,7 +733,7 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
-    public async Task Webhook_ShouldReturn500AndNotMarkProcessed_WhenSendFails()
+    public async Task Webhook_ShouldReturn200AndMarkProcessed_WhenSendFails()
     {
         var processedUpdates = new FakeTelegramProcessedUpdateRepository();
         var sender = new FakeTelegramBotSender { SimulateFailure = true };
@@ -732,14 +752,12 @@ public sealed class TelegramControllerTests
 
         var response = await sut.Webhook(update, CancellationToken.None);
 
-        var result = Assert.IsType<ObjectResult>(response.Result);
-        Assert.Equal(StatusCodes.Status500InternalServerError, result.StatusCode);
-
-        var payload = Assert.IsType<TelegramWebhookResponse>(result.Value);
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
         Assert.True(payload.Processed);
         Assert.False(payload.Replied);
         Assert.NotNull(payload.Error);
-        Assert.Equal(0, processedUpdates.MarkCalls);
+        Assert.Equal(1, processedUpdates.MarkCalls);
     }
 
     [Fact]
@@ -822,5 +840,26 @@ public sealed class TelegramControllerTests
 
         var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null), CancellationToken.None);
         Assert.IsType<UnauthorizedResult>(response.Result);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldReturnOk_WhenCallbackAnswerFails()
+    {
+        var sender = new FakeTelegramBotSender { SimulateCallbackAnswerFailure = true };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("reply"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(BuildCallbackUpdate(1001, 2002, "vocab:add", null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Processed);
+        Assert.Equal(1, sender.CallbackAnswers);
     }
 }
