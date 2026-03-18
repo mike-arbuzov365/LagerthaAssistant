@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using LagerthaAssistant.Api.Interfaces;
 using LagerthaAssistant.Api.Options;
 using Microsoft.Extensions.Options;
@@ -9,6 +10,11 @@ namespace LagerthaAssistant.Api.Services;
 
 public sealed class TelegramBotSender : ITelegramBotSender, IDisposable
 {
+    private static readonly JsonSerializerOptions TelegramJsonSerializerOptions = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     private readonly TelegramOptions _options;
     private readonly IHttpClientFactory? _httpClientFactory;
     private readonly HttpClient? _directClient;
@@ -65,7 +71,7 @@ public sealed class TelegramBotSender : ITelegramBotSender, IDisposable
             options?.ReplyMarkup);
         var url = BuildSendMessageUrl(_options.ApiBaseUrl, _options.BotToken);
 
-        var json = JsonSerializer.Serialize(payload);
+        var json = JsonSerializer.Serialize(payload, TelegramJsonSerializerOptions);
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
@@ -118,7 +124,7 @@ public sealed class TelegramBotSender : ITelegramBotSender, IDisposable
 
         var payload = new TelegramAnswerCallbackPayload(callbackQueryId.Trim(), text);
         var url = BuildAnswerCallbackUrl(_options.ApiBaseUrl, _options.BotToken);
-        var json = JsonSerializer.Serialize(payload);
+        var json = JsonSerializer.Serialize(payload, TelegramJsonSerializerOptions);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {

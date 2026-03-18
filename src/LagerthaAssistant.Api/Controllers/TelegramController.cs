@@ -175,7 +175,7 @@ public sealed class TelegramController : ControllerBase
                 cancellationToken);
 
             await _processedUpdates.MarkProcessedAsync(update.UpdateId, cancellationToken);
-            _ = CleanupOldUpdatesAsync();
+            await CleanupOldUpdatesAsync(CancellationToken.None);
 
             if (!sendResult.Succeeded)
             {
@@ -392,12 +392,12 @@ public sealed class TelegramController : ControllerBase
     private static TelegramSendOptions InlineKeyboard(TelegramInlineKeyboardMarkup keyboard)
         => new(ReplyMarkup: keyboard);
 
-    private async Task CleanupOldUpdatesAsync()
+    private async Task CleanupOldUpdatesAsync(CancellationToken cancellationToken)
     {
         try
         {
             var cutoff = DateTimeOffset.UtcNow.AddHours(-25);
-            await _processedUpdates.DeleteOlderThanAsync(cutoff);
+            await _processedUpdates.DeleteOlderThanAsync(cutoff, cancellationToken);
         }
         catch (Exception ex)
         {
