@@ -38,6 +38,7 @@ public sealed class TelegramBotSender : ITelegramBotSender, IDisposable
     public async Task<TelegramSendResult> SendTextAsync(
         long chatId,
         string text,
+        TelegramSendOptions? options = null,
         int? messageThreadId = null,
         CancellationToken cancellationToken = default)
     {
@@ -56,7 +57,12 @@ public sealed class TelegramBotSender : ITelegramBotSender, IDisposable
             return new TelegramSendResult(false, "Telegram message text is empty.");
         }
 
-        var payload = new TelegramSendMessagePayload(chatId, text, messageThreadId);
+        var payload = new TelegramSendMessagePayload(
+            chatId,
+            text,
+            messageThreadId,
+            options?.ParseMode,
+            options?.ReplyMarkup);
         var url = BuildSendMessageUrl(_options.ApiBaseUrl, _options.BotToken);
 
         var json = JsonSerializer.Serialize(payload);
@@ -125,5 +131,7 @@ public sealed class TelegramBotSender : ITelegramBotSender, IDisposable
     private sealed record TelegramSendMessagePayload(
         [property: System.Text.Json.Serialization.JsonPropertyName("chat_id")] long ChatId,
         [property: System.Text.Json.Serialization.JsonPropertyName("text")] string Text,
-        [property: System.Text.Json.Serialization.JsonPropertyName("message_thread_id")] int? MessageThreadId);
+        [property: System.Text.Json.Serialization.JsonPropertyName("message_thread_id")] int? MessageThreadId,
+        [property: System.Text.Json.Serialization.JsonPropertyName("parse_mode")] string? ParseMode,
+        [property: System.Text.Json.Serialization.JsonPropertyName("reply_markup")] object? ReplyMarkup);
 }

@@ -30,6 +30,9 @@ public sealed class ConversationSessionConfiguration : IEntityTypeConfiguration<
         builder.Property(x => x.Title)
             .HasMaxLength(200);
 
+        builder.Property(x => x.CurrentSection)
+            .HasMaxLength(32);
+
         builder.Property(x => x.CreatedAt)
             .IsRequired();
 

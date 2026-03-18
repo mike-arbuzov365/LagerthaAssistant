@@ -15,6 +15,8 @@ public sealed class ConversationSession : AuditableEntity
 
     public string? Title { get; set; }
 
+    public string? CurrentSection { get; set; }
+
     public ICollection<ConversationHistoryEntry> Messages { get; set; } = [];
 
     public static ConversationSession Create(

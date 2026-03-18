@@ -272,6 +272,47 @@ public sealed class VocabularyCardRepository : IVocabularyCardRepository
         }
     }
 
+    public async Task<int> CountAllAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Executing {Operation} for total vocabulary card count", RepositoryOperations.GetActive);
+            return await _context.VocabularyCards.CountAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for total vocabulary card count", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.GetActive, "Failed to count vocabulary cards", ex);
+        }
+    }
+
+    public async Task<IReadOnlyList<VocabularyCard>> GetRecentAsync(
+        int take,
+        CancellationToken cancellationToken = default)
+    {
+        if (take <= 0)
+        {
+            return [];
+        }
+
+        try
+        {
+            _logger.LogDebug("Executing {Operation}; Take: {Take}", RepositoryOperations.GetRecent, take);
+
+            return await _context.VocabularyCards
+                .AsNoTracking()
+                .OrderByDescending(x => x.FirstSeenAtUtc)
+                .ThenByDescending(x => x.Id)
+                .Take(take)
+                .ToListAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for recent vocabulary cards", RepositoryOperations.GetRecent);
+            throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.GetRecent, "Failed to load recent vocabulary cards", ex);
+        }
+    }
+
     public async Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
     {
         try

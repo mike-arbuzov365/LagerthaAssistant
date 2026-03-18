@@ -8,12 +8,14 @@ using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
+using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Domain.Abstractions;
 using LagerthaAssistant.Infrastructure.AI;
 using LagerthaAssistant.Infrastructure.Constants;
 using LagerthaAssistant.Infrastructure.Data;
 using LagerthaAssistant.Infrastructure.Options;
 using LagerthaAssistant.Infrastructure.Repositories;
+using LagerthaAssistant.Infrastructure.Services;
 using LagerthaAssistant.Infrastructure.Services.Vocabulary;
 using LagerthaAssistant.Infrastructure.Time;
 
@@ -122,6 +124,7 @@ public static class DependencyInjection
         services.AddSingleton<IGraphDriveClient, GraphDriveClient>();
 
         services.AddScoped<IAiChatClient, OpenAiChatClient>();
+        services.AddSingleton<ILocalizationService, LocalizationService>();
         services.AddScoped<INotionCardExportService, NotionCardExportService>();
         services.AddScoped<IConversationSessionRepository, ConversationSessionRepository>();
         services.AddScoped<IConversationHistoryRepository, ConversationHistoryRepository>();
