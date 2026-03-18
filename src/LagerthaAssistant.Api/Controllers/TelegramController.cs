@@ -84,7 +84,6 @@ public sealed class TelegramController : ControllerBase
     [EnableRateLimiting("telegram-webhook")]
     [ProducesResponseType(typeof(TelegramWebhookResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(TelegramWebhookResponse), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<TelegramWebhookResponse>> Webhook(
         [FromBody] TelegramWebhookUpdateRequest update,
         CancellationToken cancellationToken = default)
@@ -104,86 +103,103 @@ public sealed class TelegramController : ControllerBase
             return Ok(new TelegramWebhookResponse(false, false, null, "Ignored: unsupported update."));
         }
 
-        if (await _processedUpdates.IsProcessedAsync(update.UpdateId, cancellationToken))
+        try
         {
-            _logger.LogDebug("Telegram update {UpdateId} already processed; skipping.", update.UpdateId);
-            return Ok(new TelegramWebhookResponse(Processed: true, Replied: false, Intent: null, Error: null));
-        }
+            if (await _processedUpdates.IsProcessedAsync(update.UpdateId, cancellationToken))
+            {
+                _logger.LogDebug("Telegram update {UpdateId} already processed; skipping.", update.UpdateId);
+                return Ok(new TelegramWebhookResponse(Processed: true, Replied: false, Intent: null, Error: null));
+            }
 
-        var scope = ApiConversationScopeApplier.Apply(
-            _scopeAccessor,
-            TelegramChannel,
-            inbound.UserId,
-            inbound.ConversationId);
+            var scope = ApiConversationScopeApplier.Apply(
+                _scopeAccessor,
+                TelegramChannel,
+                inbound.UserId,
+                inbound.ConversationId);
 
-        var applyMode = await ApiVocabularyStorageModeApplier.TryApplyAsync(
-            _storageModeProvider,
-            _storagePreferenceService,
-            scope,
-            requestedStorageMode: null,
-            cancellationToken);
-        if (!applyMode.Success)
-        {
-            return Ok(new TelegramWebhookResponse(false, false, null, applyMode.Error));
-        }
+            var applyMode = await ApiVocabularyStorageModeApplier.TryApplyAsync(
+                _storageModeProvider,
+                _storagePreferenceService,
+                scope,
+                requestedStorageMode: null,
+                cancellationToken);
+            if (!applyMode.Success)
+            {
+                return Ok(new TelegramWebhookResponse(false, false, null, applyMode.Error));
+            }
 
-        var localeState = await _userLocaleStateService.EnsureLocaleAsync(
-            scope.Channel,
-            scope.UserId,
-            inbound.LanguageCode,
-            inbound.IsCallback ? null : inbound.Text,
-            cancellationToken);
+            var localeState = await _userLocaleStateService.EnsureLocaleAsync(
+                scope.Channel,
+                scope.UserId,
+                inbound.LanguageCode,
+                inbound.IsCallback ? null : inbound.Text,
+                cancellationToken);
 
-        var currentSection = await _navigationStateService.GetCurrentSectionAsync(
-            scope.Channel,
-            scope.UserId,
-            scope.ConversationId,
-            cancellationToken);
-
-        var labels = _navigationPresenter.GetMainMenuLabels(localeState.Locale);
-        var route = _navigationRouter.Resolve(
-            new NavigationRouteInput(inbound.Text, inbound.CallbackData, currentSection),
-            labels);
-
-        var response = await HandleRouteAsync(route, inbound, scope, localeState.Locale, cancellationToken);
-        var outboundText = response.Text;
-
-        if (localeState.IsSwitched)
-        {
-            var switchedText = _navigationPresenter.GetText("locale.switched", localeState.Locale);
-            outboundText = string.Concat(switchedText, Environment.NewLine, Environment.NewLine, outboundText);
-        }
-
-        var sendResult = await _telegramBotSender.SendTextAsync(
-            inbound.ChatId,
-            outboundText,
-            response.Options,
-            inbound.MessageThreadId,
-            cancellationToken);
-
-        if (!sendResult.Succeeded)
-        {
-            _logger.LogWarning(
-                "Telegram reply send failed. ChatId={ChatId}; UserId={UserId}; ConversationId={ConversationId}; Error={Error}",
-                inbound.ChatId,
+            var currentSection = await _navigationStateService.GetCurrentSectionAsync(
+                scope.Channel,
                 scope.UserId,
                 scope.ConversationId,
-                sendResult.ErrorMessage);
+                cancellationToken);
 
-            return StatusCode(
-                StatusCodes.Status500InternalServerError,
-                new TelegramWebhookResponse(Processed: true, Replied: false, Intent: response.Intent, Error: sendResult.ErrorMessage));
+            var labels = _navigationPresenter.GetMainMenuLabels(localeState.Locale);
+            var route = _navigationRouter.Resolve(
+                new NavigationRouteInput(inbound.Text, inbound.CallbackData, currentSection),
+                labels);
+
+            var response = await HandleRouteAsync(route, inbound, scope, localeState.Locale, cancellationToken);
+            var outboundText = response.Text;
+
+            if (localeState.IsSwitched)
+            {
+                var switchedText = _navigationPresenter.GetText("locale.switched", localeState.Locale);
+                outboundText = string.Concat(switchedText, Environment.NewLine, Environment.NewLine, outboundText);
+            }
+
+            if (inbound.IsCallback && !string.IsNullOrWhiteSpace(inbound.CallbackQueryId))
+            {
+                var answerResult = await _telegramBotSender.AnswerCallbackQueryAsync(inbound.CallbackQueryId, cancellationToken: cancellationToken);
+                if (!answerResult.Succeeded)
+                {
+                    _logger.LogWarning(
+                        "Telegram callback answer failed. CallbackQueryId={CallbackQueryId}; Error={Error}",
+                        inbound.CallbackQueryId,
+                        answerResult.ErrorMessage);
+                }
+            }
+
+            var sendResult = await _telegramBotSender.SendTextAsync(
+                inbound.ChatId,
+                outboundText,
+                response.Options,
+                inbound.MessageThreadId,
+                cancellationToken);
+
+            await _processedUpdates.MarkProcessedAsync(update.UpdateId, cancellationToken);
+            _ = CleanupOldUpdatesAsync();
+
+            if (!sendResult.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Telegram reply send failed. ChatId={ChatId}; UserId={UserId}; ConversationId={ConversationId}; Error={Error}",
+                    inbound.ChatId,
+                    scope.UserId,
+                    scope.ConversationId,
+                    sendResult.ErrorMessage);
+
+                return Ok(new TelegramWebhookResponse(Processed: true, Replied: false, Intent: response.Intent, Error: sendResult.ErrorMessage));
+            }
+
+            return Ok(new TelegramWebhookResponse(
+                Processed: true,
+                Replied: true,
+                Intent: response.Intent,
+                Error: null));
         }
-
-        await _processedUpdates.MarkProcessedAsync(update.UpdateId, cancellationToken);
-
-        _ = CleanupOldUpdatesAsync();
-
-        return Ok(new TelegramWebhookResponse(
-            Processed: true,
-            Replied: true,
-            Intent: response.Intent,
-            Error: null));
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error while processing Telegram update {UpdateId}.", update.UpdateId);
+            return Ok(new TelegramWebhookResponse(false, false, null, "Unexpected webhook processing error."));
+        }
     }
 
     private async Task<TelegramRouteResponse> HandleRouteAsync(

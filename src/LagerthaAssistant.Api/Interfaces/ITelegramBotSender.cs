@@ -8,6 +8,11 @@ public interface ITelegramBotSender
         TelegramSendOptions? options = null,
         int? messageThreadId = null,
         CancellationToken cancellationToken = default);
+
+    Task<TelegramSendResult> AnswerCallbackQueryAsync(
+        string callbackQueryId,
+        string? text = null,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record TelegramSendResult(

@@ -47,6 +47,7 @@ internal static class ApiTelegramUpdateMapper
             MessageThreadId: message.MessageThreadId,
             LanguageCode: message.From?.LanguageCode,
             CallbackData: null,
+            CallbackQueryId: null,
             IsCallback: false);
         return true;
     }
@@ -78,6 +79,7 @@ internal static class ApiTelegramUpdateMapper
             MessageThreadId: message.MessageThreadId,
             LanguageCode: callback.From?.LanguageCode,
             CallbackData: callback.Data.Trim(),
+            CallbackQueryId: callback.Id,
             IsCallback: true);
         return true;
     }
@@ -91,4 +93,5 @@ internal readonly record struct TelegramInboundMessage(
     int? MessageThreadId,
     string? LanguageCode,
     string? CallbackData,
+    string? CallbackQueryId,
     bool IsCallback);
