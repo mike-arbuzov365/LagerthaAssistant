@@ -686,6 +686,9 @@ public sealed class TelegramControllerTests
         private readonly HashSet<long> _processed = [];
 
         public int MarkCalls { get; private set; }
+        public int DeleteCalls { get; private set; }
+        public bool ThrowOnDelete { get; set; }
+        public CancellationToken LastDeleteCancellationToken { get; private set; }
 
         public void Seed(long updateId) => _processed.Add(updateId);
 
@@ -700,7 +703,17 @@ public sealed class TelegramControllerTests
         }
 
         public Task DeleteOlderThanAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+        {
+            DeleteCalls++;
+            LastDeleteCancellationToken = cancellationToken;
+
+            if (ThrowOnDelete)
+            {
+                throw new InvalidOperationException("Simulated cleanup failure.");
+            }
+
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]
@@ -758,6 +771,38 @@ public sealed class TelegramControllerTests
         Assert.False(payload.Replied);
         Assert.NotNull(payload.Error);
         Assert.Equal(1, processedUpdates.MarkCalls);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldReturnOk_WhenCleanupFails()
+    {
+        var processedUpdates = new FakeTelegramProcessedUpdateRepository
+        {
+            ThrowOnDelete = true
+        };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("reply"),
+            new FakeTelegramBotSender(),
+            new TelegramOptions { Enabled = true },
+            processedUpdates);
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(chatId: 1001, userId: 2002, text: "void", messageThreadId: null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Processed);
+        Assert.True(payload.Replied);
+        Assert.Equal(1, processedUpdates.MarkCalls);
+        Assert.Equal(1, processedUpdates.DeleteCalls);
+        Assert.False(processedUpdates.LastDeleteCancellationToken.CanBeCanceled);
     }
 
     [Fact]
