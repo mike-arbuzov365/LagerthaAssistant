@@ -1,9 +1,0 @@
-{
-  "provider": "dotnet",
-  "build": {
-    "cmds": ["dotnet publish LagerthaAssistant.Api/LagerthaAssistant.Api.csproj --no-restore -c Release -o out"]
-  },
-  "start": {
-    "cmd": "ASPNETCORE_URLS=http://0.0.0.0:$PORT ./out/LagerthaAssistant.Api"
-  }
-}
