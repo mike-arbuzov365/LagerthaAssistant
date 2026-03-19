@@ -900,6 +900,48 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldShowWordSuggestions_WhenWordIsUnrecognized()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = BuildVocabularyUnrecognizedResult()
+        };
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService
+            {
+                StoredLocale = LocalizationConstants.EnglishLocale,
+                NextLocale = LocalizationConstants.EnglishLocale
+            },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("Processed."),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "smle", null, languageCode: "en"),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocabulary.single", payload.Intent);
+        Assert.Contains("not recognized", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Did you mean", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("smile", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Processed.", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Webhook_LanguageChangeInSettings_ShouldSendMainReplyKeyboardInNewLocale()
     {
         var localeState = new FakeUserLocaleStateService
@@ -1376,6 +1418,25 @@ public sealed class TelegramControllerTests
             => Task.FromResult<string?>(null);
     }
 
+    private static ConversationAgentResult BuildVocabularyUnrecognizedResult()
+    {
+        var item = new ConversationAgentItemResult(
+            Input: "smle",
+            Lookup: new VocabularyLookupResult("smle", []),
+            AssistantCompletion: null,
+            AppendPreview: null)
+        {
+            IsWordUnrecognized = true,
+            WordSuggestions = ["smile", "smiley"]
+        };
+
+        return new ConversationAgentResult(
+            AgentName: "vocabulary-agent",
+            Intent: "vocabulary.single",
+            IsBatch: false,
+            Items: [item]);
+    }
+
     private sealed class FakeVocabularySyncProcessor : IVocabularySyncProcessor
     {
         public int ProcessCalls { get; private set; }
@@ -1677,6 +1738,8 @@ public sealed class TelegramControllerTests
                 "vocab.save_yes" => "Save",
                 "vocab.save_no" => "Skip",
                 "vocab.no_pending_save" => "No pending save",
+                "vocab.word_unrecognized" => "Word \"{0}\" is not recognized.",
+                "vocab.word_unrecognized_with_suggestions" => "Word \"{0}\" is not recognized. Did you mean: {1}?",
                 "command.console_only_generic" => "The {0} command is console-only",
                 "command.console_only_graph" => "The {0} command is console-only. Open Settings -> OneDrive / Graph.",
                 "onedrive.login_switched_to_graph" => "Connected and switched to graph",

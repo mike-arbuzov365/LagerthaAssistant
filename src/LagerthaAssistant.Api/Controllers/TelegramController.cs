@@ -858,6 +858,14 @@ public sealed class TelegramController : ControllerBase
         var saveMode = await _saveModePreferenceService.GetModeAsync(scope, cancellationToken);
         var saveCandidates = BuildSaveCandidates(result.Items);
         var previewWarnings = BuildPreviewWarnings(result.Items, locale);
+        var wordValidationWarnings = BuildWordValidationWarnings(result.Items, locale);
+
+        if (!string.IsNullOrWhiteSpace(wordValidationWarnings))
+        {
+            formatted = result.Items.All(item => item.IsWordUnrecognized)
+                ? wordValidationWarnings
+                : AppendTextBlock(formatted, wordValidationWarnings);
+        }
 
         if (saveMode == VocabularySaveMode.Off)
         {
@@ -1039,6 +1047,43 @@ public sealed class TelegramController : ControllerBase
 
             var localizedMessage = LocalizeGraphRelatedMessage(item.AppendPreview.Message, locale);
             warnings.Add($"warning: {localizedMessage}");
+        }
+
+        return string.Join(Environment.NewLine, warnings.Distinct(StringComparer.Ordinal));
+    }
+
+    private string BuildWordValidationWarnings(IReadOnlyList<ConversationAgentItemResult> items, string locale)
+    {
+        var warnings = new List<string>();
+
+        foreach (var item in items)
+        {
+            if (!item.IsWordUnrecognized)
+            {
+                continue;
+            }
+
+            var suggestions = item.WordSuggestions
+                .Where(suggestion => !string.IsNullOrWhiteSpace(suggestion))
+                .Select(suggestion => suggestion.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(5)
+                .ToList();
+
+            if (suggestions.Count > 0)
+            {
+                warnings.Add(_navigationPresenter.GetText(
+                    "vocab.word_unrecognized_with_suggestions",
+                    locale,
+                    item.Input,
+                    string.Join(", ", suggestions)));
+                continue;
+            }
+
+            warnings.Add(_navigationPresenter.GetText(
+                "vocab.word_unrecognized",
+                locale,
+                item.Input));
         }
 
         return string.Join(Environment.NewLine, warnings.Distinct(StringComparer.Ordinal));
