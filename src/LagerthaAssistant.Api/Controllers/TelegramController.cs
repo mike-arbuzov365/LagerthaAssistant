@@ -29,6 +29,7 @@ public sealed class TelegramController : ControllerBase
     private const string TelegramChannel = "telegram";
     private const string TelegramSecretHeader = "X-Telegram-Bot-Api-Secret-Token";
     private const string HtmlParseMode = "HTML";
+    private const string SectionSeparator = "--------------------";
     private const int ManualSyncBatchSize = 25;
     private const int ManualSyncMaxPasses = 5;
 
@@ -1194,6 +1195,7 @@ public sealed class TelegramController : ControllerBase
 
         var lines = new List<string>
         {
+            SectionSeparator,
             _navigationPresenter.GetText("vocab.found_in_deck_multi_title", locale)
         };
 

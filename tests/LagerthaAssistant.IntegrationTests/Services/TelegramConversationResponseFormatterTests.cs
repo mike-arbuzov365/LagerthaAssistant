@@ -64,11 +64,14 @@ public sealed class TelegramConversationResponseFormatterTests
         var result = new ConversationAgentResult("vocabulary-agent", "vocabulary.batch", true, [first, second]);
 
         var text = sut.Format(result);
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.Contains("🔹 void", text);
         Assert.Contains("🔹 prepare", text);
         Assert.Contains("🔹 void\n\nvoid answer", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("--------------------", text);
+        Assert.DoesNotContain("\n\n--------------------\n\n", normalized, StringComparison.Ordinal);
+        Assert.Contains("void answer\n--------------------\n🔹 prepare", normalized, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

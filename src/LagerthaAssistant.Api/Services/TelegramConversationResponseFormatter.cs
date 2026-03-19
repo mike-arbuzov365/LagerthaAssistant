@@ -45,9 +45,7 @@ public sealed class TelegramConversationResponseFormatter : ITelegramConversatio
 
             if (index < result.Items.Count - 1)
             {
-                builder.AppendLine();
                 builder.AppendLine(BatchSeparator);
-                builder.AppendLine();
             }
         }
 
