@@ -98,7 +98,7 @@ public sealed class VocabularySyncHostedService : BackgroundService
 
         try
         {
-            using var scope = _scopeFactory.CreateScope();
+            await using var scope = _scopeFactory.CreateAsyncScope();
             var syncProcessor = scope.ServiceProvider.GetRequiredService<IVocabularySyncProcessor>();
 
             var pendingBefore = await syncProcessor.GetPendingCountAsync(cancellationToken);

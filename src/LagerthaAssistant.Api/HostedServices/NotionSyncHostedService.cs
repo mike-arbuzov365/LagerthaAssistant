@@ -98,7 +98,7 @@ public sealed class NotionSyncHostedService : BackgroundService
 
         try
         {
-            using var scope = _scopeFactory.CreateScope();
+            await using var scope = _scopeFactory.CreateAsyncScope();
             var syncProcessor = scope.ServiceProvider.GetRequiredService<INotionSyncProcessor>();
 
             var statusBefore = await syncProcessor.GetStatusAsync(cancellationToken);
