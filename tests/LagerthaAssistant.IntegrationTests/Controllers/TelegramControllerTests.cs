@@ -687,6 +687,61 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldReportIndexReady_WhenLoginCompletedAndIndexAlreadyPopulated()
+    {
+        var storagePreference = new FakeVocabularyStoragePreferenceService
+        {
+            CurrentMode = VocabularyStorageMode.Local
+        };
+        var syncProcessor = new FakeVocabularySyncProcessor
+        {
+            NextSummary = new VocabularySyncRunSummary(
+                Requested: 0,
+                Processed: 0,
+                Completed: 0,
+                Requeued: 0,
+                Failed: 0,
+                PendingAfterRun: 0)
+        };
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            storagePreference,
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Settings },
+            vocabularyCardRepository: new FakeVocabularyCardRepository
+            {
+                CountAllResult = 3987
+            },
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularySyncProcessor: syncProcessor);
+
+        await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.Login, null, updateId: 33),
+            CancellationToken.None);
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.CheckLogin, null, updateId: 34),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("settings.onedrive.check.success", payload.Intent);
+        Assert.Contains("index is ready", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("3987", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("index appears empty", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldRunPendingSync_WhenOneDriveSyncNowCallbackReceived()
     {
         var sender = new FakeTelegramBotSender();
@@ -1855,6 +1910,8 @@ public sealed class TelegramControllerTests
 
     private sealed class FakeVocabularyCardRepository : IVocabularyCardRepository
     {
+        public int CountAllResult { get; set; }
+
         public Task<IReadOnlyList<VocabularyCard>> FindByAnyTokenAsync(IReadOnlyCollection<string> normalizedTokens, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<VocabularyCard>>([]);
 
@@ -1880,7 +1937,7 @@ public sealed class TelegramControllerTests
             => Task.FromResult(0);
 
         public Task<int> CountAllAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult(0);
+            => Task.FromResult(CountAllResult);
 
         public Task<IReadOnlyList<VocabularyCard>> GetRecentAsync(int take, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<VocabularyCard>>([]);
@@ -1950,6 +2007,7 @@ public sealed class TelegramControllerTests
                 "onedrive.rebuild_index_start" => "Start rebuild",
                 "onedrive.rebuild_index_started" => "Rebuilding index started...",
                 "onedrive.rebuild_index_suggest" => "Tip: index appears empty. Rebuild it.",
+                "onedrive.index_ready" => "Index is ready: {0} words.",
                 "onedrive.sync_now_done" => "Sync complete: completed={0}, requeued={1}, failed={2}, pending={3}.",
                 "onedrive.rebuild_index_done" => "Index rebuilt from writable decks: scanned={0}, indexed={1}.",
                 "onedrive.operation_failed" => "Operation failed: {0}",
