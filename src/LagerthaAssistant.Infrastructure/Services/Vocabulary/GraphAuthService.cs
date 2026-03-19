@@ -18,16 +18,18 @@ public sealed class GraphAuthService : IGraphAuthService
     };
 
     private readonly GraphOptions _options;
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(60) };
+    private readonly HttpClient _httpClient;
     private readonly ILogger<GraphAuthService> _logger;
     private readonly SemaphoreSlim _sync = new(1, 1);
 
     public GraphAuthService(
         GraphOptions options,
-        ILogger<GraphAuthService> logger)
+        ILogger<GraphAuthService> logger,
+        HttpClient? httpClient = null)
     {
         _options = options;
         _logger = logger;
+        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
     }
 
     public async Task<GraphAuthStatus> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -37,10 +39,17 @@ public sealed class GraphAuthService : IGraphAuthService
             return new GraphAuthStatus(false, false, "Graph integration is not configured. Set Graph.ClientId first.");
         }
 
+        var accessToken = await GetAccessTokenAsync(cancellationToken);
         var cache = await LoadTokenCacheAsync(cancellationToken);
         if (cache is null)
         {
             return new GraphAuthStatus(true, false, "Not authenticated. Use /graph login.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(accessToken))
+        {
+            cache = await LoadTokenCacheAsync(cancellationToken) ?? cache;
+            return new GraphAuthStatus(true, true, "Authenticated.", cache.AccessTokenExpiresAtUtc);
         }
 
         if (cache.AccessTokenExpiresAtUtc <= DateTimeOffset.UtcNow.AddMinutes(1))
@@ -48,7 +57,9 @@ public sealed class GraphAuthService : IGraphAuthService
             return new GraphAuthStatus(true, false, "Access token expired. Use /graph login.", cache.AccessTokenExpiresAtUtc);
         }
 
-        return new GraphAuthStatus(true, true, "Authenticated.", cache.AccessTokenExpiresAtUtc);
+        return string.IsNullOrWhiteSpace(cache.AccessToken)
+            ? new GraphAuthStatus(true, false, "Not authenticated. Use /graph login.")
+            : new GraphAuthStatus(true, true, "Authenticated.", cache.AccessTokenExpiresAtUtc);
     }
 
     public Task<GraphLoginResult> LoginAsync(CancellationToken cancellationToken = default)
