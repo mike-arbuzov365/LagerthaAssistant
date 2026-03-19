@@ -24,6 +24,7 @@ public static class ConsoleCommands
     public const string Exit = "/exit";
     public const string Reset = ConversationSlashCommands.Reset;
 
+    public const string Index = ConversationSlashCommands.Index;
     public const string IndexClear = ConversationSlashCommands.IndexClear;
     public const string IndexRebuild = ConversationSlashCommands.IndexRebuild;
 

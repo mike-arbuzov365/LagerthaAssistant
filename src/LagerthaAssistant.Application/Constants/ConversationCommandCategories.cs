@@ -6,6 +6,7 @@ public static class ConversationCommandCategories
     public const string Conversation = "Conversation";
     public const string SystemPrompt = "System prompt";
     public const string PromptProposals = "Prompt proposals";
+    public const string VocabularyIndex = "Vocabulary index";
     public const string SyncQueue = "Sync queue";
     public const string Session = "Session";
 
@@ -15,6 +16,7 @@ public static class ConversationCommandCategories
         Conversation,
         SystemPrompt,
         PromptProposals,
+        VocabularyIndex,
         SyncQueue,
         Session
     ];

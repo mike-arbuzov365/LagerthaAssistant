@@ -1079,9 +1079,7 @@ public sealed class AssistantSessionService : IAssistantSessionService
         var localeEntry = memories.FirstOrDefault(x => x.Key.Equals(LocalizationConstants.LocaleMemoryKey, StringComparison.Ordinal));
         localeEntry ??= await _userMemoryRepository.GetByKeyAsync(LocalizationConstants.LocaleMemoryKey, _activeScope.Channel, _activeScope.UserId, cancellationToken);
 
-        var locale = string.Equals(localeEntry?.Value, LocalizationConstants.UkrainianLocale, StringComparison.OrdinalIgnoreCase)
-            ? LocalizationConstants.UkrainianLocale
-            : LocalizationConstants.EnglishLocale;
+        var locale = LocalizationConstants.NormalizeLocaleCode(localeEntry?.Value);
 
         var localeContextMessage = ConversationMessage.Create(
             MessageRole.System,
@@ -1116,6 +1114,10 @@ public sealed class AssistantSessionService : IAssistantSessionService
                 $"IMPORTANT: Always respond in the user's language ({locale}).",
                 "If locale is \"en\", respond in English.",
                 "If locale is \"uk\", respond in Ukrainian.",
+                "If locale is \"es\", respond in Spanish.",
+                "If locale is \"fr\", respond in French.",
+                "If locale is \"de\", respond in German.",
+                "If locale is \"pl\", respond in Polish.",
                 "NEVER respond in Russian under any circumstances.",
                 "If the user writes in Russian, respond in Ukrainian and continue in Ukrainian."
             ]);

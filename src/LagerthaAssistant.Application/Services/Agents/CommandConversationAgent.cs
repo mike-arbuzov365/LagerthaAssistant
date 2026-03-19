@@ -88,6 +88,7 @@ public sealed class CommandConversationAgent : IConversationAgent, IConversation
             ConversationCommandIntentType.SyncRun => await BuildSyncRunResultAsync(intent.Number ?? DefaultSyncRunTake, cancellationToken),
             ConversationCommandIntentType.SyncRetryFailed => await BuildSyncRetryFailedResultAsync(intent.Number ?? DefaultSyncRetryFailedTake, cancellationToken),
             ConversationCommandIntentType.ResetConversation => ResetConversationResult(),
+            ConversationCommandIntentType.IndexHelp => BuildIndexHelpResult(),
             ConversationCommandIntentType.IndexClear => await BuildIndexClearResultAsync(cancellationToken),
             ConversationCommandIntentType.IndexRebuild => await BuildIndexRebuildResultAsync(cancellationToken),
             _ => ConversationAgentResult.Empty(
@@ -312,6 +313,18 @@ public sealed class CommandConversationAgent : IConversationAgent, IConversation
     {
         _assistantSessionService.Reset();
         return ConversationAgentResult.Empty(Name, "command.reset", "Conversation has been reset.");
+    }
+
+    private ConversationAgentResult BuildIndexHelpResult()
+    {
+        var lines = new[]
+        {
+            "Vocabulary index commands:",
+            $"- {ConversationSlashCommands.IndexClear} - clear SQL vocabulary index.",
+            $"- {ConversationSlashCommands.IndexRebuild} - rebuild SQL vocabulary index from decks."
+        };
+
+        return ConversationAgentResult.Empty(Name, "command.index.help", string.Join(Environment.NewLine, lines));
     }
 
     private async Task<ConversationAgentResult> BuildIndexClearResultAsync(CancellationToken cancellationToken)

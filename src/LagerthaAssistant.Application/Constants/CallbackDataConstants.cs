@@ -26,6 +26,7 @@ public static class CallbackDataConstants
         public const string Prefix = "settings:";
         public const string Language = "settings:language";
         public const string SaveMode = "settings:savemode";
+        public const string StorageMode = "settings:storagemode";
         public const string OneDrive = "settings:onedrive";
         public const string Notion = "settings:notion";
         public const string Back = "settings:back";
@@ -47,6 +48,13 @@ public static class CallbackDataConstants
         public const string CheckLogin = "onedrive:check_login";
     }
 
+    public static class StorageMode
+    {
+        public const string Prefix = "storagemode:";
+        public const string Local = "storagemode:local";
+        public const string Graph = "storagemode:graph";
+    }
+
     public static class Vocab
     {
         public const string Prefix = "vocab:";
@@ -54,6 +62,8 @@ public static class CallbackDataConstants
         public const string List = "vocab:list";
         public const string Url = "vocab:url";
         public const string Batch = "vocab:batch";
+        public const string SaveYes = "vocab:save:yes";
+        public const string SaveNo = "vocab:save:no";
     }
 
     public static class Shop

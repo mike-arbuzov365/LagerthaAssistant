@@ -228,6 +228,12 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
             return true;
         }
 
+        if (normalized.Equals(ConversationSlashCommands.Index, StringComparison.Ordinal))
+        {
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.IndexHelp, Raw: raw);
+            return true;
+        }
+
         if (normalized.Equals(ConversationSlashCommands.IndexClear, StringComparison.Ordinal))
         {
             intent = new ConversationCommandIntent(ConversationCommandIntentType.IndexClear, Raw: raw);
