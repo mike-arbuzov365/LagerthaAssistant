@@ -23,7 +23,7 @@ public sealed class NavigationRouterTests
     [Theory]
     [InlineData("nav:main")]
     [InlineData("vocab:add")]
-    [InlineData("vocab:list")]
+    [InlineData("vocab:stats")]
     [InlineData("shop:add")]
     [InlineData("shop:list")]
     [InlineData("weekly:view")]

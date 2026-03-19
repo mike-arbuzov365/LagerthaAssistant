@@ -1,5 +1,6 @@
 namespace LagerthaAssistant.Application.Interfaces.Repositories;
 
+using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Domain.Entities;
 
 public interface IVocabularyCardRepository
@@ -38,6 +39,12 @@ public interface IVocabularyCardRepository
 
     Task<IReadOnlyList<VocabularyCard>> GetRecentAsync(
         int take,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<VocabularyDeckStat>> GetDeckStatsAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<VocabularyPartOfSpeechStat>> GetPartOfSpeechStatsAsync(
         CancellationToken cancellationToken = default);
 
     Task<int> DeleteAllAsync(CancellationToken cancellationToken = default);

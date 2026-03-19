@@ -61,6 +61,59 @@ The function returns void when there is no value to return.
     }
 
     [Fact]
+    public async Task FindInWritableDecksAsync_MultipleCalls_ShouldReuseSessionMirror_AndAvoidRedownload()
+    {
+        var workbookBytes = CreateTemplateWorkbookBytes("build", "(v) to build software components", "We build services daily.");
+        var remoteFile = new GraphDriveFile("file-1", "wm-verbs-us-en.xlsx", "etag-1", "/Apps/Flashcards Deluxe/wm-verbs-us-en.xlsx");
+
+        var graphClient = new FakeGraphDriveClient(
+            [remoteFile],
+            new Dictionary<string, byte[]> { [remoteFile.Id] = workbookBytes },
+            [new GraphUploadResult(true, UpdatedETag: "etag-2")]);
+
+        await using var sut = CreateSut(graphClient);
+
+        var firstLookup = await sut.FindInWritableDecksAsync("build");
+        var secondLookup = await sut.FindInWritableDecksAsync("build");
+
+        Assert.True(firstLookup.Found);
+        Assert.True(secondLookup.Found);
+        Assert.Equal(1, graphClient.ListFilesCalls);
+        Assert.Equal(1, graphClient.DownloadCalls);
+        Assert.Equal(0, graphClient.UploadCalls);
+    }
+
+    [Fact]
+    public async Task FindInWritableDecksBatchAsync_RepeatedLargeBatches_ShouldUseSingleMirrorSetup()
+    {
+        var workbookBytes = CreateTemplateWorkbookBytes("build", "(v) to build software components", "We build services daily.");
+        var remoteFile = new GraphDriveFile("file-1", "wm-verbs-us-en.xlsx", "etag-1", "/Apps/Flashcards Deluxe/wm-verbs-us-en.xlsx");
+
+        var graphClient = new FakeGraphDriveClient(
+            [remoteFile],
+            new Dictionary<string, byte[]> { [remoteFile.Id] = workbookBytes },
+            [new GraphUploadResult(true, UpdatedETag: "etag-2")]);
+
+        await using var sut = CreateSut(graphClient);
+
+        var firstBatch = Enumerable.Range(0, 120).Select(index => $"word-{index}").ToList();
+        firstBatch[10] = "build";
+        firstBatch[90] = "build";
+
+        var secondBatch = Enumerable.Range(0, 120).Select(index => $"next-{index}").ToList();
+        secondBatch[35] = "build";
+
+        var firstLookup = await sut.FindInWritableDecksBatchAsync(firstBatch);
+        var secondLookup = await sut.FindInWritableDecksBatchAsync(secondBatch);
+
+        Assert.True(firstLookup["build"].Found);
+        Assert.True(secondLookup["build"].Found);
+        Assert.Equal(1, graphClient.ListFilesCalls);
+        Assert.Equal(1, graphClient.DownloadCalls);
+        Assert.Equal(0, graphClient.UploadCalls);
+    }
+
+    [Fact]
     public async Task AppendRetryAfterLock_ShouldRetryPendingUpload_WithoutDuplicateLocalAppend()
     {
         var workbookBytes = CreateTemplateWorkbookBytes("build", "(v) to build software components", "We build services daily.");

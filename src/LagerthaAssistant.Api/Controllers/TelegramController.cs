@@ -385,7 +385,8 @@ public sealed class TelegramController : ControllerBase
                     "vocab.add",
                     _navigationPresenter.GetText("vocab.add.prompt", locale),
                     InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale))),
-                CallbackDataConstants.Vocab.List => await BuildVocabularyListResponseAsync(locale, cancellationToken),
+                CallbackDataConstants.Vocab.Stats or CallbackDataConstants.Vocab.ListLegacy
+                    => await BuildVocabularyStatisticsResponseAsync(locale, cancellationToken),
                 CallbackDataConstants.Vocab.Url => new TelegramRouteResponse(
                     "vocab.url",
                     _navigationPresenter.GetText("vocab.url.prompt", locale),
@@ -1312,32 +1313,83 @@ public sealed class TelegramController : ControllerBase
             InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
     }
 
-    private async Task<TelegramRouteResponse> BuildVocabularyListResponseAsync(string locale, CancellationToken cancellationToken)
+    private async Task<TelegramRouteResponse> BuildVocabularyStatisticsResponseAsync(string locale, CancellationToken cancellationToken)
     {
-        var recent = await _vocabularyCardRepository.GetRecentAsync(10, cancellationToken);
-        if (recent.Count == 0)
+        var total = await _vocabularyCardRepository.CountAllAsync(cancellationToken);
+        if (total == 0)
         {
             return new TelegramRouteResponse(
-                "vocab.list",
-                _navigationPresenter.GetText("vocab.list.empty", locale),
+                "vocab.stats",
+                _navigationPresenter.GetText("vocab.stats.empty", locale),
                 InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
         }
 
+        var markerStats = await _vocabularyCardRepository.GetPartOfSpeechStatsAsync(cancellationToken);
+        var deckStats = await _vocabularyCardRepository.GetDeckStatsAsync(cancellationToken);
+
+        var nonEmptyMarkerStats = markerStats
+            .Where(item => item.Count > 0)
+            .ToList();
+        var nonEmptyDeckStats = deckStats
+            .Where(item => item.Count > 0)
+            .ToList();
+
+        var topDecks = nonEmptyDeckStats.Take(10).ToList();
+        var remainingDeckCount = Math.Max(0, nonEmptyDeckStats.Count - topDecks.Count);
+
         var lines = new List<string>
         {
-            _navigationPresenter.GetText("vocab.list.title", locale)
+            _navigationPresenter.GetText("vocab.stats.title", locale),
+            string.Empty,
+            _navigationPresenter.GetText("vocab.stats.total", locale, total),
+            _navigationPresenter.GetText("vocab.stats.summary", locale, nonEmptyDeckStats.Count, nonEmptyMarkerStats.Count),
+            string.Empty,
+            _navigationPresenter.GetText("vocab.stats.by_marker", locale)
         };
 
-        for (var i = 0; i < recent.Count; i++)
+        if (nonEmptyMarkerStats.Count == 0)
         {
-            var pos = string.IsNullOrWhiteSpace(recent[i].PartOfSpeechMarker)
-                ? string.Empty
-                : $" ({WebUtility.HtmlEncode(recent[i].PartOfSpeechMarker)})";
-            lines.Add($"{i + 1}) {WebUtility.HtmlEncode(recent[i].Word)}{pos}");
+            lines.Add(_navigationPresenter.GetText("vocab.stats.no_data", locale));
+        }
+        else
+        {
+            foreach (var stat in nonEmptyMarkerStats)
+            {
+                var marker = string.IsNullOrWhiteSpace(stat.Marker)
+                    ? _navigationPresenter.GetText("vocab.stats.marker_unknown", locale)
+                    : stat.Marker!;
+
+                lines.Add(_navigationPresenter.GetText("vocab.stats.item", locale, WebUtility.HtmlEncode(marker), stat.Count));
+            }
+        }
+
+        lines.Add(string.Empty);
+        lines.Add(_navigationPresenter.GetText("vocab.stats.top_decks", locale));
+
+        if (topDecks.Count == 0)
+        {
+            lines.Add(_navigationPresenter.GetText("vocab.stats.no_data", locale));
+        }
+        else
+        {
+            for (var i = 0; i < topDecks.Count; i++)
+            {
+                lines.Add(_navigationPresenter.GetText(
+                    "vocab.stats.deck_item",
+                    locale,
+                    i + 1,
+                    WebUtility.HtmlEncode(topDecks[i].DeckFileName),
+                    topDecks[i].Count));
+            }
+        }
+
+        if (remainingDeckCount > 0)
+        {
+            lines.Add(_navigationPresenter.GetText("vocab.stats.and_more_decks", locale, remainingDeckCount));
         }
 
         return new TelegramRouteResponse(
-            "vocab.list",
+            "vocab.stats",
             string.Join(Environment.NewLine, lines),
             InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
     }

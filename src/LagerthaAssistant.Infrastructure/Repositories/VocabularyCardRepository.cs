@@ -1,6 +1,7 @@
 namespace LagerthaAssistant.Infrastructure.Repositories;
 
 using LagerthaAssistant.Application.Interfaces.Repositories;
+using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Domain.Entities;
 using LagerthaAssistant.Domain.Enums;
 using LagerthaAssistant.Infrastructure.Constants;
@@ -310,6 +311,50 @@ public sealed class VocabularyCardRepository : IVocabularyCardRepository
         {
             _logger.LogError(ex, "Error in {Operation} for recent vocabulary cards", RepositoryOperations.GetRecent);
             throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.GetRecent, "Failed to load recent vocabulary cards", ex);
+        }
+    }
+
+    public async Task<IReadOnlyList<VocabularyDeckStat>> GetDeckStatsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Executing {Operation} for vocabulary deck stats", RepositoryOperations.GetRecent);
+
+            return await _context.VocabularyCards
+                .AsNoTracking()
+                .GroupBy(card => card.DeckFileName)
+                .Select(group => new VocabularyDeckStat(group.Key, group.Count()))
+                .OrderByDescending(item => item.Count)
+                .ThenBy(item => item.DeckFileName)
+                .ToListAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for vocabulary deck stats", RepositoryOperations.GetRecent);
+            throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.GetRecent, "Failed to load vocabulary deck stats", ex);
+        }
+    }
+
+    public async Task<IReadOnlyList<VocabularyPartOfSpeechStat>> GetPartOfSpeechStatsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Executing {Operation} for vocabulary part-of-speech stats", RepositoryOperations.GetRecent);
+
+            return await _context.VocabularyCards
+                .AsNoTracking()
+                .GroupBy(card => card.PartOfSpeechMarker)
+                .Select(group => new VocabularyPartOfSpeechStat(group.Key, group.Count()))
+                .OrderByDescending(item => item.Count)
+                .ThenBy(item => item.Marker)
+                .ToListAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for vocabulary part-of-speech stats", RepositoryOperations.GetRecent);
+            throw new RepositoryException(nameof(VocabularyCardRepository), RepositoryOperations.GetRecent, "Failed to load vocabulary part-of-speech stats", ex);
         }
     }
 

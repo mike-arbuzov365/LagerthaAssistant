@@ -187,6 +187,87 @@ public sealed class VocabularyWorkflowServiceTests
     }
 
     [Fact]
+    public async Task ProcessBatchAsync_ShouldCallBatchDeckLookupOnlyOnce_ForManyInputsWithDuplicates()
+    {
+        var order = new List<string>();
+        var assistant = new FakeAssistantSessionService(order)
+        {
+            CompletionFactory = input => new AssistantCompletionResult($"{input}\n\n(v) test\n\nExample.", "test-model", null)
+        };
+
+        var deck = new FakeBatchVocabularyDeckService(order)
+        {
+            BatchLookupFactory = inputs => inputs.ToDictionary(
+                input => input,
+                input => new VocabularyLookupResult(input, []),
+                StringComparer.OrdinalIgnoreCase),
+            PreviewFactory = (word, _) => new VocabularyAppendPreviewResult(
+                VocabularyAppendPreviewStatus.ReadyToAppend,
+                word,
+                "wm-verbs-us-en.xlsx",
+                "C:/deck/wm-verbs-us-en.xlsx")
+        };
+
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
+
+        var results = await sut.ProcessBatchAsync(["void", "prepare", "void", " ", "prepare", "mock"]);
+
+        Assert.Equal(5, results.Count);
+        Assert.Equal(1, deck.BatchLookupCalls);
+        Assert.Equal(0, deck.LookupCalls);
+        Assert.Equal(3, assistant.AskCalls);
+        Assert.Equal(3, deck.PreviewCalls);
+        Assert.Equal(1, index.BatchLookupCalls);
+    }
+
+    [Fact]
+    public async Task ProcessBatchAsync_PerformanceBudget_ShouldAvoidPerItemDeckLookups_ForLargeBatch()
+    {
+        var order = new List<string>();
+        var assistant = new FakeAssistantSessionService(order)
+        {
+            CompletionFactory = input => new AssistantCompletionResult($"{input}\n\n(v) test\n\nExample.", "test-model", null)
+        };
+
+        var deck = new FakeBatchVocabularyDeckService(order)
+        {
+            BatchLookupFactory = inputs =>
+            {
+                var map = inputs.ToDictionary(
+                    input => input,
+                    input => new VocabularyLookupResult(input, []),
+                    StringComparer.OrdinalIgnoreCase);
+
+                map["known"] = new VocabularyLookupResult(
+                    "known",
+                    [new VocabularyDeckEntry("wm-verbs-us-en.xlsx", "path", 12, "known", "(v) known", "known example")]);
+
+                return map;
+            },
+            PreviewFactory = (word, _) => new VocabularyAppendPreviewResult(
+                VocabularyAppendPreviewStatus.ReadyToAppend,
+                word,
+                "wm-verbs-us-en.xlsx",
+                "C:/deck/wm-verbs-us-en.xlsx")
+        };
+
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(assistant, deck, index, new FakeStorageModeProvider());
+
+        var inputs = Enumerable.Range(0, 200)
+            .Select(i => i % 10 == 0 ? "known" : $"new-word-{i}")
+            .ToArray();
+
+        var results = await sut.ProcessBatchAsync(inputs);
+
+        Assert.Equal(200, results.Count);
+        Assert.Equal(1, deck.BatchLookupCalls);
+        Assert.Equal(0, deck.LookupCalls);
+        Assert.Equal(1, index.BatchLookupCalls);
+    }
+
+    [Fact]
     public async Task ProcessBatchAsync_ShouldUseBulkIndexLookups_AndSkipPerItemIndexQueries()
     {
         var order = new List<string>();

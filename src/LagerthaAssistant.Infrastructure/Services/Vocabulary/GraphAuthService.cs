@@ -36,6 +36,8 @@ public sealed class GraphAuthService : IGraphAuthService
     private readonly IServiceScopeFactory? _serviceScopeFactory;
     private readonly SemaphoreSlim _sync = new(1, 1);
     private int _tokenCachePathLogged;
+    private TokenCacheEntry? _memoryTokenCache;
+    private bool _memoryTokenCacheLoaded;
 
     public GraphAuthService(
         GraphOptions options,
@@ -231,6 +233,7 @@ public sealed class GraphAuthService : IGraphAuthService
             }
 
             _logger.LogInformation("Graph logout completed.");
+            CacheTokenInMemory(null);
         }
         finally
         {
@@ -470,6 +473,11 @@ public sealed class GraphAuthService : IGraphAuthService
 
     private async Task<TokenCacheEntry?> LoadTokenCacheAsync(CancellationToken cancellationToken)
     {
+        if (_memoryTokenCacheLoaded)
+        {
+            return CloneTokenCacheEntry(_memoryTokenCache);
+        }
+
         var dbEntry = await LoadTokenCacheFromDatabaseAsync(cancellationToken);
         if (dbEntry is not null)
         {
@@ -478,7 +486,8 @@ public sealed class GraphAuthService : IGraphAuthService
                 dbEntry.AccessTokenExpiresAtUtc,
                 !string.IsNullOrWhiteSpace(dbEntry.RefreshToken));
             await TryMirrorTokenCacheToFileAsync(dbEntry, cancellationToken);
-            return dbEntry;
+            CacheTokenInMemory(dbEntry);
+            return CloneTokenCacheEntry(dbEntry);
         }
 
         var fileEntry = await LoadTokenCacheFromFileAsync(cancellationToken);
@@ -495,7 +504,8 @@ public sealed class GraphAuthService : IGraphAuthService
             _logger.LogInformation("Graph token cache source: none (database and file are empty).");
         }
 
-        return fileEntry;
+        CacheTokenInMemory(fileEntry);
+        return CloneTokenCacheEntry(fileEntry);
     }
 
     private async Task SaveTokenCacheAsync(TokenResponse tokenResponse, CancellationToken cancellationToken)
@@ -514,10 +524,32 @@ public sealed class GraphAuthService : IGraphAuthService
 
         await TrySaveTokenCacheToDatabaseAsync(entry, cancellationToken);
         await TryMirrorTokenCacheToFileAsync(entry, cancellationToken);
+        CacheTokenInMemory(entry);
         _logger.LogInformation(
             "Graph token cache updated. ExpiresAtUtc={ExpiresAtUtc}, HasRefreshToken={HasRefreshToken}.",
             entry.AccessTokenExpiresAtUtc,
             !string.IsNullOrWhiteSpace(entry.RefreshToken));
+    }
+
+    private void CacheTokenInMemory(TokenCacheEntry? entry)
+    {
+        _memoryTokenCache = CloneTokenCacheEntry(entry);
+        _memoryTokenCacheLoaded = true;
+    }
+
+    private static TokenCacheEntry? CloneTokenCacheEntry(TokenCacheEntry? entry)
+    {
+        if (entry is null)
+        {
+            return null;
+        }
+
+        return new TokenCacheEntry
+        {
+            AccessToken = entry.AccessToken,
+            RefreshToken = entry.RefreshToken,
+            AccessTokenExpiresAtUtc = entry.AccessTokenExpiresAtUtc
+        };
     }
 
     private string ResolveTokenCachePath()

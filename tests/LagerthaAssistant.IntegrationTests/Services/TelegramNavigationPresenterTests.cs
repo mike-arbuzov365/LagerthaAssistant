@@ -62,4 +62,18 @@ public sealed class TelegramNavigationPresenterTests
         Assert.Contains("settings:notion", callbacks);
         Assert.Contains("nav:main", callbacks);
     }
+
+    [Fact]
+    public void BuildVocabularyKeyboard_ShouldPlaceBatchBeforeStatistics()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildVocabularyKeyboard("uk");
+
+        Assert.Equal("vocab:add", keyboard.InlineKeyboard[0][0].CallbackData);
+        Assert.Equal("vocab:batch", keyboard.InlineKeyboard[0][1].CallbackData);
+        Assert.Equal("vocab:url", keyboard.InlineKeyboard[1][0].CallbackData);
+        Assert.Equal("vocab:stats", keyboard.InlineKeyboard[1][1].CallbackData);
+        Assert.Contains("Стат", keyboard.InlineKeyboard[1][1].Text, StringComparison.OrdinalIgnoreCase);
+    }
 }
