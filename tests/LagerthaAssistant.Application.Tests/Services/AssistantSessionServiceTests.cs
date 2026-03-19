@@ -52,7 +52,34 @@ public sealed class AssistantSessionServiceTests
             fx.AiClient.LastMessages!,
             x => x.Role == MessageRole.System
                 && x.Content.Contains("User language: uk", StringComparison.Ordinal)
+                && x.Content.Contains("If locale is \"fr\", respond in French.", StringComparison.Ordinal)
                 && x.Content.Contains("NEVER respond in Russian", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AskAsync_ShouldInjectLocaleInstruction_ForFrenchLocaleMemory()
+    {
+        var fx = new Fixture();
+        fx.MemoryRepo.Active.Add(new UserMemoryEntry
+        {
+            Key = LocalizationConstants.LocaleMemoryKey,
+            Value = LocalizationConstants.FrenchLocale,
+            IsActive = true,
+            LastSeenAtUtc = fx.Clock.UtcNow
+        });
+
+        var sut = fx.CreateSut();
+
+        await sut.AskAsync("hello");
+
+        Assert.NotNull(fx.AiClient.LastMessages);
+        Assert.Contains(
+            fx.AiClient.LastMessages!,
+            x => x.Role == MessageRole.System
+                && x.Content.Contains("User language: fr", StringComparison.Ordinal)
+                && x.Content.Contains("If locale is \"es\", respond in Spanish.", StringComparison.Ordinal)
+                && x.Content.Contains("If locale is \"de\", respond in German.", StringComparison.Ordinal)
+                && x.Content.Contains("If locale is \"pl\", respond in Polish.", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -33,7 +33,10 @@ public sealed class ConversationIntentRouterTests
             { ConversationSlashCommands.SyncFailed, ConversationCommandIntentType.SyncFailed },
             { ConversationSlashCommands.SyncRun, ConversationCommandIntentType.SyncRun },
             { ConversationSlashCommands.SyncRetryFailed, ConversationCommandIntentType.SyncRetryFailed },
-            { ConversationSlashCommands.Reset, ConversationCommandIntentType.ResetConversation }
+            { ConversationSlashCommands.Reset, ConversationCommandIntentType.ResetConversation },
+            { ConversationSlashCommands.Index, ConversationCommandIntentType.IndexHelp },
+            { ConversationSlashCommands.IndexClear, ConversationCommandIntentType.IndexClear },
+            { ConversationSlashCommands.IndexRebuild, ConversationCommandIntentType.IndexRebuild }
         };
 
     [Theory]

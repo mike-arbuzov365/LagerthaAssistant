@@ -27,11 +27,29 @@ public sealed class CommandConversationAgentTests
         Assert.Contains($"{ConversationCommandCategories.Conversation}:", result.Message);
         Assert.Contains($"{ConversationCommandCategories.SystemPrompt}:", result.Message);
         Assert.Contains($"{ConversationCommandCategories.PromptProposals}:", result.Message);
+        Assert.Contains($"{ConversationCommandCategories.VocabularyIndex}:", result.Message);
         Assert.Contains($"{ConversationCommandCategories.SyncQueue}:", result.Message);
         Assert.Contains($"{ConversationCommandCategories.Session}:", result.Message);
         Assert.Contains($"- {ConversationSlashCommands.Help}", result.Message);
         Assert.Contains($"- {ConversationSlashCommands.PromptSet} <text>", result.Message);
+        Assert.Contains($"- {ConversationSlashCommands.Index}", result.Message);
+        Assert.Contains($"- {ConversationSlashCommands.IndexClear}", result.Message);
+        Assert.Contains($"- {ConversationSlashCommands.IndexRebuild}", result.Message);
         Assert.Contains($"- {ConversationSlashCommands.SyncRun} <n>", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldReturnIndexHelp_ForIndexCommand()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = CreateSut(session, sync);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext(ConversationSlashCommands.Index, [ConversationSlashCommands.Index]));
+
+        Assert.Equal("command.index.help", result.Intent);
+        Assert.Contains(ConversationSlashCommands.IndexClear, result.Message);
+        Assert.Contains(ConversationSlashCommands.IndexRebuild, result.Message);
     }
 
     [Fact]

@@ -34,6 +34,9 @@ public sealed class ConversationControllerTests
         Assert.All(payload, item => Assert.False(string.IsNullOrWhiteSpace(item.Category)));
         Assert.Contains(payload, item => item.Command == ConversationSlashCommands.Help && item.Category == ConversationCommandCategories.General);
         Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.PromptSet} <text>" && item.Category == ConversationCommandCategories.SystemPrompt);
+        Assert.Contains(payload, item => item.Command == ConversationSlashCommands.Index && item.Category == ConversationCommandCategories.VocabularyIndex);
+        Assert.Contains(payload, item => item.Command == ConversationSlashCommands.IndexClear && item.Category == ConversationCommandCategories.VocabularyIndex);
+        Assert.Contains(payload, item => item.Command == ConversationSlashCommands.IndexRebuild && item.Category == ConversationCommandCategories.VocabularyIndex);
         Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.SyncRun} <n>" && item.Category == ConversationCommandCategories.SyncQueue);
         Assert.Contains(payload, item => item.Command == ConversationSlashCommands.SyncFailed && item.Category == ConversationCommandCategories.SyncQueue);
         Assert.Contains(payload, item => item.Command == $"{ConversationSlashCommands.SyncRetryFailed} <n>" && item.Category == ConversationCommandCategories.SyncQueue);
@@ -60,6 +63,11 @@ public sealed class ConversationControllerTests
         var syncGroup = Assert.Single(payload, group => group.Category == ConversationCommandCategories.SyncQueue);
         Assert.Contains(syncGroup.Commands, item => item.Command == ConversationSlashCommands.SyncRun);
         Assert.Contains(syncGroup.Commands, item => item.Command == ConversationSlashCommands.SyncFailed);
+
+        var indexGroup = Assert.Single(payload, group => group.Category == ConversationCommandCategories.VocabularyIndex);
+        Assert.Contains(indexGroup.Commands, item => item.Command == ConversationSlashCommands.Index);
+        Assert.Contains(indexGroup.Commands, item => item.Command == ConversationSlashCommands.IndexClear);
+        Assert.Contains(indexGroup.Commands, item => item.Command == ConversationSlashCommands.IndexRebuild);
     }
 
     [Fact]
