@@ -80,6 +80,39 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldForceGraphStorageMode_ForTelegramEvenWhenPreferenceIsLocal()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var storageModeProvider = new FakeVocabularyStorageModeProvider();
+        var storagePreferenceService = new FakeVocabularyStoragePreferenceService
+        {
+            CurrentMode = VocabularyStorageMode.Local
+        };
+
+        var sut = CreateSut(
+            orchestrator,
+            scopeAccessor,
+            storageModeProvider,
+            storagePreferenceService,
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("assistant reply"),
+            new FakeTelegramBotSender(),
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(BuildTextUpdate(chatId: 1001, userId: 2002, text: "void", messageThreadId: null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Processed);
+        Assert.Equal(VocabularyStorageMode.Graph, storageModeProvider.CurrentMode);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldUseThreadBasedConversationId_WhenMessageThreadProvided()
     {
         var orchestrator = new FakeConversationOrchestrator();
@@ -471,6 +504,127 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldAskForSave_WhenSaveModeAskAndCardReady()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = BuildVocabularySingleResult()
+        };
+        var persistence = new FakeVocabularyPersistenceService();
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("assistant reply"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            processedUpdates: null,
+            vocabularyPersistenceService: persistence);
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "smile", null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Replied);
+        Assert.Equal("vocabulary.single", payload.Intent);
+        Assert.Equal(0, persistence.Calls);
+
+        var keyboard = Assert.IsType<TelegramInlineKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+        var callbackData = keyboard.InlineKeyboard.SelectMany(row => row).Select(button => button.CallbackData).ToList();
+        Assert.Contains(CallbackDataConstants.Vocab.SaveYes, callbackData);
+        Assert.Contains(CallbackDataConstants.Vocab.SaveNo, callbackData);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldSavePendingCard_WhenSaveConfirmationCallbackReceived()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = BuildVocabularySingleResult()
+        };
+        var persistence = new FakeVocabularyPersistenceService();
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("assistant reply"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            processedUpdates: null,
+            vocabularyPersistenceService: persistence);
+
+        await sut.Webhook(BuildTextUpdate(1001, 2002, "smile", null), CancellationToken.None);
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.SaveYes, null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.save.done", payload.Intent);
+        Assert.Equal(1, persistence.Calls);
+        Assert.Contains("Saved to", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldSwitchStorageModeToGraph_WhenOneDriveLoginCompleted()
+    {
+        var storagePreference = new FakeVocabularyStoragePreferenceService
+        {
+            CurrentMode = VocabularyStorageMode.Local
+        };
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            storagePreference,
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Settings },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.Login, null, updateId: 21),
+            CancellationToken.None);
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.CheckLogin, null, updateId: 22),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("settings.onedrive.check.success", payload.Intent);
+        Assert.Equal(VocabularyStorageMode.Graph, storagePreference.CurrentMode);
+        Assert.Contains("switched", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldShowOneDriveScreen_WhenSettingsOneDriveCallback()
     {
         var localeState = new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" };
@@ -613,7 +767,8 @@ public sealed class TelegramControllerTests
         FakeTelegramFormatter formatter,
         FakeTelegramBotSender sender,
         TelegramOptions options,
-        FakeTelegramProcessedUpdateRepository? processedUpdates = null)
+        FakeTelegramProcessedUpdateRepository? processedUpdates = null,
+        FakeVocabularyPersistenceService? vocabularyPersistenceService = null)
     {
         return CreateSut(
             orchestrator,
@@ -628,7 +783,8 @@ public sealed class TelegramControllerTests
             formatter,
             sender,
             options,
-            processedUpdates);
+            processedUpdates,
+            vocabularyPersistenceService);
     }
 
     private static TelegramController CreateSut(
@@ -644,7 +800,8 @@ public sealed class TelegramControllerTests
         FakeTelegramFormatter formatter,
         FakeTelegramBotSender sender,
         TelegramOptions options,
-        FakeTelegramProcessedUpdateRepository? processedUpdates = null)
+        FakeTelegramProcessedUpdateRepository? processedUpdates = null,
+        FakeVocabularyPersistenceService? vocabularyPersistenceService = null)
     {
         return new TelegramController(
             orchestrator,
@@ -657,6 +814,7 @@ public sealed class TelegramControllerTests
             new NavigationRouter(),
             vocabularyCardRepository ?? new FakeVocabularyCardRepository(),
             new FakeVocabularySaveModePreferenceService(),
+            vocabularyPersistenceService ?? new FakeVocabularyPersistenceService(),
             new FakeGraphAuthService(),
             navigationPresenter ?? new FakeTelegramNavigationPresenter(),
             formatter,
@@ -686,15 +844,40 @@ public sealed class TelegramControllerTests
             CallbackQuery: null);
     }
 
+    private static ConversationAgentResult BuildVocabularySingleResult()
+    {
+        var item = new ConversationAgentItemResult(
+            Input: "smile",
+            Lookup: new VocabularyLookupResult("smile", []),
+            AssistantCompletion: new AssistantCompletionResult(
+                "smile\n\n(v) усміхатися\n\nShe smiled after fixing the bug.",
+                "test-model",
+                Usage: null),
+            AppendPreview: new VocabularyAppendPreviewResult(
+                Status: VocabularyAppendPreviewStatus.ReadyToAppend,
+                Word: "smile",
+                TargetDeckFileName: "wm-verbs-us-en.xlsx",
+                TargetDeckPath: "/tmp/wm-verbs-us-en.xlsx",
+                DuplicateMatches: null,
+                Message: null));
+
+        return new ConversationAgentResult(
+            AgentName: "vocabulary-agent",
+            Intent: "vocabulary.single",
+            IsBatch: false,
+            Items: [item]);
+    }
+
     private static TelegramWebhookUpdateRequest BuildCallbackUpdate(
         long chatId,
         long userId,
         string? callbackData,
         int? messageThreadId,
+        long updateId = 2,
         string? languageCode = "en")
     {
         return new TelegramWebhookUpdateRequest(
-            UpdateId: 2,
+            UpdateId: updateId,
             Message: null,
             EditedMessage: null,
             CallbackQuery: new TelegramCallbackQuery(
@@ -846,6 +1029,39 @@ public sealed class TelegramControllerTests
         {
             CurrentMode = mode;
             return Task.FromResult(mode);
+        }
+    }
+
+    private sealed class FakeVocabularyPersistenceService : IVocabularyPersistenceService
+    {
+        public int Calls { get; private set; }
+
+        public string? LastRequestedWord { get; private set; }
+
+        public string? LastAssistantReply { get; private set; }
+
+        public string? LastForcedDeckFileName { get; private set; }
+
+        public string? LastOverridePartOfSpeech { get; private set; }
+
+        public VocabularyAppendResult NextResult { get; set; } = new(
+            VocabularyAppendStatus.Added,
+            Entry: new VocabularyDeckEntry("wm-verbs-us-en.xlsx", "/tmp/wm-verbs-us-en.xlsx", 42, "smile", "(v) усміхатися", "She smiled."));
+
+        public Task<VocabularyAppendResult> AppendFromAssistantReplyAsync(
+            string requestedWord,
+            string assistantReply,
+            string? forcedDeckFileName = null,
+            string? overridePartOfSpeech = null,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            LastRequestedWord = requestedWord;
+            LastAssistantReply = assistantReply;
+            LastForcedDeckFileName = forcedDeckFileName;
+            LastOverridePartOfSpeech = overridePartOfSpeech;
+
+            return Task.FromResult(NextResult);
         }
     }
 
@@ -1066,10 +1282,24 @@ public sealed class TelegramControllerTests
                 "settings.title" => "Settings",
                 "settings.language" => "Language",
                 "settings.save_mode" => "Save mode",
+                "settings.storage_mode" => "Storage mode",
                 "settings.onedrive" => "OneDrive / Graph",
                 "settings.notion" => "Notion (coming soon)",
                 "savemode.title" => "Save mode: {0}",
                 "savemode.changed" => "Changed to {0}",
+                "storagemode.title" => "Storage mode: {0}",
+                "storagemode.changed" => "Changed storage to {0}",
+                "vocab.save.ask" => "Save \"{0}\" to \"{1}\"?",
+                "vocab.save.saved" => "Saved to {0} (row {1}).",
+                "vocab.save.duplicate" => "Duplicate",
+                "vocab.save.skip" => "Save skipped",
+                "vocab.save_failed" => "Save failed: {0}",
+                "vocab.save_batch_ask_hint" => "Batch ask hint",
+                "vocab.save_mode_off_hint" => "Save mode off hint",
+                "vocab.save_yes" => "Save",
+                "vocab.save_no" => "Skip",
+                "vocab.no_pending_save" => "No pending save",
+                "onedrive.login_switched_to_graph" => "Connected and switched to graph",
                 "onedrive.title" => "OneDrive / Graph",
                 "onedrive.status_connected" => "Status: connected",
                 "onedrive.status_disconnected" => "Status: disconnected",
@@ -1122,8 +1352,14 @@ public sealed class TelegramControllerTests
         public TelegramInlineKeyboardMarkup BuildSaveModeKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Ask", "savemode:ask")]]);
 
+        public TelegramInlineKeyboardMarkup BuildStorageModeKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Graph", "storagemode:graph")]]);
+
         public TelegramInlineKeyboardMarkup BuildOneDriveKeyboard(string locale, bool isConnected, bool includeCheckStatusButton = false)
             => new([[new TelegramInlineKeyboardButton("Back", "settings:back")]]);
+
+        public TelegramInlineKeyboardMarkup BuildVocabularySaveConfirmationKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Save", "vocab:save:yes"), new TelegramInlineKeyboardButton("Skip", "vocab:save:no")]]);
 
         public TelegramInlineKeyboardMarkup BuildNotionKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Back", "settings:back")]]);

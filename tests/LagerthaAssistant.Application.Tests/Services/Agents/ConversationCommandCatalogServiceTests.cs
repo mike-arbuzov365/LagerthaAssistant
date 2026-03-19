@@ -15,6 +15,9 @@ public sealed class ConversationCommandCatalogServiceTests
 
         Assert.NotEmpty(commands);
         Assert.Contains(commands, item => item.Command == ConversationSlashCommands.Help);
+        Assert.Contains(commands, item => item.Command == ConversationSlashCommands.Index);
+        Assert.Contains(commands, item => item.Command == ConversationSlashCommands.IndexClear);
+        Assert.Contains(commands, item => item.Command == ConversationSlashCommands.IndexRebuild);
         Assert.Contains(commands, item => item.Command == $"{ConversationSlashCommands.SyncRun} <n>");
         Assert.Contains(commands, item => item.Command == ConversationSlashCommands.SyncFailed);
         Assert.Contains(commands, item => item.Command == $"{ConversationSlashCommands.SyncRetryFailed} <n>");
@@ -31,5 +34,10 @@ public sealed class ConversationCommandCatalogServiceTests
 
         var general = Assert.Single(groups, group => group.Category == ConversationCommandCategories.General);
         Assert.Contains(general.Commands, command => command.Command == ConversationSlashCommands.Help);
+
+        var index = Assert.Single(groups, group => group.Category == ConversationCommandCategories.VocabularyIndex);
+        Assert.Contains(index.Commands, command => command.Command == ConversationSlashCommands.Index);
+        Assert.Contains(index.Commands, command => command.Command == ConversationSlashCommands.IndexClear);
+        Assert.Contains(index.Commands, command => command.Command == ConversationSlashCommands.IndexRebuild);
     }
 }

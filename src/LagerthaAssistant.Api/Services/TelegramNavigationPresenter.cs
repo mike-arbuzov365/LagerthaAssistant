@@ -191,6 +191,15 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             ]);
     }
 
+    public TelegramInlineKeyboardMarkup BuildVocabularySaveConfirmationKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("vocab.save_yes", locale, CallbackDataConstants.Vocab.SaveYes), Button("vocab.save_no", locale, CallbackDataConstants.Vocab.SaveNo)]
+            ]);
+    }
+
     private TelegramInlineKeyboardButton Button(string key, string locale, string callbackData)
         => new(_localizationService.Get(key, locale), callbackData);
 

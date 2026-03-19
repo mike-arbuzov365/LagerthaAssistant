@@ -94,6 +94,10 @@ internal static partial class Program
         WriteCommandHelp(ConsoleCommands.GraphLogout, "Sign out and clear cached Graph tokens.");
 
         Console.WriteLine();
+        Console.WriteLine(ConversationCommandCategories.VocabularyIndex);
+        WriteCatalogCommandsForCategory(ConversationCommandCategories.VocabularyIndex);
+
+        Console.WriteLine();
         Console.WriteLine(ConversationCommandCategories.SyncQueue);
         WriteCatalogCommandsForCategory(ConversationCommandCategories.SyncQueue);
 
