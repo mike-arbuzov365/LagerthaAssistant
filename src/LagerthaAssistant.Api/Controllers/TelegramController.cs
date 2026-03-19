@@ -15,6 +15,7 @@ using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Navigation;
+using LagerthaAssistant.Infrastructure.Options;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
@@ -48,6 +49,8 @@ public sealed class TelegramController : ControllerBase
     private readonly IVocabularySyncProcessor _vocabularySyncProcessor;
     private readonly IVocabularyIndexService _vocabularyIndexService;
     private readonly IVocabularyDeckService _vocabularyDeckService;
+    private readonly IVocabularyReplyParser _vocabularyReplyParser;
+    private readonly VocabularyDeckOptions _vocabularyDeckOptions;
     private readonly IGraphAuthService _graphAuthService;
     private readonly ITelegramNavigationPresenter _navigationPresenter;
     private readonly ITelegramConversationResponseFormatter _responseFormatter;
@@ -71,6 +74,8 @@ public sealed class TelegramController : ControllerBase
         IVocabularySyncProcessor vocabularySyncProcessor,
         IVocabularyIndexService vocabularyIndexService,
         IVocabularyDeckService vocabularyDeckService,
+        IVocabularyReplyParser vocabularyReplyParser,
+        VocabularyDeckOptions vocabularyDeckOptions,
         IGraphAuthService graphAuthService,
         ITelegramNavigationPresenter navigationPresenter,
         ITelegramConversationResponseFormatter responseFormatter,
@@ -93,6 +98,8 @@ public sealed class TelegramController : ControllerBase
         _vocabularySyncProcessor = vocabularySyncProcessor;
         _vocabularyIndexService = vocabularyIndexService;
         _vocabularyDeckService = vocabularyDeckService;
+        _vocabularyReplyParser = vocabularyReplyParser;
+        _vocabularyDeckOptions = vocabularyDeckOptions;
         _graphAuthService = graphAuthService;
         _navigationPresenter = navigationPresenter;
         _responseFormatter = responseFormatter;
@@ -386,7 +393,7 @@ public sealed class TelegramController : ControllerBase
                     _navigationPresenter.GetText("vocab.add.prompt", locale),
                     InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale))),
                 CallbackDataConstants.Vocab.Stats or CallbackDataConstants.Vocab.ListLegacy
-                    => await BuildVocabularyStatisticsResponseAsync(locale, cancellationToken),
+                    => await HandleVocabularyStatsCallbackAsync(locale, cancellationToken),
                 CallbackDataConstants.Vocab.Url => new TelegramRouteResponse(
                     "vocab.url",
                     _navigationPresenter.GetText("vocab.url.prompt", locale),
@@ -1037,7 +1044,13 @@ public sealed class TelegramController : ControllerBase
             pending.OverridePartOfSpeech,
             cancellationToken);
 
-        var keepPending = appendResult.Status == VocabularyAppendStatus.Error;
+        var queuedForGraphAuthorization = appendResult.Status == VocabularyAppendStatus.Error
+            && IsGraphAuthRequiredMessage(appendResult.Message);
+        var missingDeckError = appendResult.Status == VocabularyAppendStatus.Error
+            && IsMissingDeckMessage(appendResult.Message);
+        var keepPending = appendResult.Status == VocabularyAppendStatus.Error
+            && !queuedForGraphAuthorization
+            && !missingDeckError;
         if (!keepPending)
         {
             PendingVocabularySaves.TryRemove(pendingKey, out _);
@@ -1071,19 +1084,24 @@ public sealed class TelegramController : ControllerBase
         foreach (var item in items)
         {
             if (item.FoundInDeck
-                || item.AssistantCompletion is null
-                || item.AppendPreview is null
-                || item.AppendPreview.Status != VocabularyAppendPreviewStatus.ReadyToAppend
-                || string.IsNullOrWhiteSpace(item.AppendPreview.TargetDeckFileName))
+                || item.AssistantCompletion is null)
             {
                 continue;
             }
 
+            var targetDeckFileName = ResolveSaveTargetDeckFileName(item);
+            if (string.IsNullOrWhiteSpace(targetDeckFileName))
+            {
+                continue;
+            }
+
+            var overridePartOfSpeech = ResolvePrimaryPartOfSpeech(item.AssistantCompletion.Content);
+
             candidates.Add(new PendingVocabularySaveRequest(
                 item.Input,
                 item.AssistantCompletion.Content,
-                item.AppendPreview.TargetDeckFileName,
-                OverridePartOfSpeech: null));
+                targetDeckFileName,
+                overridePartOfSpeech));
         }
 
         return candidates;
@@ -1189,6 +1207,19 @@ public sealed class TelegramController : ControllerBase
 
     private string BuildAppendStatusMessage(VocabularyAppendResult appendResult, string locale)
     {
+        if (appendResult.Status == VocabularyAppendStatus.Error
+            && IsGraphAuthRequiredMessage(appendResult.Message))
+        {
+            return _navigationPresenter.GetText("vocab.save_queued_waiting_auth", locale);
+        }
+
+        if (appendResult.Status == VocabularyAppendStatus.Error
+            && IsMissingDeckMessage(appendResult.Message))
+        {
+            var deckName = TryExtractDeckFileName(appendResult.Message) ?? _navigationPresenter.GetText("vocab.deck_unknown", locale);
+            return _navigationPresenter.GetText("vocab.save_missing_deck", locale, WebUtility.HtmlEncode(deckName));
+        }
+
         return appendResult.Status switch
         {
             VocabularyAppendStatus.Added when appendResult.Entry is not null => _navigationPresenter.GetText(
@@ -1235,6 +1266,12 @@ public sealed class TelegramController : ControllerBase
             return _navigationPresenter.GetText("vocab.graph_save_setup_required", locale);
         }
 
+        if (IsMissingDeckMessage(message))
+        {
+            var deckName = TryExtractDeckFileName(message) ?? _navigationPresenter.GetText("vocab.deck_unknown", locale);
+            return _navigationPresenter.GetText("vocab.save_missing_deck", locale, WebUtility.HtmlEncode(deckName));
+        }
+
         return LocalizeGraphRelatedMessage(message, locale);
     }
 
@@ -1273,19 +1310,116 @@ public sealed class TelegramController : ControllerBase
         return message.Trim();
     }
 
-    private static bool IsGraphNotConfiguredMessage(string message)
-        => message.Contains("not configured", StringComparison.OrdinalIgnoreCase);
+    private static bool IsGraphNotConfiguredMessage(string? message)
+        => !string.IsNullOrWhiteSpace(message)
+           && message.Contains("not configured", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsGraphTokenExpiredMessage(string message)
-        => message.Contains("token expired", StringComparison.OrdinalIgnoreCase)
-           || message.Contains("expired token", StringComparison.OrdinalIgnoreCase);
+    private static bool IsGraphTokenExpiredMessage(string? message)
+        => !string.IsNullOrWhiteSpace(message)
+           && (message.Contains("token expired", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("expired token", StringComparison.OrdinalIgnoreCase));
 
-    private static bool IsGraphAuthRequiredMessage(string message)
-        => message.Contains("graph authentication is required", StringComparison.OrdinalIgnoreCase)
-           || message.Contains("not authenticated", StringComparison.OrdinalIgnoreCase)
-           || message.Contains("authorization failed", StringComparison.OrdinalIgnoreCase)
-           || message.Contains("run /graph login", StringComparison.OrdinalIgnoreCase)
-           || message.Contains("use /graph login", StringComparison.OrdinalIgnoreCase);
+    private static bool IsGraphAuthRequiredMessage(string? message)
+        => !string.IsNullOrWhiteSpace(message)
+           && (message.Contains("graph authentication is required", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("not authenticated", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("authorization failed", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("run /graph login", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("use /graph login", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsMissingDeckMessage(string? message)
+        => !string.IsNullOrWhiteSpace(message)
+           && (message.Contains("could not resolve onedrive target deck", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("not writable or was not found", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("required deck files are missing", StringComparison.OrdinalIgnoreCase));
+
+    private static string? TryExtractDeckFileName(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return null;
+        }
+
+        var firstQuote = message.IndexOf('\'');
+        if (firstQuote < 0)
+        {
+            return null;
+        }
+
+        var secondQuote = message.IndexOf('\'', firstQuote + 1);
+        if (secondQuote <= firstQuote + 1)
+        {
+            return null;
+        }
+
+        return message[(firstQuote + 1)..secondQuote].Trim();
+    }
+
+    private string ResolveSaveTargetDeckFileName(ConversationAgentItemResult item)
+    {
+        if (item.AppendPreview?.Status == VocabularyAppendPreviewStatus.ReadyToAppend
+            && !string.IsNullOrWhiteSpace(item.AppendPreview.TargetDeckFileName))
+        {
+            return item.AppendPreview.TargetDeckFileName;
+        }
+
+        var marker = item.AssistantCompletion is null
+            ? null
+            : ResolvePrimaryPartOfSpeech(item.AssistantCompletion.Content);
+
+        var fromMarker = ResolveDeckFileNameByMarker(marker);
+        if (!string.IsNullOrWhiteSpace(fromMarker))
+        {
+            return fromMarker;
+        }
+
+        return _vocabularyDeckOptions.FallbackDeckFileName;
+    }
+
+    private string? ResolvePrimaryPartOfSpeech(string assistantReply)
+    {
+        if (string.IsNullOrWhiteSpace(assistantReply))
+        {
+            return null;
+        }
+
+        if (_vocabularyReplyParser.TryParse(assistantReply, out var parsed)
+            && parsed is not null
+            && parsed.PartsOfSpeech.Count > 0)
+        {
+            return NormalizeMarker(parsed.PartsOfSpeech[0]);
+        }
+
+        return null;
+    }
+
+    private string? ResolveDeckFileNameByMarker(string? marker)
+    {
+        return NormalizeMarker(marker) switch
+        {
+            "n" => _vocabularyDeckOptions.NounDeckFileName,
+            "v" => _vocabularyDeckOptions.VerbDeckFileName,
+            "iv" => _vocabularyDeckOptions.IrregularVerbDeckFileName,
+            "pv" => _vocabularyDeckOptions.PhrasalVerbDeckFileName,
+            "adj" => _vocabularyDeckOptions.AdjectiveDeckFileName,
+            "adv" => _vocabularyDeckOptions.AdverbDeckFileName,
+            "prep" => _vocabularyDeckOptions.PrepositionDeckFileName,
+            "conj" => _vocabularyDeckOptions.ConjunctionDeckFileName,
+            "pron" => _vocabularyDeckOptions.PronounDeckFileName,
+            "pe" => _vocabularyDeckOptions.PersistentExpressionDeckFileName,
+            _ => null
+        };
+    }
+
+    private static string? NormalizeMarker(string? marker)
+    {
+        if (string.IsNullOrWhiteSpace(marker))
+        {
+            return null;
+        }
+
+        return marker.Trim().ToLowerInvariant();
+    }
 
     private static string AppendTextBlock(string source, string extra)
     {
@@ -1394,6 +1528,29 @@ public sealed class TelegramController : ControllerBase
             InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
     }
 
+    private async Task<TelegramRouteResponse> HandleVocabularyStatsCallbackAsync(
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await BuildVocabularyStatisticsResponseAsync(locale, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to build vocabulary statistics response.");
+
+            return new TelegramRouteResponse(
+                "vocab.stats.failed",
+                _navigationPresenter.GetText(
+                    "onedrive.operation_failed",
+                    locale,
+                    WebUtility.HtmlEncode(LocalizeGraphRelatedMessage(ex.Message, locale))),
+                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)),
+                IsHtml: true);
+        }
+    }
+
     private TelegramRouteResponse BuildBatchModeResponse(string locale)
     {
         return new TelegramRouteResponse(
@@ -1467,11 +1624,92 @@ public sealed class TelegramController : ControllerBase
             lines.Add(WebUtility.HtmlEncode(LocalizeGraphRelatedMessage(status.Message, locale)));
         }
 
+        if (status.IsAuthenticated)
+        {
+            try
+            {
+                var missingDeckNotice = await BuildMissingConfiguredDecksNoticeAsync(locale, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(missingDeckNotice))
+                {
+                    lines.Add(string.Empty);
+                    lines.Add(missingDeckNotice);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not evaluate OneDrive deck health notice.");
+            }
+        }
+
         return new TelegramRouteResponse(
             "settings.onedrive",
             string.Join(Environment.NewLine, lines),
             InlineKeyboard(_navigationPresenter.BuildOneDriveKeyboard(locale, status.IsAuthenticated, includeCheckStatusButton)),
             IsHtml: true);
+    }
+
+    private async Task<string?> BuildMissingConfiguredDecksNoticeAsync(
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        _storageModeProvider.SetMode(VocabularyStorageMode.Graph);
+        var writableDecks = await _vocabularyDeckService.GetWritableDeckFilesAsync(cancellationToken);
+        var writableDeckNames = writableDecks
+            .Select(deck => deck.FileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var configuredTargets = GetConfiguredDeckTargets();
+        var missingTargets = configuredTargets
+            .Where(target => !writableDeckNames.Contains(target.DeckFileName))
+            .GroupBy(target => target.DeckFileName, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new ConfiguredDeckTarget(
+                string.Join(", ", group.Select(item => item.Marker).Distinct(StringComparer.OrdinalIgnoreCase)),
+                group.First().DeckFileName))
+            .ToList();
+
+        if (missingTargets.Count == 0)
+        {
+            return null;
+        }
+
+        var lines = new List<string>
+        {
+            _navigationPresenter.GetText("onedrive.decks_missing_title", locale, missingTargets.Count)
+        };
+
+        foreach (var target in missingTargets)
+        {
+            lines.Add(_navigationPresenter.GetText(
+                "onedrive.decks_missing_item",
+                locale,
+                WebUtility.HtmlEncode(target.Marker),
+                WebUtility.HtmlEncode(target.DeckFileName)));
+        }
+
+        lines.Add(_navigationPresenter.GetText("onedrive.decks_missing_hint", locale));
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private List<ConfiguredDeckTarget> GetConfiguredDeckTargets()
+    {
+        return new List<ConfiguredDeckTarget>
+        {
+            new("n", _vocabularyDeckOptions.NounDeckFileName),
+            new("v", _vocabularyDeckOptions.VerbDeckFileName),
+            new("iv", _vocabularyDeckOptions.IrregularVerbDeckFileName),
+            new("pv", _vocabularyDeckOptions.PhrasalVerbDeckFileName),
+            new("adj", _vocabularyDeckOptions.AdjectiveDeckFileName),
+            new("adv", _vocabularyDeckOptions.AdverbDeckFileName),
+            new("prep", _vocabularyDeckOptions.PrepositionDeckFileName),
+            new("conj", _vocabularyDeckOptions.ConjunctionDeckFileName),
+            new("pron", _vocabularyDeckOptions.PronounDeckFileName),
+            new("pe", _vocabularyDeckOptions.PersistentExpressionDeckFileName),
+            new("fallback", _vocabularyDeckOptions.FallbackDeckFileName)
+        }
+        .Where(target => !string.IsNullOrWhiteSpace(target.DeckFileName))
+        .Select(target => target with { DeckFileName = target.DeckFileName.Trim() })
+        .ToList();
     }
 
     private TelegramRouteResponse BuildOnboardingLanguagePickerResponse(string locale)
@@ -1613,6 +1851,10 @@ public sealed class TelegramController : ControllerBase
 
     private static string BuildPendingSaveKey(ConversationScope scope)
         => string.Concat(scope.Channel, ":", scope.UserId, ":", scope.ConversationId);
+
+    private sealed record ConfiguredDeckTarget(
+        string Marker,
+        string DeckFileName);
 
     private sealed record PendingVocabularySaveRequest(
         string RequestedWord,

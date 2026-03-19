@@ -65,8 +65,9 @@ public sealed class TelegramConversationResponseFormatterTests
 
         var text = sut.Format(result);
 
-        Assert.Contains("1) void", text);
-        Assert.Contains("2) prepare", text);
+        Assert.Contains("• void", text);
+        Assert.Contains("• prepare", text);
+        Assert.Contains("• void\n\nvoid answer", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -94,10 +95,10 @@ public sealed class TelegramConversationResponseFormatterTests
 
         var text = sut.Format(result);
 
-        Assert.DoesNotContain("1) cancel\ncancel", text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("2) celebrate\ncelebrate", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("1) cancel\n(v) stop or revoke", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("2) celebrate\n(v) honor an event", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("• cancel\ncancel", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("• celebrate\ncelebrate", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("• cancel\n\n(v) stop or revoke", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("• celebrate\n\n(v) honor an event", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

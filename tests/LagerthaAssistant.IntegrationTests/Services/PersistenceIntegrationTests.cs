@@ -388,6 +388,57 @@ public sealed class PersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task VocabularySyncJobRepository_ClaimPendingAsync_ShouldThrottleMissingDeckRetries()
+    {
+        var connectionString = CreateConnectionString();
+        await using var context = CreateContext(connectionString);
+        await context.Database.MigrateAsync();
+
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            context.VocabularySyncJobs.AddRange(
+                new VocabularySyncJob
+                {
+                    RequestedWord = "awkward",
+                    AssistantReply = "awkward",
+                    TargetDeckFileName = "wm-adjectives-ua-en.xlsx",
+                    StorageMode = "graph",
+                    Status = VocabularySyncJobStatus.Pending,
+                    LastError = "Could not resolve OneDrive target deck 'wm-adjectives-ua-en.xlsx'.",
+                    LastAttemptAtUtc = now.AddMinutes(-2),
+                    AttemptCount = 3,
+                    CreatedAtUtc = now.AddMinutes(-10)
+                },
+                new VocabularySyncJob
+                {
+                    RequestedWord = "prepare",
+                    AssistantReply = "prepare",
+                    TargetDeckFileName = "wm-verbs-us-en.xlsx",
+                    StorageMode = "graph",
+                    Status = VocabularySyncJobStatus.Pending,
+                    CreatedAtUtc = now.AddMinutes(-5)
+                });
+            await context.SaveChangesAsync();
+
+            await using var actContext = CreateContext(connectionString);
+            var repo = new VocabularySyncJobRepository(actContext, NullLogger<VocabularySyncJobRepository>.Instance);
+
+            var claimedNow = await repo.ClaimPendingAsync(10, now);
+            Assert.Single(claimedNow);
+            Assert.Equal("prepare", claimedNow[0].RequestedWord);
+
+            var claimedAfterCooldown = await repo.ClaimPendingAsync(10, now.AddMinutes(20));
+            Assert.Single(claimedAfterCooldown);
+            Assert.Equal("awkward", claimedAfterCooldown[0].RequestedWord);
+        }
+        finally
+        {
+            await CleanupDatabaseAsync(connectionString);
+        }
+    }
+
+    [Fact]
     public async Task VocabularySyncJobRepository_FindActiveDuplicateAsync_ShouldFindPendingAndProcessingJobs()
     {
         var connectionString = CreateConnectionString();

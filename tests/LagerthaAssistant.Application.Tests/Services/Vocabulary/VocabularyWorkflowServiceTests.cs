@@ -94,6 +94,39 @@ public sealed class VocabularyWorkflowServiceTests
     }
 
     [Fact]
+    public async Task ProcessAsync_GraphMode_ShouldSkipDeckLookupAndPreview_WhenIndexMisses()
+    {
+        var order = new List<string>();
+        var assistant = new FakeAssistantSessionService(order)
+        {
+            CompletionFactory = input => new AssistantCompletionResult($"{input}\n\n(v) test\n\nExample.", "test-model", null)
+        };
+
+        var deck = new FakeVocabularyDeckService(order)
+        {
+            LookupFactory = _ => throw new InvalidOperationException("Deck lookup should not be called in graph SQL-first mode."),
+            PreviewFactory = (_, _) => throw new InvalidOperationException("Preview should not be called in graph SQL-first mode.")
+        };
+
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(
+            assistant,
+            deck,
+            index,
+            new FakeStorageModeProvider(VocabularyStorageMode.Graph));
+
+        var result = await sut.ProcessAsync("awkward");
+
+        Assert.False(result.FoundInDeck);
+        Assert.NotNull(result.AssistantCompletion);
+        Assert.Null(result.AppendPreview);
+        Assert.Equal(1, assistant.AskCalls);
+        Assert.Equal(0, deck.LookupCalls);
+        Assert.Equal(0, deck.PreviewCalls);
+        Assert.Equal(["ask:awkward"], order);
+    }
+
+    [Fact]
     public async Task ProcessBatchAsync_ShouldProcessItemsSequentially()
     {
         var order = new List<string>();
@@ -184,6 +217,44 @@ public sealed class VocabularyWorkflowServiceTests
                 "preview:prepare"
             ],
             order);
+    }
+
+    [Fact]
+    public async Task ProcessBatchAsync_GraphMode_ShouldSkipBatchDeckLookupAndPreview_WhenIndexMisses()
+    {
+        var order = new List<string>();
+        var assistant = new FakeAssistantSessionService(order)
+        {
+            CompletionFactory = input => new AssistantCompletionResult($"{input}\n\n(v) test\n\nExample.", "test-model", null)
+        };
+
+        var deck = new FakeBatchVocabularyDeckService(order)
+        {
+            BatchLookupFactory = _ => throw new InvalidOperationException("Batch deck lookup should not be called in graph SQL-first mode."),
+            PreviewFactory = (_, _) => throw new InvalidOperationException("Preview should not be called in graph SQL-first mode.")
+        };
+
+        var index = new FakeVocabularyIndexService();
+        var sut = new VocabularyWorkflowService(
+            assistant,
+            deck,
+            index,
+            new FakeStorageModeProvider(VocabularyStorageMode.Graph));
+
+        var results = await sut.ProcessBatchAsync(["cancel", "celebrate"]);
+
+        Assert.Equal(2, results.Count);
+        Assert.All(results, item =>
+        {
+            Assert.False(item.FoundInDeck);
+            Assert.NotNull(item.AssistantCompletion);
+            Assert.Null(item.AppendPreview);
+        });
+        Assert.Equal(2, assistant.AskCalls);
+        Assert.Equal(0, deck.BatchLookupCalls);
+        Assert.Equal(0, deck.LookupCalls);
+        Assert.Equal(0, deck.PreviewCalls);
+        Assert.Equal(["ask:cancel", "ask:celebrate"], order);
     }
 
     [Fact]
@@ -586,15 +657,21 @@ public sealed class VocabularyWorkflowServiceTests
 
     private sealed class FakeStorageModeProvider : IVocabularyStorageModeProvider
     {
-        public VocabularyStorageMode CurrentMode => VocabularyStorageMode.Local;
+        public FakeStorageModeProvider(VocabularyStorageMode mode = VocabularyStorageMode.Local)
+        {
+            CurrentMode = mode;
+        }
+
+        public VocabularyStorageMode CurrentMode { get; private set; }
 
         public void SetMode(VocabularyStorageMode mode)
         {
+            CurrentMode = mode;
         }
 
         public bool TryParse(string? value, out VocabularyStorageMode mode)
         {
-            mode = VocabularyStorageMode.Local;
+            mode = CurrentMode;
             return true;
         }
 

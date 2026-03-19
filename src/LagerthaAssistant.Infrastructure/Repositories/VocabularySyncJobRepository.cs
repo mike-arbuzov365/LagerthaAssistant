@@ -11,6 +11,14 @@ using Microsoft.Extensions.Logging;
 
 public sealed class VocabularySyncJobRepository : IVocabularySyncJobRepository
 {
+    private static readonly TimeSpan MissingDeckRetryCooldown = TimeSpan.FromMinutes(15);
+    private static readonly string[] MissingDeckRetryMarkers =
+    [
+        "could not resolve onedrive target deck",
+        "not writable or was not found",
+        "required deck files are missing"
+    ];
+
     private readonly AppDbContext _context;
     private readonly ILogger<VocabularySyncJobRepository> _logger;
 
@@ -76,30 +84,40 @@ public sealed class VocabularySyncJobRepository : IVocabularySyncJobRepository
             _logger.LogDebug("Executing {Operation}; Take: {Take}; ClaimedAtUtc: {ClaimedAtUtc}", RepositoryOperations.GetActive, take, claimedAtUtc);
 
             var probeTake = Math.Clamp(take * 3, take, 2000);
-            var candidateIds = await _context.VocabularySyncJobs
+            var candidates = await _context.VocabularySyncJobs
                 .AsNoTracking()
                 .Where(x => x.Status == VocabularySyncJobStatus.Pending)
                 .OrderBy(x => x.CreatedAtUtc)
                 .ThenBy(x => x.Id)
-                .Select(x => x.Id)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.LastError,
+                    x.LastAttemptAtUtc
+                })
                 .Take(probeTake)
                 .ToListAsync(cancellationToken);
 
-            if (candidateIds.Count == 0)
+            if (candidates.Count == 0)
             {
                 return [];
             }
 
-            var claimed = new List<VocabularySyncJob>(Math.Min(take, candidateIds.Count));
-            foreach (var id in candidateIds)
+            var claimed = new List<VocabularySyncJob>(Math.Min(take, candidates.Count));
+            foreach (var candidate in candidates)
             {
                 if (claimed.Count >= take)
                 {
                     break;
                 }
 
+                if (ShouldDelayClaimForMissingDeck(candidate.LastError, candidate.LastAttemptAtUtc, claimedAtUtc))
+                {
+                    continue;
+                }
+
                 var updated = await _context.VocabularySyncJobs
-                    .Where(x => x.Id == id && x.Status == VocabularySyncJobStatus.Pending)
+                    .Where(x => x.Id == candidate.Id && x.Status == VocabularySyncJobStatus.Pending)
                     .ExecuteUpdateAsync(
                         setters => setters
                             .SetProperty(x => x.Status, VocabularySyncJobStatus.Processing)
@@ -113,7 +131,7 @@ public sealed class VocabularySyncJobRepository : IVocabularySyncJobRepository
                 }
 
                 var job = await _context.VocabularySyncJobs
-                    .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+                    .FirstOrDefaultAsync(x => x.Id == candidate.Id, cancellationToken);
 
                 if (job is not null)
                 {
@@ -128,6 +146,27 @@ public sealed class VocabularySyncJobRepository : IVocabularySyncJobRepository
             _logger.LogError(ex, "Error in {Operation} for claiming pending vocabulary sync jobs", RepositoryOperations.GetActive);
             throw new RepositoryException(nameof(VocabularySyncJobRepository), RepositoryOperations.GetActive, "Failed to claim pending vocabulary sync jobs", ex);
         }
+    }
+
+    private static bool ShouldDelayClaimForMissingDeck(
+        string? lastError,
+        DateTimeOffset? lastAttemptAtUtc,
+        DateTimeOffset nowUtc)
+    {
+        if (string.IsNullOrWhiteSpace(lastError) || lastAttemptAtUtc is null)
+        {
+            return false;
+        }
+
+        var isMissingDeckError = MissingDeckRetryMarkers.Any(
+            marker => lastError.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+        if (!isMissingDeckError)
+        {
+            return false;
+        }
+
+        return nowUtc - lastAttemptAtUtc.Value < MissingDeckRetryCooldown;
     }
 
     public async Task<VocabularySyncJob?> FindActiveDuplicateAsync(

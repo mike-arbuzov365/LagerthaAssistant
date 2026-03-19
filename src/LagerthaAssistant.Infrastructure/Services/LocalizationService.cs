@@ -82,6 +82,9 @@ public sealed class LocalizationService : ILocalizationService
         ["vocab.save.duplicate"] = "ℹ️ Word already exists in writable decks. Save skipped.",
         ["vocab.save.skip"] = "ℹ️ Save skipped.",
         ["vocab.save_failed"] = "⚠️ Save failed: {0}",
+        ["vocab.save_missing_deck"] = "⚠️ Save queued, but target deck file is missing in OneDrive: {0}. Add this file (or fix mapping), then run sync.",
+        ["vocab.deck_unknown"] = "(unknown deck)",
+        ["vocab.save_queued_waiting_auth"] = "⏳ Saved to queue. It will be synced to OneDrive files after you sign in (Settings -> OneDrive / Graph).",
         ["vocab.save_batch_ask_hint"] = "Save mode is ask. For batch auto-save, switch save mode to auto.",
         ["vocab.save_mode_off_hint"] = "Save mode is off. Switch it to ask or auto in Settings.",
         ["vocab.save_yes"] = "✅ Save",
@@ -119,6 +122,9 @@ public sealed class LocalizationService : ILocalizationService
         ["onedrive.index_ready"] = "✅ Index is already up to date: {0} words in your dictionary.",
         ["onedrive.sync_now_done"] = "✅ Sync complete: completed={0}, requeued={1}, failed={2}, pending={3}.",
         ["onedrive.rebuild_index_done"] = "✅ Index rebuilt from writable decks: scanned={0}, indexed={1}.",
+        ["onedrive.decks_missing_title"] = "⚠️ Missing configured target decks in OneDrive ({0}):",
+        ["onedrive.decks_missing_item"] = "• {0} → <code>{1}</code>",
+        ["onedrive.decks_missing_hint"] = "⏳ Saves for these targets stay in queue. Add files (or update mapping) and tap “Sync pending saves”.",
         ["onedrive.operation_failed"] = "⚠️ Operation failed: {0}",
         ["notion.title"] = "📝 <b>Notion</b>\n\n🚧 This integration is under development. Coming soon!",
         ["back"] = "🔙 Back",
@@ -200,6 +206,9 @@ public sealed class LocalizationService : ILocalizationService
         ["vocab.save.duplicate"] = "ℹ️ Слово вже є у writable-деках. Збереження пропущено.",
         ["vocab.save.skip"] = "ℹ️ Збереження пропущено.",
         ["vocab.save_failed"] = "⚠️ Помилка збереження: {0}",
+        ["vocab.save_missing_deck"] = "⚠️ Save queued, but target deck file is missing in OneDrive: {0}. Add this file (or fix mapping), then run sync.",
+        ["vocab.deck_unknown"] = "(unknown deck)",
+        ["vocab.save_queued_waiting_auth"] = "⏳ Збережено в чергу. У файли OneDrive воно потрапить після авторизації (Налаштування -> OneDrive / Graph).",
         ["vocab.save_batch_ask_hint"] = "Режим збереження ask. Для batch-автозбереження перемкни на auto.",
         ["vocab.save_mode_off_hint"] = "Режим збереження off. Перемкни в Settings на ask або auto.",
         ["vocab.save_yes"] = "✅ Зберегти",
@@ -237,6 +246,9 @@ public sealed class LocalizationService : ILocalizationService
         ["onedrive.index_ready"] = "✅ Індекс уже в порядку: у словнику {0} слів.",
         ["onedrive.sync_now_done"] = "✅ Синхронізацію завершено: виконано={0}, повторно в чергу={1}, помилок={2}, в черзі={3}.",
         ["onedrive.rebuild_index_done"] = "✅ Індекс перезібрано з writable-дек: перевірено={0}, проіндексовано={1}.",
+        ["onedrive.decks_missing_title"] = "⚠️ Missing configured target decks in OneDrive ({0}):",
+        ["onedrive.decks_missing_item"] = "• {0} → <code>{1}</code>",
+        ["onedrive.decks_missing_hint"] = "⏳ Saves for these targets stay in queue. Add files (or update mapping) and tap \"Sync pending saves\".",
         ["onedrive.operation_failed"] = "⚠️ Операція не вдалася: {0}",
         ["notion.title"] = "📝 <b>Notion</b>\n\n🚧 Ця інтеграція в розробці. Скоро буде!",
         ["back"] = "🔙 Назад",
@@ -318,6 +330,8 @@ public sealed class LocalizationService : ILocalizationService
         ["vocab.save.duplicate"] = "ℹ️ La palabra ya existe en decks editables. Guardado omitido.",
         ["vocab.save.skip"] = "ℹ️ Guardado omitido.",
         ["vocab.save_failed"] = "⚠️ Error al guardar: {0}",
+        ["vocab.save_missing_deck"] = "⚠️ Save queued, but target deck file is missing in OneDrive: {0}. Add this file (or fix mapping), then run sync.",
+        ["vocab.deck_unknown"] = "(unknown deck)",
         ["vocab.save_batch_ask_hint"] = "El modo de guardado es ask. Para guardado automático por lotes, cambia a auto.",
         ["vocab.save_mode_off_hint"] = "El modo de guardado es off. Cámbialo a ask o auto en Ajustes.",
         ["vocab.save_yes"] = "✅ Guardar",
@@ -347,6 +361,9 @@ public sealed class LocalizationService : ILocalizationService
         ["onedrive.index_ready"] = "✅ El índice ya está en orden: {0} palabras en tu diccionario.",
         ["onedrive.sync_now_done"] = "✅ Sincronización completada: completadas={0}, reencoladas={1}, fallidas={2}, pendientes={3}.",
         ["onedrive.rebuild_index_done"] = "✅ Índice reconstruido desde decks editables: escaneadas={0}, indexadas={1}.",
+        ["onedrive.decks_missing_title"] = "⚠️ Missing configured target decks in OneDrive ({0}):",
+        ["onedrive.decks_missing_item"] = "• {0} → <code>{1}</code>",
+        ["onedrive.decks_missing_hint"] = "⏳ Saves for these targets stay in queue. Add files (or update mapping) and tap \"Sync pending saves\".",
         ["onedrive.operation_failed"] = "⚠️ Operación fallida: {0}",
         ["notion.title"] = "📝 <b>Notion</b>\n\n🚧 Esta integración está en desarrollo. ¡Próximamente!",
         ["back"] = "🔙 Atrás",
@@ -356,7 +373,16 @@ public sealed class LocalizationService : ILocalizationService
         ["language.name.fr"] = "🇫🇷 Français",
         ["language.name.de"] = "🇩🇪 Deutsch",
         ["language.name.pl"] = "🇵🇱 Polski",
-        ["language.name.de_pl"] = "🇩🇪 Deutsch · 🇵🇱 Polski"
+        ["language.name.de_pl"] = "🇩🇪 Deutsch · 🇵🇱 Polski",
+        ["vocab.save_queued_waiting_auth"] = "Saved to queue. It will be synced to OneDrive files after you sign in (Settings -> OneDrive / Graph).",
+        ["vocab.graph_save_setup_required"] = "To save words, open Settings -> OneDrive / Graph, sign in, and try again.",
+        ["command.console_only_generic"] = "The {0} command is available only in the console app. In Telegram, use menu buttons or natural language.",
+        ["command.console_only_graph"] = "The {0} command is console-only. To save words in Telegram, open Settings -> OneDrive / Graph and sign in.",
+        ["onedrive.error_not_authenticated"] = "OneDrive authorization is required. Open Settings -> OneDrive / Graph and sign in.",
+        ["onedrive.error_expired"] = "OneDrive session expired. Open Settings -> OneDrive / Graph and sign in again.",
+        ["onedrive.error_not_configured"] = "Graph integration is not configured on the server.",
+        ["onedrive.error_timed_out"] = "Login timed out. Try sign-in again from Settings -> OneDrive / Graph.",
+        ["onedrive.error_declined"] = "Login was declined. Try sign-in again from Settings -> OneDrive / Graph.",
     };
 
     private static readonly IReadOnlyDictionary<string, string> German = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -428,6 +454,8 @@ public sealed class LocalizationService : ILocalizationService
         ["vocab.save.duplicate"] = "ℹ️ Das Wort existiert bereits in beschreibbaren Decks. Speichern übersprungen.",
         ["vocab.save.skip"] = "ℹ️ Speichern übersprungen.",
         ["vocab.save_failed"] = "⚠️ Speichern fehlgeschlagen: {0}",
+        ["vocab.save_missing_deck"] = "⚠️ Save queued, but target deck file is missing in OneDrive: {0}. Add this file (or fix mapping), then run sync.",
+        ["vocab.deck_unknown"] = "(unknown deck)",
         ["vocab.save_batch_ask_hint"] = "Speichermodus ist ask. Für Batch-Autospeichern auf auto umstellen.",
         ["vocab.save_mode_off_hint"] = "Speichermodus ist off. In Einstellungen auf ask oder auto ändern.",
         ["vocab.save_yes"] = "✅ Speichern",
@@ -457,6 +485,9 @@ public sealed class LocalizationService : ILocalizationService
         ["onedrive.index_ready"] = "✅ Der Index ist bereits aktuell: {0} Wörter in deinem Wörterbuch.",
         ["onedrive.sync_now_done"] = "✅ Synchronisierung abgeschlossen: abgeschlossen={0}, erneut eingereiht={1}, fehlgeschlagen={2}, ausstehend={3}.",
         ["onedrive.rebuild_index_done"] = "✅ Index aus beschreibbaren Decks neu aufgebaut: geprüft={0}, indexiert={1}.",
+        ["onedrive.decks_missing_title"] = "⚠️ Missing configured target decks in OneDrive ({0}):",
+        ["onedrive.decks_missing_item"] = "• {0} → <code>{1}</code>",
+        ["onedrive.decks_missing_hint"] = "⏳ Saves for these targets stay in queue. Add files (or update mapping) and tap \"Sync pending saves\".",
         ["onedrive.operation_failed"] = "⚠️ Vorgang fehlgeschlagen: {0}",
         ["notion.title"] = "📝 <b>Notion</b>\n\n🚧 Diese Integration ist in Entwicklung. Bald verfügbar!",
         ["back"] = "🔙 Zurück",
@@ -466,7 +497,16 @@ public sealed class LocalizationService : ILocalizationService
         ["language.name.fr"] = "🇫🇷 Français",
         ["language.name.de"] = "🇩🇪 Deutsch",
         ["language.name.pl"] = "🇵🇱 Polski",
-        ["language.name.de_pl"] = "🇩🇪 Deutsch · 🇵🇱 Polski"
+        ["language.name.de_pl"] = "🇩🇪 Deutsch · 🇵🇱 Polski",
+        ["vocab.save_queued_waiting_auth"] = "Saved to queue. It will be synced to OneDrive files after you sign in (Settings -> OneDrive / Graph).",
+        ["vocab.graph_save_setup_required"] = "To save words, open Settings -> OneDrive / Graph, sign in, and try again.",
+        ["command.console_only_generic"] = "The {0} command is available only in the console app. In Telegram, use menu buttons or natural language.",
+        ["command.console_only_graph"] = "The {0} command is console-only. To save words in Telegram, open Settings -> OneDrive / Graph and sign in.",
+        ["onedrive.error_not_authenticated"] = "OneDrive authorization is required. Open Settings -> OneDrive / Graph and sign in.",
+        ["onedrive.error_expired"] = "OneDrive session expired. Open Settings -> OneDrive / Graph and sign in again.",
+        ["onedrive.error_not_configured"] = "Graph integration is not configured on the server.",
+        ["onedrive.error_timed_out"] = "Login timed out. Try sign-in again from Settings -> OneDrive / Graph.",
+        ["onedrive.error_declined"] = "Login was declined. Try sign-in again from Settings -> OneDrive / Graph.",
     };
 
     private static readonly IReadOnlyDictionary<string, string> Polish = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -538,6 +578,8 @@ public sealed class LocalizationService : ILocalizationService
         ["vocab.save.duplicate"] = "ℹ️ Słowo już istnieje w deckach do zapisu. Zapis pominięty.",
         ["vocab.save.skip"] = "ℹ️ Zapis pominięty.",
         ["vocab.save_failed"] = "⚠️ Błąd zapisu: {0}",
+        ["vocab.save_missing_deck"] = "⚠️ Save queued, but target deck file is missing in OneDrive: {0}. Add this file (or fix mapping), then run sync.",
+        ["vocab.deck_unknown"] = "(unknown deck)",
         ["vocab.save_batch_ask_hint"] = "Tryb zapisu to ask. Aby auto-zapisywać batch, przełącz na auto.",
         ["vocab.save_mode_off_hint"] = "Tryb zapisu to off. Zmień w ustawieniach na ask albo auto.",
         ["vocab.save_yes"] = "✅ Zapisz",
@@ -567,6 +609,9 @@ public sealed class LocalizationService : ILocalizationService
         ["onedrive.index_ready"] = "✅ Indeks jest już gotowy: {0} słów w Twoim słowniku.",
         ["onedrive.sync_now_done"] = "✅ Synchronizacja zakończona: zakończone={0}, ponownie w kolejce={1}, błędy={2}, oczekujące={3}.",
         ["onedrive.rebuild_index_done"] = "✅ Indeks przebudowany z decków zapisywalnych: sprawdzone={0}, zindeksowane={1}.",
+        ["onedrive.decks_missing_title"] = "⚠️ Missing configured target decks in OneDrive ({0}):",
+        ["onedrive.decks_missing_item"] = "• {0} → <code>{1}</code>",
+        ["onedrive.decks_missing_hint"] = "⏳ Saves for these targets stay in queue. Add files (or update mapping) and tap \"Sync pending saves\".",
         ["onedrive.operation_failed"] = "⚠️ Operacja nie powiodła się: {0}",
         ["notion.title"] = "📝 <b>Notion</b>\n\n🚧 Ta integracja jest w trakcie rozwoju. Wkrótce dostępna!",
         ["back"] = "🔙 Wstecz",
@@ -576,7 +621,16 @@ public sealed class LocalizationService : ILocalizationService
         ["language.name.fr"] = "🇫🇷 Français",
         ["language.name.de"] = "🇩🇪 Deutsch",
         ["language.name.pl"] = "🇵🇱 Polski",
-        ["language.name.de_pl"] = "🇩🇪 Deutsch · 🇵🇱 Polski"
+        ["language.name.de_pl"] = "🇩🇪 Deutsch · 🇵🇱 Polski",
+        ["vocab.save_queued_waiting_auth"] = "Saved to queue. It will be synced to OneDrive files after you sign in (Settings -> OneDrive / Graph).",
+        ["vocab.graph_save_setup_required"] = "To save words, open Settings -> OneDrive / Graph, sign in, and try again.",
+        ["command.console_only_generic"] = "The {0} command is available only in the console app. In Telegram, use menu buttons or natural language.",
+        ["command.console_only_graph"] = "The {0} command is console-only. To save words in Telegram, open Settings -> OneDrive / Graph and sign in.",
+        ["onedrive.error_not_authenticated"] = "OneDrive authorization is required. Open Settings -> OneDrive / Graph and sign in.",
+        ["onedrive.error_expired"] = "OneDrive session expired. Open Settings -> OneDrive / Graph and sign in again.",
+        ["onedrive.error_not_configured"] = "Graph integration is not configured on the server.",
+        ["onedrive.error_timed_out"] = "Login timed out. Try sign-in again from Settings -> OneDrive / Graph.",
+        ["onedrive.error_declined"] = "Login was declined. Try sign-in again from Settings -> OneDrive / Graph.",
     };
 
     private static readonly IReadOnlyDictionary<string, string> French = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -648,6 +702,8 @@ public sealed class LocalizationService : ILocalizationService
         ["vocab.save.duplicate"] = "ℹ️ Le mot existe déjà dans les decks modifiables. Sauvegarde ignorée.",
         ["vocab.save.skip"] = "ℹ️ Sauvegarde ignorée.",
         ["vocab.save_failed"] = "⚠️ Échec de la sauvegarde : {0}",
+        ["vocab.save_missing_deck"] = "⚠️ Save queued, but target deck file is missing in OneDrive: {0}. Add this file (or fix mapping), then run sync.",
+        ["vocab.deck_unknown"] = "(unknown deck)",
         ["vocab.save_batch_ask_hint"] = "Le mode de sauvegarde est ask. Pour l'auto-sauvegarde en batch, passe le mode de sauvegarde à auto.",
         ["vocab.save_mode_off_hint"] = "Le mode de sauvegarde est off. Change-le vers ask ou auto dans les paramètres.",
         ["vocab.save_yes"] = "✅ Sauvegarder",
@@ -677,6 +733,9 @@ public sealed class LocalizationService : ILocalizationService
         ["onedrive.index_ready"] = "✅ Index déjà prêt : {0} mots dans ton dictionnaire.",
         ["onedrive.sync_now_done"] = "✅ Synchronisation terminée : terminés={0}, remis en file={1}, en échec={2}, en attente={3}.",
         ["onedrive.rebuild_index_done"] = "✅ Index reconstruit depuis les decks modifiables : analysés={0}, indexés={1}.",
+        ["onedrive.decks_missing_title"] = "⚠️ Missing configured target decks in OneDrive ({0}):",
+        ["onedrive.decks_missing_item"] = "• {0} → <code>{1}</code>",
+        ["onedrive.decks_missing_hint"] = "⏳ Saves for these targets stay in queue. Add files (or update mapping) and tap \"Sync pending saves\".",
         ["onedrive.operation_failed"] = "⚠️ Échec de l’opération : {0}",
         ["notion.title"] = "📝 <b>Notion</b>\n\n🚧 Cette intégration est en cours de développement. Bientôt disponible !",
         ["back"] = "🔙 Retour",
@@ -686,7 +745,16 @@ public sealed class LocalizationService : ILocalizationService
         ["language.name.fr"] = "🇫🇷 Français",
         ["language.name.de"] = "🇩🇪 Deutsch",
         ["language.name.pl"] = "🇵🇱 Polski",
-        ["language.name.de_pl"] = "🇩🇪 Deutsch · 🇵🇱 Polski"
+        ["language.name.de_pl"] = "🇩🇪 Deutsch · 🇵🇱 Polski",
+        ["vocab.save_queued_waiting_auth"] = "Saved to queue. It will be synced to OneDrive files after you sign in (Settings -> OneDrive / Graph).",
+        ["vocab.graph_save_setup_required"] = "To save words, open Settings -> OneDrive / Graph, sign in, and try again.",
+        ["command.console_only_generic"] = "The {0} command is available only in the console app. In Telegram, use menu buttons or natural language.",
+        ["command.console_only_graph"] = "The {0} command is console-only. To save words in Telegram, open Settings -> OneDrive / Graph and sign in.",
+        ["onedrive.error_not_authenticated"] = "OneDrive authorization is required. Open Settings -> OneDrive / Graph and sign in.",
+        ["onedrive.error_expired"] = "OneDrive session expired. Open Settings -> OneDrive / Graph and sign in again.",
+        ["onedrive.error_not_configured"] = "Graph integration is not configured on the server.",
+        ["onedrive.error_timed_out"] = "Login timed out. Try sign-in again from Settings -> OneDrive / Graph.",
+        ["onedrive.error_declined"] = "Login was declined. Try sign-in again from Settings -> OneDrive / Graph.",
     };
 
     public string Get(string key, string locale)
@@ -733,3 +801,5 @@ public sealed class LocalizationService : ILocalizationService
     public bool IsRussian(string? languageCode)
         => languageCode?.StartsWith("ru", StringComparison.OrdinalIgnoreCase) == true;
 }
+
+

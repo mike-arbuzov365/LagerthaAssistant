@@ -138,9 +138,11 @@ public static class DependencyInjection
 
         services.AddSingleton<IWordValidationService, WordValidationService>();
         services.AddScoped<VocabularyDeckService>();
-        services.AddScoped<GraphVocabularyDeckService>();
+        // Graph backend keeps a remote mirror cache; singleton lifetime avoids re-downloading
+        // every writable deck on each API request.
+        services.AddSingleton<GraphVocabularyDeckService>();
         services.AddScoped<IVocabularyDeckBackend>(sp => sp.GetRequiredService<VocabularyDeckService>());
-        services.AddScoped<IVocabularyDeckBackend>(sp => sp.GetRequiredService<GraphVocabularyDeckService>());
+        services.AddSingleton<IVocabularyDeckBackend>(sp => sp.GetRequiredService<GraphVocabularyDeckService>());
         services.AddScoped<IVocabularyDeckBackendResolver, VocabularyDeckBackendResolver>();
         services.AddScoped<IVocabularyDeckService, SwitchableVocabularyDeckService>();
         services.AddScoped<IVocabularyDeckModeService, VocabularyDeckModeService>();

@@ -36,7 +36,8 @@ public sealed class TelegramConversationResponseFormatter : ITelegramConversatio
         for (var index = 0; index < result.Items.Count; index++)
         {
             var item = result.Items[index];
-            builder.Append(index + 1).Append(") ").AppendLine(item.Input);
+            builder.Append("• ").AppendLine(item.Input);
+            builder.AppendLine();
             var formattedItem = RemoveLeadingInputDuplicate(item.Input, FormatItem(item));
             builder.AppendLine(formattedItem);
 

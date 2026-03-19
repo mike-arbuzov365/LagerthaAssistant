@@ -107,10 +107,18 @@ public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IVocabu
         await _operationSync.WaitAsync(cancellationToken);
         try
         {
-            var mirror = await GetOrCreateMirrorAsync(cancellationToken);
-            return mirror.RemoteFilesByName.Values
+            if (_sessionMirror is not null)
+            {
+                return _sessionMirror.RemoteFilesByName.Values
+                    .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(MapRemoteToDeckFile)
+                    .ToList();
+            }
+
+            var remoteFiles = await GetWritableRemoteFilesAsync(cancellationToken);
+            return remoteFiles
                 .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(x => new VocabularyDeckFile(x.Name, x.FullPath))
+                .Select(MapRemoteToDeckFile)
                 .ToList();
         }
         catch (Exception ex)
@@ -565,6 +573,9 @@ public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IVocabu
         return readOnlyNames.Contains(fileName)
             || fileName.Contains("-all-", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static VocabularyDeckFile MapRemoteToDeckFile(GraphDriveFile file)
+        => new(file.Name, file.FullPath);
 
     private static Regex BuildWildcardRegex(string pattern)
     {
