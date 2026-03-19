@@ -15,9 +15,11 @@ public sealed class LocalizationServiceTests
     [InlineData("uk-UA", LocalizationConstants.UkrainianLocale)]
     [InlineData("ru", LocalizationConstants.UkrainianLocale)]
     [InlineData("ru-RU", LocalizationConstants.UkrainianLocale)]
-    [InlineData("be", LocalizationConstants.EnglishLocale)]
-    [InlineData("de", LocalizationConstants.EnglishLocale)]
-    [InlineData("fr", LocalizationConstants.EnglishLocale)]
+    [InlineData("be", LocalizationConstants.UkrainianLocale)]
+    [InlineData("de", LocalizationConstants.GermanLocale)]
+    [InlineData("fr", LocalizationConstants.FrenchLocale)]
+    [InlineData("es", LocalizationConstants.SpanishLocale)]
+    [InlineData("pl", LocalizationConstants.PolishLocale)]
     public void GetLocaleForUser_ShouldApplyExpectedMapping(string? languageCode, string expected)
     {
         var sut = new LocalizationService();
@@ -62,13 +64,37 @@ public sealed class LocalizationServiceTests
     }
 
     [Theory]
+    [InlineData("es")]
+    [InlineData("fr")]
+    [InlineData("de")]
+    [InlineData("pl")]
+    public void Get_ShouldFallbackToEnglish_WhenLocaleValueMissing(string locale)
+    {
+        var sut = new LocalizationService();
+        var value = sut.Get("menu.main.chat", locale);
+        Assert.Equal("🗣 Chat", value);
+    }
+
+    [Theory]
     [InlineData("en")]
     [InlineData("uk")]
-    public void Get_ShouldFallbackToKey_WhenMissing(string locale)
+    public void Get_ShouldReturnSafePlaceholder_WhenMissingInAllLocales(string locale)
     {
         var sut = new LocalizationService();
         var key = "nonexistent.key";
         var value = sut.Get(key, locale);
-        Assert.Equal(key, value);
+        Assert.Equal("[?:nonexistent.key]", value);
+    }
+
+    [Theory]
+    [InlineData("es")]
+    [InlineData("fr")]
+    [InlineData("de")]
+    [InlineData("pl")]
+    public void Get_ShouldNotReturnEmpty_ForKnownKeysInStubLocales(string locale)
+    {
+        var sut = new LocalizationService();
+        var value = sut.Get("menu.main.chat", locale);
+        Assert.False(string.IsNullOrWhiteSpace(value));
     }
 }

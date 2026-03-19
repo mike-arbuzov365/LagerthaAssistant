@@ -64,6 +64,64 @@ public sealed class UserLocaleStateServiceTests
         Assert.Equal(1.0, localeEntry.Confidence);
     }
 
+    [Fact]
+    public async Task EnsureLocaleAsync_ShouldNotAutoSwitch_WhenLocaleWasSelectedManually()
+    {
+        var memoryRepo = new FakeUserMemoryRepository();
+        memoryRepo.Entries.Add(new UserMemoryEntry
+        {
+            Channel = "telegram",
+            UserId = "user-1",
+            Key = LocalizationConstants.LocaleMemoryKey,
+            Value = LocalizationConstants.EnglishLocale,
+            Confidence = 1.0,
+            IsActive = true,
+            LastSeenAtUtc = DateTimeOffset.UtcNow
+        });
+        memoryRepo.Entries.Add(new UserMemoryEntry
+        {
+            Channel = "telegram",
+            UserId = "user-1",
+            Key = LocalizationConstants.LocaleSelectedManuallyMemoryKey,
+            Value = "true",
+            Confidence = 1.0,
+            IsActive = true,
+            LastSeenAtUtc = DateTimeOffset.UtcNow
+        });
+
+        var sut = new UserLocaleStateService(
+            memoryRepo,
+            new FakeUnitOfWork(),
+            new FakeLocalizationService(),
+            new FakeClock());
+
+        var result = await sut.EnsureLocaleAsync("telegram", "user-1", "en", "це український текст");
+
+        Assert.Equal(LocalizationConstants.EnglishLocale, result.Locale);
+        Assert.False(result.IsSwitched);
+    }
+
+    [Fact]
+    public async Task SetLocaleAsync_ShouldPersistLocaleAndManualFlag()
+    {
+        var memoryRepo = new FakeUserMemoryRepository();
+        var sut = new UserLocaleStateService(
+            memoryRepo,
+            new FakeUnitOfWork(),
+            new FakeLocalizationService(),
+            new FakeClock());
+
+        var locale = await sut.SetLocaleAsync("telegram", "user-1", "ru", selectedManually: true);
+
+        Assert.Equal(LocalizationConstants.UkrainianLocale, locale);
+
+        var localeEntry = Assert.Single(memoryRepo.Entries, x => x.Key == LocalizationConstants.LocaleMemoryKey);
+        Assert.Equal(LocalizationConstants.UkrainianLocale, localeEntry.Value);
+
+        var manualEntry = Assert.Single(memoryRepo.Entries, x => x.Key == LocalizationConstants.LocaleSelectedManuallyMemoryKey);
+        Assert.Equal("true", manualEntry.Value);
+    }
+
     private sealed class FakeLocalizationService : ILocalizationService
     {
         public string Get(string key, string locale) => key;

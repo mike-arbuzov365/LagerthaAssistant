@@ -42,25 +42,34 @@ public sealed class UserLocaleStateService : IUserLocaleStateService
         var localeEntry = await _userMemoryRepository.GetByKeyAsync(LocalizationConstants.LocaleMemoryKey, channel, userId, cancellationToken);
         if (localeEntry is null)
         {
-            var initialLocale = _localizationService.GetLocaleForUser(telegramLanguageCode);
-            await _userMemoryRepository.AddAsync(
-                new UserMemoryEntry
-                {
-                    Channel = channel,
-                    UserId = userId,
-                    Key = LocalizationConstants.LocaleMemoryKey,
-                    Value = initialLocale,
-                    Confidence = 1.0,
-                    IsActive = true,
-                    LastSeenAtUtc = _clock.UtcNow
-                },
-                cancellationToken);
-
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var initialLocale = LocalizationConstants.NormalizeLocaleCode(_localizationService.GetLocaleForUser(telegramLanguageCode));
+            await UpsertLocaleEntryAsync(channel, userId, initialLocale, cancellationToken);
             return new UserLocaleStateResult(initialLocale, IsInitialized: true, IsSwitched: false);
         }
 
-        var currentLocale = NormalizeLocale(localeEntry.Value);
+        var persistedLocale = LocalizationConstants.NormalizeLocaleCode(localeEntry.Value);
+        var manualSelectionEntry = await _userMemoryRepository.GetByKeyAsync(
+            LocalizationConstants.LocaleSelectedManuallyMemoryKey,
+            channel,
+            userId,
+            cancellationToken);
+
+        if (IsManualSelectionEnabled(manualSelectionEntry?.Value))
+        {
+            localeEntry.LastSeenAtUtc = _clock.UtcNow;
+            localeEntry.Confidence = 1.0;
+
+            if (!string.Equals(localeEntry.Value, persistedLocale, StringComparison.Ordinal))
+            {
+                localeEntry.Value = persistedLocale;
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return new UserLocaleStateResult(persistedLocale, IsInitialized: false, IsSwitched: false);
+        }
+
+        var currentLocale = NormalizeLocale(persistedLocale);
+
         var detectedLocale = DetectLocaleFromText(incomingText);
         var changed = false;
         var switched = false;
@@ -107,14 +116,124 @@ public sealed class UserLocaleStateService : IUserLocaleStateService
         return new UserLocaleStateResult(currentLocale, IsInitialized: false, switched);
     }
 
-    private static string NormalizeLocale(string? value)
+    public async Task<string?> GetStoredLocaleAsync(
+        string channel,
+        string userId,
+        CancellationToken cancellationToken = default)
     {
-        if (string.Equals(value, LocalizationConstants.UkrainianLocale, StringComparison.OrdinalIgnoreCase))
+        var localeEntry = await _userMemoryRepository.GetByKeyAsync(
+            LocalizationConstants.LocaleMemoryKey,
+            channel,
+            userId,
+            cancellationToken);
+
+        return localeEntry is null
+            ? null
+            : LocalizationConstants.NormalizeLocaleCode(localeEntry.Value);
+    }
+
+    public async Task<string> SetLocaleAsync(
+        string channel,
+        string userId,
+        string locale,
+        bool selectedManually,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(locale);
+        var localeEntry = await UpsertLocaleEntryAsync(channel, userId, normalizedLocale, cancellationToken);
+
+        if (!string.Equals(localeEntry.Value, normalizedLocale, StringComparison.Ordinal))
         {
-            return LocalizationConstants.UkrainianLocale;
+            localeEntry.Value = normalizedLocale;
         }
 
-        return LocalizationConstants.EnglishLocale;
+        localeEntry.Confidence = 1.0;
+        localeEntry.IsActive = true;
+        localeEntry.LastSeenAtUtc = _clock.UtcNow;
+
+        var manualEntry = await _userMemoryRepository.GetByKeyAsync(
+            LocalizationConstants.LocaleSelectedManuallyMemoryKey,
+            channel,
+            userId,
+            cancellationToken);
+
+        if (manualEntry is null)
+        {
+            await _userMemoryRepository.AddAsync(
+                new UserMemoryEntry
+                {
+                    Channel = channel,
+                    UserId = userId,
+                    Key = LocalizationConstants.LocaleSelectedManuallyMemoryKey,
+                    Value = selectedManually ? "true" : "false",
+                    Confidence = 1.0,
+                    IsActive = true,
+                    LastSeenAtUtc = _clock.UtcNow
+                },
+                cancellationToken);
+        }
+        else
+        {
+            manualEntry.Value = selectedManually ? "true" : "false";
+            manualEntry.Confidence = 1.0;
+            manualEntry.IsActive = true;
+            manualEntry.LastSeenAtUtc = _clock.UtcNow;
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return normalizedLocale;
+    }
+
+    private async Task<UserMemoryEntry> UpsertLocaleEntryAsync(
+        string channel,
+        string userId,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var localeEntry = await _userMemoryRepository.GetByKeyAsync(
+            LocalizationConstants.LocaleMemoryKey,
+            channel,
+            userId,
+            cancellationToken);
+
+        if (localeEntry is not null)
+        {
+            localeEntry.Value = locale;
+            localeEntry.Confidence = 1.0;
+            localeEntry.IsActive = true;
+            localeEntry.LastSeenAtUtc = _clock.UtcNow;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return localeEntry;
+        }
+
+        localeEntry = new UserMemoryEntry
+        {
+            Channel = channel,
+            UserId = userId,
+            Key = LocalizationConstants.LocaleMemoryKey,
+            Value = locale,
+            Confidence = 1.0,
+            IsActive = true,
+            LastSeenAtUtc = _clock.UtcNow
+        };
+
+        await _userMemoryRepository.AddAsync(localeEntry, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return localeEntry;
+    }
+
+    private static bool IsManualSelectionEnabled(string? value)
+        => string.Equals(value?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeLocale(string? value)
+    {
+        var normalized = LocalizationConstants.NormalizeLocaleCode(value);
+
+        // Automatic switching currently supports only "en" and "uk".
+        // Other locales remain user-selected and should not be auto-detected.
+        return normalized is LocalizationConstants.UkrainianLocale
+            ? LocalizationConstants.UkrainianLocale
+            : LocalizationConstants.EnglishLocale;
     }
 
     private static string? DetectLocaleFromText(string? text)

@@ -6,8 +6,8 @@ using Xunit;
 
 public sealed class NavigationRouterTests
 {
-    private static readonly MainMenuLabels EnLabels = new("Chat", "Vocabulary", "Shopping", "Menu");
-    private static readonly MainMenuLabels UkLabels = new("ChatUk", "VocabularyUk", "ShoppingUk", "MenuUk");
+    private static readonly MainMenuLabels EnLabels = new("Chat", "Vocabulary", "Shopping", "Menu", "Settings");
+    private static readonly MainMenuLabels UkLabels = new("ChatUk", "VocabularyUk", "ShoppingUk", "MenuUk", "SettingsUk");
 
     [Fact]
     public void Resolve_ShouldRouteToCallback_WhenCallbackDataPresent()
@@ -44,6 +44,7 @@ public sealed class NavigationRouterTests
     [InlineData("Vocabulary", NavigationRouteKind.MainVocabularyButton)]
     [InlineData("Shopping", NavigationRouteKind.MainShoppingButton)]
     [InlineData("Menu", NavigationRouteKind.MainWeeklyMenuButton)]
+    [InlineData("Settings", NavigationRouteKind.MainSettingsButton)]
     public void Resolve_ShouldRouteMainButtons_ForEnglishLocale(string text, NavigationRouteKind expectedKind)
     {
         var sut = new NavigationRouter();
@@ -56,6 +57,7 @@ public sealed class NavigationRouterTests
     [InlineData("VocabularyUk", NavigationRouteKind.MainVocabularyButton)]
     [InlineData("ShoppingUk", NavigationRouteKind.MainShoppingButton)]
     [InlineData("MenuUk", NavigationRouteKind.MainWeeklyMenuButton)]
+    [InlineData("SettingsUk", NavigationRouteKind.MainSettingsButton)]
     public void Resolve_ShouldRouteMainButtons_ForUkrainianLocale(string text, NavigationRouteKind expectedKind)
     {
         var sut = new NavigationRouter();
@@ -67,6 +69,8 @@ public sealed class NavigationRouterTests
     [InlineData(NavigationSections.Vocabulary, "ephemeral", NavigationRouteKind.VocabularyText)]
     [InlineData(NavigationSections.Shopping, "buy milk", NavigationRouteKind.ShoppingText)]
     [InlineData(NavigationSections.WeeklyMenu, "plan food", NavigationRouteKind.WeeklyMenuText)]
+    [InlineData(NavigationSections.Settings, "show", NavigationRouteKind.SettingsText)]
+    [InlineData(NavigationSections.LanguageOnboarding, "hi", NavigationRouteKind.LanguageOnboardingText)]
     [InlineData(NavigationSections.Main, "hello", NavigationRouteKind.DefaultText)]
     [InlineData(null, "hello", NavigationRouteKind.DefaultText)]
     [InlineData("stale-value", "hello", NavigationRouteKind.DefaultText)]
