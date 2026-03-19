@@ -321,7 +321,9 @@ public sealed class CommandConversationAgent : IConversationAgent, IConversation
         {
             "Vocabulary index commands:",
             $"- {ConversationSlashCommands.IndexClear} - clear SQL vocabulary index.",
-            $"- {ConversationSlashCommands.IndexRebuild} - rebuild SQL vocabulary index from decks."
+            $"- {ConversationSlashCommands.IndexRebuild} - rebuild SQL vocabulary index from decks.",
+            "Note: index commands update SQL only and do not write cards to Excel/OneDrive decks.",
+            $"To flush pending deck writes, run {ConversationSlashCommands.SyncRun}."
         };
 
         return ConversationAgentResult.Empty(Name, "command.index.help", string.Join(Environment.NewLine, lines));

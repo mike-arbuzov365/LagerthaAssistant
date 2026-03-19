@@ -591,6 +591,16 @@ public sealed class TelegramControllerTests
         {
             CurrentMode = VocabularyStorageMode.Local
         };
+        var syncProcessor = new FakeVocabularySyncProcessor
+        {
+            NextSummary = new VocabularySyncRunSummary(
+                Requested: 1,
+                Processed: 1,
+                Completed: 1,
+                Requeued: 0,
+                Failed: 0,
+                PendingAfterRun: 0)
+        };
         var sender = new FakeTelegramBotSender();
 
         var sut = CreateSut(
@@ -605,7 +615,8 @@ public sealed class TelegramControllerTests
             navigationPresenter: null,
             new FakeTelegramFormatter("ignored"),
             sender,
-            new TelegramOptions { Enabled = true });
+            new TelegramOptions { Enabled = true },
+            vocabularySyncProcessor: syncProcessor);
 
         await sut.Webhook(
             BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.Login, null, updateId: 21),
@@ -622,6 +633,107 @@ public sealed class TelegramControllerTests
         Assert.Equal("settings.onedrive.check.success", payload.Intent);
         Assert.Equal(VocabularyStorageMode.Graph, storagePreference.CurrentMode);
         Assert.Contains("switched", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, syncProcessor.ProcessCalls);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldRunPendingSync_WhenOneDriveSyncNowCallbackReceived()
+    {
+        var sender = new FakeTelegramBotSender();
+        var graphAuth = new FakeGraphAuthService
+        {
+            Status = new GraphAuthStatus(true, true, "Authenticated.")
+        };
+        var syncProcessor = new FakeVocabularySyncProcessor
+        {
+            NextSummary = new VocabularySyncRunSummary(
+                Requested: 2,
+                Processed: 2,
+                Completed: 2,
+                Requeued: 0,
+                Failed: 0,
+                PendingAfterRun: 0)
+        };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Settings },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            graphAuthService: graphAuth,
+            vocabularySyncProcessor: syncProcessor);
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.SyncNow, null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("settings.onedrive.sync.done", payload.Intent);
+        Assert.Equal(1, syncProcessor.ProcessCalls);
+        Assert.Contains("Sync complete", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldRebuildIndex_WhenOneDriveRebuildIndexCallbackReceived()
+    {
+        var sender = new FakeTelegramBotSender();
+        var graphAuth = new FakeGraphAuthService
+        {
+            Status = new GraphAuthStatus(true, true, "Authenticated.")
+        };
+        var deckService = new FakeVocabularyDeckService
+        {
+            AllEntries =
+            [
+                new VocabularyDeckEntry("wm-verbs-us-en.xlsx", "/apps/Flashcards Deluxe/wm-verbs-us-en.xlsx", 10, "work", "(v) працювати", "I work."),
+                new VocabularyDeckEntry("wm-nouns-ua-en.xlsx", "/apps/Flashcards Deluxe/wm-nouns-ua-en.xlsx", 20, "work", "(n) робота", "The work is hard.")
+            ]
+        };
+        var indexService = new FakeVocabularyIndexService
+        {
+            RebuildResult = 2
+        };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Settings },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            graphAuthService: graphAuth,
+            vocabularyIndexService: indexService,
+            vocabularyDeckService: deckService);
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.RebuildIndex, null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("settings.onedrive.index.done", payload.Intent);
+        Assert.Equal(1, indexService.RebuildCalls);
+        Assert.Equal(VocabularyStorageMode.Graph, indexService.LastMode);
+        Assert.Contains("Index rebuilt", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -788,6 +900,48 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldShowWordSuggestions_WhenWordIsUnrecognized()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = BuildVocabularyUnrecognizedResult()
+        };
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService
+            {
+                StoredLocale = LocalizationConstants.EnglishLocale,
+                NextLocale = LocalizationConstants.EnglishLocale
+            },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("Processed."),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "smle", null, languageCode: "en"),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocabulary.single", payload.Intent);
+        Assert.Contains("not recognized", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Did you mean", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("smile", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Processed.", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Webhook_LanguageChangeInSettings_ShouldSendMainReplyKeyboardInNewLocale()
     {
         var localeState = new FakeUserLocaleStateService
@@ -879,7 +1033,10 @@ public sealed class TelegramControllerTests
         FakeTelegramBotSender sender,
         TelegramOptions options,
         FakeTelegramProcessedUpdateRepository? processedUpdates = null,
-        FakeGraphAuthService? graphAuthService = null)
+        FakeGraphAuthService? graphAuthService = null,
+        FakeVocabularySyncProcessor? vocabularySyncProcessor = null,
+        FakeVocabularyIndexService? vocabularyIndexService = null,
+        FakeVocabularyDeckService? vocabularyDeckService = null)
     {
         return CreateSut(
             orchestrator,
@@ -891,7 +1048,10 @@ public sealed class TelegramControllerTests
             sender,
             options,
             processedUpdates,
-            graphAuthService: graphAuthService);
+            graphAuthService: graphAuthService,
+            vocabularySyncProcessor: vocabularySyncProcessor,
+            vocabularyIndexService: vocabularyIndexService,
+            vocabularyDeckService: vocabularyDeckService);
     }
 
     private static TelegramController CreateSut(
@@ -905,7 +1065,10 @@ public sealed class TelegramControllerTests
         TelegramOptions options,
         FakeTelegramProcessedUpdateRepository? processedUpdates = null,
         FakeVocabularyPersistenceService? vocabularyPersistenceService = null,
-        FakeGraphAuthService? graphAuthService = null)
+        FakeGraphAuthService? graphAuthService = null,
+        FakeVocabularySyncProcessor? vocabularySyncProcessor = null,
+        FakeVocabularyIndexService? vocabularyIndexService = null,
+        FakeVocabularyDeckService? vocabularyDeckService = null)
     {
         return CreateSut(
             orchestrator,
@@ -922,7 +1085,10 @@ public sealed class TelegramControllerTests
             options,
             processedUpdates,
             vocabularyPersistenceService,
-            graphAuthService: graphAuthService);
+            graphAuthService: graphAuthService,
+            vocabularySyncProcessor: vocabularySyncProcessor,
+            vocabularyIndexService: vocabularyIndexService,
+            vocabularyDeckService: vocabularyDeckService);
     }
 
     private static TelegramController CreateSut(
@@ -940,7 +1106,10 @@ public sealed class TelegramControllerTests
         TelegramOptions options,
         FakeTelegramProcessedUpdateRepository? processedUpdates = null,
         FakeVocabularyPersistenceService? vocabularyPersistenceService = null,
-        FakeGraphAuthService? graphAuthService = null)
+        FakeGraphAuthService? graphAuthService = null,
+        FakeVocabularySyncProcessor? vocabularySyncProcessor = null,
+        FakeVocabularyIndexService? vocabularyIndexService = null,
+        FakeVocabularyDeckService? vocabularyDeckService = null)
     {
         return new TelegramController(
             orchestrator,
@@ -954,6 +1123,9 @@ public sealed class TelegramControllerTests
             vocabularyCardRepository ?? new FakeVocabularyCardRepository(),
             new FakeVocabularySaveModePreferenceService(),
             vocabularyPersistenceService ?? new FakeVocabularyPersistenceService(),
+            vocabularySyncProcessor ?? new FakeVocabularySyncProcessor(),
+            vocabularyIndexService ?? new FakeVocabularyIndexService(),
+            vocabularyDeckService ?? new FakeVocabularyDeckService(),
             graphAuthService ?? new FakeGraphAuthService(),
             navigationPresenter ?? new FakeTelegramNavigationPresenter(),
             formatter,
@@ -1246,6 +1418,133 @@ public sealed class TelegramControllerTests
             => Task.FromResult<string?>(null);
     }
 
+    private static ConversationAgentResult BuildVocabularyUnrecognizedResult()
+    {
+        var item = new ConversationAgentItemResult(
+            Input: "smle",
+            Lookup: new VocabularyLookupResult("smle", []),
+            AssistantCompletion: null,
+            AppendPreview: null)
+        {
+            IsWordUnrecognized = true,
+            WordSuggestions = ["smile", "smiley"]
+        };
+
+        return new ConversationAgentResult(
+            AgentName: "vocabulary-agent",
+            Intent: "vocabulary.single",
+            IsBatch: false,
+            Items: [item]);
+    }
+
+    private sealed class FakeVocabularySyncProcessor : IVocabularySyncProcessor
+    {
+        public int ProcessCalls { get; private set; }
+
+        public VocabularySyncRunSummary NextSummary { get; set; } = new(
+            Requested: 0,
+            Processed: 0,
+            Completed: 0,
+            Requeued: 0,
+            Failed: 0,
+            PendingAfterRun: 0);
+
+        public Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(NextSummary.PendingAfterRun);
+
+        public Task<VocabularySyncRunSummary> ProcessPendingAsync(int take, CancellationToken cancellationToken = default)
+        {
+            ProcessCalls++;
+            return Task.FromResult(NextSummary);
+        }
+
+        public Task<IReadOnlyList<VocabularySyncFailedJob>> GetFailedJobsAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularySyncFailedJob>>([]);
+
+        public Task<int> RequeueFailedAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+    }
+
+    private sealed class FakeVocabularyIndexService : IVocabularyIndexService
+    {
+        public int RebuildCalls { get; private set; }
+
+        public IReadOnlyList<VocabularyDeckEntry> LastEntries { get; private set; } = [];
+
+        public VocabularyStorageMode LastMode { get; private set; } = VocabularyStorageMode.Local;
+
+        public int RebuildResult { get; set; }
+
+        public Task<VocabularyLookupResult> FindByInputAsync(string input, CancellationToken cancellationToken = default)
+            => Task.FromResult(new VocabularyLookupResult(input, []));
+
+        public Task<IReadOnlyDictionary<string, VocabularyLookupResult>> FindByInputsAsync(
+            IReadOnlyList<string> inputs,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyDictionary<string, VocabularyLookupResult>>(
+                new Dictionary<string, VocabularyLookupResult>(StringComparer.OrdinalIgnoreCase));
+
+        public Task IndexLookupResultAsync(
+            VocabularyLookupResult lookup,
+            VocabularyStorageMode storageMode,
+            CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task HandleAppendResultAsync(
+            string requestedWord,
+            string assistantReply,
+            string? targetDeckFileName,
+            string? overridePartOfSpeech,
+            VocabularyAppendResult appendResult,
+            VocabularyStorageMode storageMode,
+            CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<int> ClearAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<int> RebuildAsync(
+            IReadOnlyList<VocabularyDeckEntry> entries,
+            VocabularyStorageMode storageMode,
+            CancellationToken cancellationToken = default)
+        {
+            RebuildCalls++;
+            LastEntries = entries;
+            LastMode = storageMode;
+            return Task.FromResult(RebuildResult);
+        }
+    }
+
+    private sealed class FakeVocabularyDeckService : IVocabularyDeckService
+    {
+        public IReadOnlyList<VocabularyDeckEntry> AllEntries { get; set; } = [];
+
+        public Task<VocabularyLookupResult> FindInWritableDecksAsync(string word, CancellationToken cancellationToken = default)
+            => Task.FromResult(new VocabularyLookupResult(word, []));
+
+        public Task<IReadOnlyList<VocabularyDeckFile>> GetWritableDeckFilesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyDeckFile>>([]);
+
+        public Task<VocabularyAppendPreviewResult> PreviewAppendFromAssistantReplyAsync(
+            string requestedWord,
+            string assistantReply,
+            string? forcedDeckFileName = null,
+            string? overridePartOfSpeech = null,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new VocabularyAppendPreviewResult(VocabularyAppendPreviewStatus.NoMatchingDeck, requestedWord));
+
+        public Task<VocabularyAppendResult> AppendFromAssistantReplyAsync(
+            string requestedWord,
+            string assistantReply,
+            string? forcedDeckFileName = null,
+            string? overridePartOfSpeech = null,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new VocabularyAppendResult(VocabularyAppendStatus.Error, Message: "Not supported in fake"));
+
+        public Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(AllEntries);
+    }
+
     private sealed class FakeAssistantSessionService : IAssistantSessionService
     {
         public IReadOnlyCollection<LagerthaAssistant.Domain.AI.ConversationMessage> Messages => [];
@@ -1439,6 +1738,8 @@ public sealed class TelegramControllerTests
                 "vocab.save_yes" => "Save",
                 "vocab.save_no" => "Skip",
                 "vocab.no_pending_save" => "No pending save",
+                "vocab.word_unrecognized" => "Word \"{0}\" is not recognized.",
+                "vocab.word_unrecognized_with_suggestions" => "Word \"{0}\" is not recognized. Did you mean: {1}?",
                 "command.console_only_generic" => "The {0} command is console-only",
                 "command.console_only_graph" => "The {0} command is console-only. Open Settings -> OneDrive / Graph.",
                 "onedrive.login_switched_to_graph" => "Connected and switched to graph",
@@ -1451,6 +1752,11 @@ public sealed class TelegramControllerTests
                 "onedrive.error_timed_out" => "Login timed out",
                 "onedrive.error_declined" => "Login declined",
                 "onedrive.still_not_signed_in" => "Still not signed in",
+                "onedrive.sync_now" => "Sync pending saves",
+                "onedrive.rebuild_index" => "Rebuild index",
+                "onedrive.sync_now_done" => "Sync complete: completed={0}, requeued={1}, failed={2}, pending={3}.",
+                "onedrive.rebuild_index_done" => "Index rebuilt from writable decks: scanned={0}, indexed={1}.",
+                "onedrive.operation_failed" => "Operation failed: {0}",
                 "onboarding.choose_language" => "Choose language",
                 "language.current" => "Current: {0}",
                 "language.changed" => "Changed: {0}",

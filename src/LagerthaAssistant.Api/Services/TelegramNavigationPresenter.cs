@@ -167,6 +167,8 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         if (isConnected)
         {
             rows.Add([Button("onedrive.logout", locale, CallbackDataConstants.OneDrive.Logout)]);
+            rows.Add([Button("onedrive.sync_now", locale, CallbackDataConstants.OneDrive.SyncNow)]);
+            rows.Add([Button("onedrive.rebuild_index", locale, CallbackDataConstants.OneDrive.RebuildIndex)]);
         }
         else
         {
