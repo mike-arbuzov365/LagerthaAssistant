@@ -1325,6 +1325,48 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldInsertSeparatorBeforeMultiFoundInDeckSection()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = BuildVocabularyBatchFoundInDeckResult()
+        };
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService
+            {
+                StoredLocale = LocalizationConstants.EnglishLocale,
+                NextLocale = LocalizationConstants.EnglishLocale
+            },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("batch body"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "cancel celebrate concern", null, languageCode: "en"),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocabulary.batch", payload.Intent);
+        Assert.Contains(
+            "--------------------\nThese words already exist in dictionary:",
+            sender.LastText.Replace("\r\n", "\n", StringComparison.Ordinal),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldRenderPreviewWarnings_WithWarningMarkerStyle()
     {
         var orchestrator = new FakeConversationOrchestrator
@@ -1883,6 +1925,58 @@ public sealed class TelegramControllerTests
             Intent: "vocabulary.single",
             IsBatch: false,
             Items: [item]);
+    }
+
+    private static ConversationAgentResult BuildVocabularyBatchFoundInDeckResult()
+    {
+        var items = new List<ConversationAgentItemResult>
+        {
+            new(
+                Input: "cancel",
+                Lookup: new VocabularyLookupResult(
+                    "cancel",
+                    [
+                        new VocabularyDeckEntry(
+                            DeckFileName: "wm-verbs-us-en.xlsx",
+                            DeckPath: "/apps/Flashcards Deluxe/wm-verbs-us-en.xlsx",
+                            RowNumber: 624,
+                            Word: "cancel",
+                            Meaning: "(v) cancel",
+                            Examples: string.Empty)
+                    ])),
+            new(
+                Input: "celebrate",
+                Lookup: new VocabularyLookupResult(
+                    "celebrate",
+                    [
+                        new VocabularyDeckEntry(
+                            DeckFileName: "wm-verbs-us-en.xlsx",
+                            DeckPath: "/apps/Flashcards Deluxe/wm-verbs-us-en.xlsx",
+                            RowNumber: 625,
+                            Word: "celebrate",
+                            Meaning: "(v) celebrate",
+                            Examples: string.Empty)
+                    ])),
+            new(
+                Input: "concern",
+                Lookup: new VocabularyLookupResult(
+                    "concern",
+                    [
+                        new VocabularyDeckEntry(
+                            DeckFileName: "wm-nouns-ua-en.xlsx",
+                            DeckPath: "/apps/Flashcards Deluxe/wm-nouns-ua-en.xlsx",
+                            RowNumber: 836,
+                            Word: "concern",
+                            Meaning: "(n) concern",
+                            Examples: string.Empty)
+                    ]))
+        };
+
+        return new ConversationAgentResult(
+            AgentName: "vocabulary-agent",
+            Intent: "vocabulary.batch",
+            IsBatch: true,
+            Items: items);
     }
 
     private static ConversationAgentResult BuildVocabularyPreviewWarningResult()
