@@ -28,6 +28,8 @@ public sealed class TelegramController : ControllerBase
     private const string TelegramChannel = "telegram";
     private const string TelegramSecretHeader = "X-Telegram-Bot-Api-Secret-Token";
     private const string HtmlParseMode = "HTML";
+    private const int ManualSyncBatchSize = 25;
+    private const int ManualSyncMaxPasses = 5;
 
     private static readonly ConcurrentDictionary<string, GraphDeviceLoginChallenge> PendingGraphChallenges = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, PendingVocabularySaveRequest> PendingVocabularySaves = new(StringComparer.Ordinal);
@@ -43,6 +45,9 @@ public sealed class TelegramController : ControllerBase
     private readonly IVocabularyCardRepository _vocabularyCardRepository;
     private readonly IVocabularySaveModePreferenceService _saveModePreferenceService;
     private readonly IVocabularyPersistenceService _vocabularyPersistenceService;
+    private readonly IVocabularySyncProcessor _vocabularySyncProcessor;
+    private readonly IVocabularyIndexService _vocabularyIndexService;
+    private readonly IVocabularyDeckService _vocabularyDeckService;
     private readonly IGraphAuthService _graphAuthService;
     private readonly ITelegramNavigationPresenter _navigationPresenter;
     private readonly ITelegramConversationResponseFormatter _responseFormatter;
@@ -63,6 +68,9 @@ public sealed class TelegramController : ControllerBase
         IVocabularyCardRepository vocabularyCardRepository,
         IVocabularySaveModePreferenceService saveModePreferenceService,
         IVocabularyPersistenceService vocabularyPersistenceService,
+        IVocabularySyncProcessor vocabularySyncProcessor,
+        IVocabularyIndexService vocabularyIndexService,
+        IVocabularyDeckService vocabularyDeckService,
         IGraphAuthService graphAuthService,
         ITelegramNavigationPresenter navigationPresenter,
         ITelegramConversationResponseFormatter responseFormatter,
@@ -82,6 +90,9 @@ public sealed class TelegramController : ControllerBase
         _vocabularyCardRepository = vocabularyCardRepository;
         _saveModePreferenceService = saveModePreferenceService;
         _vocabularyPersistenceService = vocabularyPersistenceService;
+        _vocabularySyncProcessor = vocabularySyncProcessor;
+        _vocabularyIndexService = vocabularyIndexService;
+        _vocabularyDeckService = vocabularyDeckService;
         _graphAuthService = graphAuthService;
         _navigationPresenter = navigationPresenter;
         _responseFormatter = responseFormatter;
@@ -622,11 +633,21 @@ public sealed class TelegramController : ControllerBase
             }
 
             var complete = await _graphAuthService.CompleteLoginAsync(challenge, cancellationToken);
+            OneDriveSyncSummary? syncSummary = null;
             if (complete.Succeeded)
             {
                 PendingGraphChallenges.TryRemove(challengeKey, out _);
                 await _storagePreferenceService.SetModeAsync(scope, VocabularyStorageMode.Graph, cancellationToken);
                 _storageModeProvider.SetMode(VocabularyStorageMode.Graph);
+
+                try
+                {
+                    syncSummary = await RunPendingSyncUntilStableAsync(cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Post-login vocabulary sync attempt failed.");
+                }
             }
 
             var includeCheckButton = !complete.Succeeded;
@@ -634,11 +655,25 @@ public sealed class TelegramController : ControllerBase
 
             if (complete.Succeeded)
             {
+                var successText = _navigationPresenter.GetText("onedrive.login_switched_to_graph", locale);
+                if (syncSummary is not null)
+                {
+                    successText = AppendTextBlock(
+                        successText,
+                        _navigationPresenter.GetText(
+                            "onedrive.sync_now_done",
+                            locale,
+                            syncSummary.Completed,
+                            syncSummary.Requeued,
+                            syncSummary.Failed,
+                            syncSummary.PendingAfterRun));
+                }
+
                 return screen with
                 {
                     Intent = "settings.onedrive.check.success",
                     Text = string.Concat(
-                        _navigationPresenter.GetText("onedrive.login_switched_to_graph", locale),
+                        successText,
                         Environment.NewLine,
                         Environment.NewLine,
                         screen.Text)
@@ -659,7 +694,141 @@ public sealed class TelegramController : ControllerBase
             };
         }
 
+        if (string.Equals(callbackData, CallbackDataConstants.OneDrive.SyncNow, StringComparison.Ordinal))
+        {
+            var status = await _graphAuthService.GetStatusAsync(cancellationToken);
+            if (!status.IsAuthenticated)
+            {
+                var authScreen = await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
+                return authScreen with
+                {
+                    Intent = "settings.onedrive.sync.auth_required",
+                    Text = string.Concat(
+                        _navigationPresenter.GetText("onedrive.error_not_authenticated", locale),
+                        Environment.NewLine,
+                        Environment.NewLine,
+                        authScreen.Text)
+                };
+            }
+
+            try
+            {
+                var syncSummary = await RunPendingSyncUntilStableAsync(cancellationToken);
+                var syncedScreen = await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
+
+                return syncedScreen with
+                {
+                    Intent = "settings.onedrive.sync.done",
+                    Text = string.Concat(
+                        _navigationPresenter.GetText(
+                            "onedrive.sync_now_done",
+                            locale,
+                            syncSummary.Completed,
+                            syncSummary.Requeued,
+                            syncSummary.Failed,
+                            syncSummary.PendingAfterRun),
+                        Environment.NewLine,
+                        Environment.NewLine,
+                        syncedScreen.Text)
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Manual vocabulary sync from Telegram settings failed.");
+                var failedScreen = await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
+                return failedScreen with
+                {
+                    Intent = "settings.onedrive.sync.failed",
+                    Text = string.Concat(
+                        _navigationPresenter.GetText(
+                            "onedrive.operation_failed",
+                            locale,
+                            WebUtility.HtmlEncode(LocalizeGraphRelatedMessage(ex.Message, locale))),
+                        Environment.NewLine,
+                        Environment.NewLine,
+                        failedScreen.Text)
+                };
+            }
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.OneDrive.RebuildIndex, StringComparison.Ordinal))
+        {
+            var status = await _graphAuthService.GetStatusAsync(cancellationToken);
+            if (!status.IsAuthenticated)
+            {
+                var authScreen = await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
+                return authScreen with
+                {
+                    Intent = "settings.onedrive.index.auth_required",
+                    Text = string.Concat(
+                        _navigationPresenter.GetText("onedrive.error_not_authenticated", locale),
+                        Environment.NewLine,
+                        Environment.NewLine,
+                        authScreen.Text)
+                };
+            }
+
+            try
+            {
+                _storageModeProvider.SetMode(VocabularyStorageMode.Graph);
+                var entries = await _vocabularyDeckService.GetAllEntriesAsync(cancellationToken);
+                var indexed = await _vocabularyIndexService.RebuildAsync(entries, VocabularyStorageMode.Graph, cancellationToken);
+
+                var indexedScreen = await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
+                return indexedScreen with
+                {
+                    Intent = "settings.onedrive.index.done",
+                    Text = string.Concat(
+                        _navigationPresenter.GetText("onedrive.rebuild_index_done", locale, entries.Count, indexed),
+                        Environment.NewLine,
+                        Environment.NewLine,
+                        indexedScreen.Text)
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "OneDrive index rebuild from Telegram settings failed.");
+                var failedScreen = await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
+                return failedScreen with
+                {
+                    Intent = "settings.onedrive.index.failed",
+                    Text = string.Concat(
+                        _navigationPresenter.GetText(
+                            "onedrive.operation_failed",
+                            locale,
+                            WebUtility.HtmlEncode(LocalizeGraphRelatedMessage(ex.Message, locale))),
+                        Environment.NewLine,
+                        Environment.NewLine,
+                        failedScreen.Text)
+                };
+            }
+        }
+
         return await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
+    }
+
+    private async Task<OneDriveSyncSummary> RunPendingSyncUntilStableAsync(CancellationToken cancellationToken)
+    {
+        var completed = 0;
+        var requeued = 0;
+        var failed = 0;
+        var pendingAfterRun = 0;
+
+        for (var pass = 0; pass < ManualSyncMaxPasses; pass++)
+        {
+            var summary = await _vocabularySyncProcessor.ProcessPendingAsync(ManualSyncBatchSize, cancellationToken);
+            completed += summary.Completed;
+            requeued += summary.Requeued;
+            failed += summary.Failed;
+            pendingAfterRun = summary.PendingAfterRun;
+
+            if (summary.Processed == 0 || summary.PendingAfterRun == 0)
+            {
+                break;
+            }
+        }
+
+        return new OneDriveSyncSummary(completed, requeued, failed, pendingAfterRun);
     }
 
     private async Task<TelegramRouteResponse> BuildVocabularyTextResponseAsync(
@@ -1256,6 +1425,12 @@ public sealed class TelegramController : ControllerBase
         string AssistantReply,
         string TargetDeckFileName,
         string? OverridePartOfSpeech);
+
+    private sealed record OneDriveSyncSummary(
+        int Completed,
+        int Requeued,
+        int Failed,
+        int PendingAfterRun);
 
     private sealed record TelegramRouteResponse(
         string Intent,
