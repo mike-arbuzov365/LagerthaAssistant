@@ -15,9 +15,11 @@ public sealed class LocalizationServiceTests
     [InlineData("uk-UA", LocalizationConstants.UkrainianLocale)]
     [InlineData("ru", LocalizationConstants.UkrainianLocale)]
     [InlineData("ru-RU", LocalizationConstants.UkrainianLocale)]
-    [InlineData("be", LocalizationConstants.EnglishLocale)]
-    [InlineData("de", LocalizationConstants.EnglishLocale)]
-    [InlineData("fr", LocalizationConstants.EnglishLocale)]
+    [InlineData("be", LocalizationConstants.UkrainianLocale)]
+    [InlineData("de", LocalizationConstants.GermanLocale)]
+    [InlineData("fr", LocalizationConstants.FrenchLocale)]
+    [InlineData("es", LocalizationConstants.SpanishLocale)]
+    [InlineData("pl", LocalizationConstants.PolishLocale)]
     public void GetLocaleForUser_ShouldApplyExpectedMapping(string? languageCode, string expected)
     {
         var sut = new LocalizationService();
@@ -64,11 +66,11 @@ public sealed class LocalizationServiceTests
     [Theory]
     [InlineData("en")]
     [InlineData("uk")]
-    public void Get_ShouldFallbackToKey_WhenMissing(string locale)
+    public void Get_ShouldFallbackToEmptyString_WhenMissing(string locale)
     {
         var sut = new LocalizationService();
         var key = "nonexistent.key";
         var value = sut.Get(key, locale);
-        Assert.Equal(key, value);
+        Assert.Equal(string.Empty, value);
     }
 }

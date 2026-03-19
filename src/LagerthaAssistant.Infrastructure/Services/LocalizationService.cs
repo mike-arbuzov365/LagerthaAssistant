@@ -12,6 +12,7 @@ public sealed class LocalizationService : ILocalizationService
         ["menu.main.vocabulary"] = "📚 Vocabulary",
         ["menu.main.shopping"] = "🛒 Shopping",
         ["menu.main.menu"] = "🍽 Menu",
+        ["menu.main.settings"] = "⚙️ Settings",
         ["menu.vocabulary.title"] = "📚 Vocabulary\n\nYou have {0} words. What shall we do?",
         ["menu.vocabulary.add"] = "➕ Add word",
         ["menu.vocabulary.list"] = "📋 My list",
@@ -35,7 +36,42 @@ public sealed class LocalizationService : ILocalizationService
         ["vocab.url.prompt"] = "Send me a URL to an article and I'll extract new words for you.",
         ["vocab.batch.prompt"] = "Send several words or phrases in one message (new lines, commas, semicolons, or sentences), and I will process them in batch mode.",
         ["vocab.list.empty"] = "Your vocabulary list is empty.",
-        ["vocab.list.title"] = "📋 Your latest words:"
+        ["vocab.list.title"] = "📋 Your latest words:",
+        ["onboarding.choose_language"] = "👋 Welcome!\n\nPlease choose your language:",
+        ["onboarding.language_saved"] = "🎉 Great! Language saved.\n\nHi! I'm Lagertha — your personal assistant. How can I help?",
+        ["settings.title"] = "⚙️ <b>Settings</b>",
+        ["settings.language"] = "🌐 Language",
+        ["settings.save_mode"] = "💾 Save mode",
+        ["settings.onedrive"] = "☁️ OneDrive / Graph",
+        ["settings.notion"] = "📝 Notion (coming soon)",
+        ["settings.back"] = "🔙 Main menu",
+        ["settings.change_language"] = "🌐 Change language",
+        ["settings.change_save_mode"] = "💾 Change save mode",
+        ["language.current"] = "🌐 <b>Language</b>\n\nCurrent: {0}\n\nChoose new language:",
+        ["language.changed"] = "✅ Language changed to {0}",
+        ["savemode.title"] = "💾 <b>Save mode</b>\n\nCurrent: <b>{0}</b>\n\n• <b>auto</b> — save words automatically\n• <b>ask</b> — confirm before each save\n• <b>off</b> — don't save to deck",
+        ["savemode.changed"] = "✅ Save mode changed to <b>{0}</b>",
+        ["savemode.auto"] = "💾 auto",
+        ["savemode.ask"] = "❓ ask",
+        ["savemode.off"] = "🚫 off",
+        ["onedrive.title"] = "☁️ <b>OneDrive / Graph</b>",
+        ["onedrive.status_connected"] = "Status: ✅ Connected",
+        ["onedrive.status_disconnected"] = "Status: ❌ Not connected",
+        ["onedrive.login"] = "🔑 Sign in to OneDrive",
+        ["onedrive.logout"] = "🚪 Sign out",
+        ["onedrive.login_started"] = "🔑 To sign in, open this link and enter the code:\n\n<b>{0}</b>\n\nLink: {1}\n\nCode expires in {2} minutes.",
+        ["onedrive.logout_done"] = "✅ Signed out from OneDrive.",
+        ["onedrive.check_status"] = "✅ I've signed in",
+        ["onedrive.still_not_signed_in"] = "Still not signed in. Try again?",
+        ["notion.title"] = "📝 <b>Notion</b>\n\n🚧 This integration is under development. Coming soon!",
+        ["back"] = "🔙 Back",
+        ["language.name.uk"] = "🇺🇦 Українська",
+        ["language.name.en"] = "🇬🇧 English",
+        ["language.name.es"] = "🇪🇸 Español",
+        ["language.name.fr"] = "🇫🇷 Français",
+        ["language.name.de"] = "🇩🇪 Deutsch",
+        ["language.name.pl"] = "🇵🇱 Polski",
+        ["language.name.de_pl"] = "🇩🇪 Deutsch · 🇵🇱 Polski"
     };
 
     private static readonly IReadOnlyDictionary<string, string> Ukrainian = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -45,6 +81,7 @@ public sealed class LocalizationService : ILocalizationService
         ["menu.main.vocabulary"] = "📚 Словник",
         ["menu.main.shopping"] = "🛒 Покупки",
         ["menu.main.menu"] = "🍽 Меню",
+        ["menu.main.settings"] = "⚙️ Налаштування",
         ["menu.vocabulary.title"] = "📚 Словник\n\nУ тебе {0} слів. Що зробимо?",
         ["menu.vocabulary.add"] = "➕ Додати слово",
         ["menu.vocabulary.list"] = "📋 Мій список",
@@ -68,46 +105,84 @@ public sealed class LocalizationService : ILocalizationService
         ["vocab.url.prompt"] = "Надішли посилання на статтю, і я витягну нові слова.",
         ["vocab.batch.prompt"] = "Надішли кілька слів або фраз одним повідомленням (новими рядками, комами, крапкою з комою або реченнями), і я оброблю їх у batch режимі.",
         ["vocab.list.empty"] = "Твій список слів поки порожній.",
-        ["vocab.list.title"] = "📋 Останні слова:"
+        ["vocab.list.title"] = "📋 Останні слова:",
+        ["onboarding.choose_language"] = "👋 Вітаємо!\n\nБудь ласка, оберіть мову:",
+        ["onboarding.language_saved"] = "🎉 Чудово! Мову збережено.\n\nПривіт! Я Lagertha — твій особистий асистент. Чим можу допомогти?",
+        ["settings.title"] = "⚙️ <b>Налаштування</b>",
+        ["settings.language"] = "🌐 Мова",
+        ["settings.save_mode"] = "💾 Режим збереження",
+        ["settings.onedrive"] = "☁️ OneDrive / Graph",
+        ["settings.notion"] = "📝 Notion (скоро)",
+        ["settings.back"] = "🔙 Головне меню",
+        ["settings.change_language"] = "🌐 Змінити мову",
+        ["settings.change_save_mode"] = "💾 Змінити режим збереження",
+        ["language.current"] = "🌐 <b>Мова</b>\n\nПоточна: {0}\n\nОберіть нову мову:",
+        ["language.changed"] = "✅ Мову змінено на {0}",
+        ["savemode.title"] = "💾 <b>Режим збереження</b>\n\nПоточний: <b>{0}</b>\n\n• <b>auto</b> — зберігати автоматично\n• <b>ask</b> — підтверджувати перед збереженням\n• <b>off</b> — не зберігати в деку",
+        ["savemode.changed"] = "✅ Режим збереження змінено на <b>{0}</b>",
+        ["savemode.auto"] = "💾 auto",
+        ["savemode.ask"] = "❓ ask",
+        ["savemode.off"] = "🚫 off",
+        ["onedrive.title"] = "☁️ <b>OneDrive / Graph</b>",
+        ["onedrive.status_connected"] = "Статус: ✅ Підключено",
+        ["onedrive.status_disconnected"] = "Статус: ❌ Не підключено",
+        ["onedrive.login"] = "🔑 Увійти в OneDrive",
+        ["onedrive.logout"] = "🚪 Вийти",
+        ["onedrive.login_started"] = "🔑 Щоб увійти, відкрий посилання та введи код:\n\n<b>{0}</b>\n\nПосилання: {1}\n\nКод діє {2} хвилин.",
+        ["onedrive.logout_done"] = "✅ Вихід з OneDrive виконано.",
+        ["onedrive.check_status"] = "✅ Я вже увійшов",
+        ["onedrive.still_not_signed_in"] = "Ще не авторизовано. Спробувати ще раз?",
+        ["notion.title"] = "📝 <b>Notion</b>\n\n🚧 Ця інтеграція в розробці. Скоро буде!",
+        ["back"] = "🔙 Назад",
+        ["language.name.uk"] = "🇺🇦 Українська",
+        ["language.name.en"] = "🇬🇧 English",
+        ["language.name.es"] = "🇪🇸 Español",
+        ["language.name.fr"] = "🇫🇷 Français",
+        ["language.name.de"] = "🇩🇪 Deutsch",
+        ["language.name.pl"] = "🇵🇱 Polski",
+        ["language.name.de_pl"] = "🇩🇪 Deutsch · 🇵🇱 Polski"
     };
+
+    // TODO: Replace English placeholders with native translations for Spanish.
+    private static readonly IReadOnlyDictionary<string, string> Spanish = English;
+
+    // TODO: Replace English placeholders with native translations for French.
+    private static readonly IReadOnlyDictionary<string, string> French = English;
 
     public string Get(string key, string locale)
     {
-        var normalizedLocale = NormalizeLocale(locale);
-        var dictionary = string.Equals(normalizedLocale, LocalizationConstants.UkrainianLocale, StringComparison.Ordinal)
-            ? Ukrainian
-            : English;
+        var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(locale);
+        var effectiveLocale = normalizedLocale switch
+        {
+            LocalizationConstants.GermanLocale => LocalizationConstants.EnglishLocale,
+            LocalizationConstants.PolishLocale => LocalizationConstants.EnglishLocale,
+            _ => normalizedLocale
+        };
+
+        var dictionary = effectiveLocale switch
+        {
+            LocalizationConstants.UkrainianLocale => Ukrainian,
+            LocalizationConstants.SpanishLocale => Spanish,
+            LocalizationConstants.FrenchLocale => French,
+            _ => English
+        };
 
         if (dictionary.TryGetValue(key, out var value))
         {
             return value;
         }
 
-        return English.TryGetValue(key, out value)
-            ? value
-            : key;
+        if (English.TryGetValue(key, out var fallback))
+        {
+            return fallback;
+        }
+
+        return string.Empty;
     }
 
     public string GetLocaleForUser(string? telegramLanguageCode)
-    {
-        if (IsRussian(telegramLanguageCode))
-        {
-            return LocalizationConstants.UkrainianLocale;
-        }
-
-        if (telegramLanguageCode?.StartsWith(LocalizationConstants.UkrainianLocale, StringComparison.OrdinalIgnoreCase) == true)
-        {
-            return LocalizationConstants.UkrainianLocale;
-        }
-
-        return LocalizationConstants.EnglishLocale;
-    }
+        => LocalizationConstants.NormalizeLocaleCode(telegramLanguageCode);
 
     public bool IsRussian(string? languageCode)
         => languageCode?.StartsWith("ru", StringComparison.OrdinalIgnoreCase) == true;
-
-    private static string NormalizeLocale(string? locale)
-        => string.Equals(locale, LocalizationConstants.UkrainianLocale, StringComparison.OrdinalIgnoreCase)
-            ? LocalizationConstants.UkrainianLocale
-            : LocalizationConstants.EnglishLocale;
 }

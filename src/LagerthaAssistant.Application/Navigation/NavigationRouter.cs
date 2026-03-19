@@ -40,12 +40,19 @@ public sealed class NavigationRouter
             return new NavigationRoute(NavigationRouteKind.MainWeeklyMenuButton);
         }
 
+        if (string.Equals(normalizedText, labels.Settings, StringComparison.Ordinal))
+        {
+            return new NavigationRoute(NavigationRouteKind.MainSettingsButton);
+        }
+
         var section = NavigationSections.Normalize(input.CurrentSection);
         return section switch
         {
             NavigationSections.Vocabulary => new NavigationRoute(NavigationRouteKind.VocabularyText),
             NavigationSections.Shopping => new NavigationRoute(NavigationRouteKind.ShoppingText),
             NavigationSections.WeeklyMenu => new NavigationRoute(NavigationRouteKind.WeeklyMenuText),
+            NavigationSections.Settings => new NavigationRoute(NavigationRouteKind.SettingsText),
+            NavigationSections.LanguageOnboarding => new NavigationRoute(NavigationRouteKind.LanguageOnboardingText),
             _ => new NavigationRoute(NavigationRouteKind.DefaultText)
         };
     }
@@ -60,7 +67,8 @@ public sealed record MainMenuLabels(
     string Chat,
     string Vocabulary,
     string Shopping,
-    string WeeklyMenu);
+    string WeeklyMenu,
+    string Settings);
 
 public sealed record NavigationRoute(
     NavigationRouteKind Kind,
@@ -74,8 +82,11 @@ public enum NavigationRouteKind
     MainVocabularyButton = 3,
     MainShoppingButton = 4,
     MainWeeklyMenuButton = 5,
-    VocabularyText = 6,
-    ShoppingText = 7,
-    WeeklyMenuText = 8,
-    DefaultText = 9
+    MainSettingsButton = 6,
+    VocabularyText = 7,
+    ShoppingText = 8,
+    WeeklyMenuText = 9,
+    SettingsText = 10,
+    LanguageOnboardingText = 11,
+    DefaultText = 12
 }
