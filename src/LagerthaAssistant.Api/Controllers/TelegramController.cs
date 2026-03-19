@@ -296,7 +296,7 @@ public sealed class TelegramController : ControllerBase
                         scope.UserId,
                         scope.ConversationId,
                         cancellationToken);
-                    return await BuildVocabularyTextResponseAsync(result, scope, locale, cancellationToken);
+                    return await BuildVocabularyTextResponseAsync(result, scope, locale, inbound.Text, cancellationToken);
                 }
 
             case NavigationRouteKind.ShoppingText:
@@ -652,7 +652,7 @@ public sealed class TelegramController : ControllerBase
                     _navigationPresenter.GetText("onedrive.still_not_signed_in", locale),
                     Environment.NewLine,
                     Environment.NewLine,
-                    WebUtility.HtmlEncode(complete.Message),
+                    WebUtility.HtmlEncode(LocalizeGraphRelatedMessage(complete.Message, locale)),
                     Environment.NewLine,
                     Environment.NewLine,
                     screen.Text)
@@ -666,11 +666,20 @@ public sealed class TelegramController : ControllerBase
         ConversationAgentResult result,
         ConversationScope scope,
         string locale,
+        string rawInput,
         CancellationToken cancellationToken)
     {
         var formatted = _responseFormatter.Format(result);
         var pendingKey = BuildPendingSaveKey(scope);
         PendingVocabularySaves.TryRemove(pendingKey, out _);
+
+        if (string.Equals(result.Intent, "command.unsupported", StringComparison.OrdinalIgnoreCase))
+        {
+            return new TelegramRouteResponse(
+                result.Intent,
+                BuildConsoleCommandMessage(rawInput, locale),
+                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+        }
 
         if (result.Items.Count == 0)
         {
@@ -679,7 +688,7 @@ public sealed class TelegramController : ControllerBase
 
         var saveMode = await _saveModePreferenceService.GetModeAsync(scope, cancellationToken);
         var saveCandidates = BuildSaveCandidates(result.Items);
-        var previewWarnings = BuildPreviewWarnings(result.Items);
+        var previewWarnings = BuildPreviewWarnings(result.Items, locale);
 
         if (saveMode == VocabularySaveMode.Off)
         {
@@ -845,7 +854,7 @@ public sealed class TelegramController : ControllerBase
         return candidates;
     }
 
-    private static string BuildPreviewWarnings(IReadOnlyList<ConversationAgentItemResult> items)
+    private string BuildPreviewWarnings(IReadOnlyList<ConversationAgentItemResult> items, string locale)
     {
         var warnings = new List<string>();
 
@@ -859,7 +868,8 @@ public sealed class TelegramController : ControllerBase
                 continue;
             }
 
-            warnings.Add($"⚠️ {item.AppendPreview.Message}");
+            var localizedMessage = LocalizeGraphRelatedMessage(item.AppendPreview.Message, locale);
+            warnings.Add($"warning: {localizedMessage}");
         }
 
         return string.Join(Environment.NewLine, warnings.Distinct(StringComparer.Ordinal));
@@ -878,9 +888,92 @@ public sealed class TelegramController : ControllerBase
             _ => _navigationPresenter.GetText(
                 "vocab.save_failed",
                 locale,
-                appendResult.Message ?? "Unknown error")
+                LocalizeSaveFailureMessage(appendResult.Message, locale))
         };
     }
+
+    private string BuildConsoleCommandMessage(string input, string locale)
+    {
+        var command = string.IsNullOrWhiteSpace(input)
+            ? "/command"
+            : input.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+
+        if (command.StartsWith("/graph", StringComparison.OrdinalIgnoreCase))
+        {
+            return _navigationPresenter.GetText("command.console_only_graph", locale, command);
+        }
+
+        return _navigationPresenter.GetText("command.console_only_generic", locale, command);
+    }
+
+    private string LocalizeSaveFailureMessage(string? message, string locale)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return "Unknown error";
+        }
+
+        if (IsGraphNotConfiguredMessage(message))
+        {
+            return _navigationPresenter.GetText("onedrive.error_not_configured", locale);
+        }
+
+        if (IsGraphAuthRequiredMessage(message) || IsGraphTokenExpiredMessage(message))
+        {
+            return _navigationPresenter.GetText("vocab.graph_save_setup_required", locale);
+        }
+
+        return LocalizeGraphRelatedMessage(message, locale);
+    }
+
+    private string LocalizeGraphRelatedMessage(string? message, string locale)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return string.Empty;
+        }
+
+        if (IsGraphNotConfiguredMessage(message))
+        {
+            return _navigationPresenter.GetText("onedrive.error_not_configured", locale);
+        }
+
+        if (IsGraphTokenExpiredMessage(message))
+        {
+            return _navigationPresenter.GetText("onedrive.error_expired", locale);
+        }
+
+        if (message.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+        {
+            return _navigationPresenter.GetText("onedrive.error_timed_out", locale);
+        }
+
+        if (message.Contains("declined", StringComparison.OrdinalIgnoreCase))
+        {
+            return _navigationPresenter.GetText("onedrive.error_declined", locale);
+        }
+
+        if (IsGraphAuthRequiredMessage(message))
+        {
+            return _navigationPresenter.GetText("onedrive.error_not_authenticated", locale);
+        }
+
+        return message.Trim();
+    }
+
+    private static bool IsGraphNotConfiguredMessage(string message)
+        => message.Contains("not configured", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsGraphTokenExpiredMessage(string message)
+        => message.Contains("token expired", StringComparison.OrdinalIgnoreCase)
+           || message.Contains("expired token", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsGraphAuthRequiredMessage(string message)
+        => message.Contains("graph authentication is required", StringComparison.OrdinalIgnoreCase)
+           || message.Contains("not authenticated", StringComparison.OrdinalIgnoreCase)
+           || message.Contains("authorization failed", StringComparison.OrdinalIgnoreCase)
+           || message.Contains("run /graph login", StringComparison.OrdinalIgnoreCase)
+           || message.Contains("use /graph login", StringComparison.OrdinalIgnoreCase);
 
     private static string AppendTextBlock(string source, string extra)
     {
@@ -1008,7 +1101,7 @@ public sealed class TelegramController : ControllerBase
         if (!status.IsConfigured || (!status.IsAuthenticated && !string.IsNullOrWhiteSpace(status.Message)))
         {
             lines.Add(string.Empty);
-            lines.Add(WebUtility.HtmlEncode(status.Message));
+            lines.Add(WebUtility.HtmlEncode(LocalizeGraphRelatedMessage(status.Message, locale)));
         }
 
         return new TelegramRouteResponse(
@@ -1171,3 +1264,4 @@ public sealed class TelegramController : ControllerBase
         bool IsHtml = false,
         string? FollowUpMainKeyboardLocale = null);
 }
+
