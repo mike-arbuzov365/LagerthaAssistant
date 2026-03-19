@@ -66,8 +66,8 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(
             InlineKeyboard:
             [
-                [Button("menu.vocabulary.add", locale, CallbackDataConstants.Vocab.Add), Button("menu.vocabulary.list", locale, CallbackDataConstants.Vocab.List)],
-                [Button("menu.vocabulary.url", locale, CallbackDataConstants.Vocab.Url), Button("menu.vocabulary.batch", locale, CallbackDataConstants.Vocab.Batch)],
+                [Button("menu.vocabulary.add", locale, CallbackDataConstants.Vocab.Add), Button("menu.vocabulary.batch", locale, CallbackDataConstants.Vocab.Batch)],
+                [Button("menu.vocabulary.url", locale, CallbackDataConstants.Vocab.Url), Button("menu.vocabulary.stats", locale, CallbackDataConstants.Vocab.Stats)],
                 [Button("menu.vocabulary.back", locale, CallbackDataConstants.Nav.Main)]
             ]);
     }

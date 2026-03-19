@@ -10,6 +10,7 @@ using LagerthaAssistant.Infrastructure.Services.Vocabulary;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -299,6 +300,120 @@ public sealed class GraphAuthServiceTests
         Assert.Equal(0, secondHandler.CallCount);
     }
 
+    [Fact]
+    public async Task GetAccessTokenAsync_ShouldLoadTokenFromDatabaseOnce_WhenCalledRepeatedly()
+    {
+        var tokenPath = CreateTempTokenCachePath();
+        var services = new ServiceCollection();
+        var inMemoryRoot = new InMemoryDatabaseRoot();
+        var dbName = Guid.NewGuid().ToString("N");
+        services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(dbName, inMemoryRoot));
+        await using var provider = services.BuildServiceProvider();
+        var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+
+        await using (var seedScope = provider.CreateAsyncScope())
+        {
+            var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.GraphAuthTokens.Add(new LagerthaAssistant.Domain.Entities.GraphAuthToken
+            {
+                Provider = "onedrive",
+                AccessToken = "db-token",
+                RefreshToken = "db-refresh",
+                AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(30),
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var logger = new CollectingLogger<GraphAuthService>();
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            throw new InvalidOperationException("Refresh endpoint should not be called for valid cached token.");
+        });
+
+        var sut = new GraphAuthService(
+            new GraphOptions
+            {
+                ClientId = "client-id",
+                TenantId = "common",
+                TokenCachePath = tokenPath
+            },
+            logger,
+            new HttpClient(handler),
+            scopeFactory);
+
+        var firstToken = await sut.GetAccessTokenAsync();
+        var secondToken = await sut.GetAccessTokenAsync();
+        var thirdToken = await sut.GetAccessTokenAsync();
+
+        Assert.Equal("db-token", firstToken);
+        Assert.Equal("db-token", secondToken);
+        Assert.Equal("db-token", thirdToken);
+        Assert.Equal(0, handler.CallCount);
+
+        var dbLoadMessages = logger.Messages.Count(message =>
+            message.Contains("Graph token cache loaded from database", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(1, dbLoadMessages);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_ShouldLoadTokenFromDatabaseOnce_WhenCalledRepeatedly()
+    {
+        var tokenPath = CreateTempTokenCachePath();
+        var services = new ServiceCollection();
+        var inMemoryRoot = new InMemoryDatabaseRoot();
+        var dbName = Guid.NewGuid().ToString("N");
+        services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(dbName, inMemoryRoot));
+        await using var provider = services.BuildServiceProvider();
+        var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+
+        await using (var seedScope = provider.CreateAsyncScope())
+        {
+            var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.GraphAuthTokens.Add(new LagerthaAssistant.Domain.Entities.GraphAuthToken
+            {
+                Provider = "onedrive",
+                AccessToken = "db-token",
+                RefreshToken = "db-refresh",
+                AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(30),
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var logger = new CollectingLogger<GraphAuthService>();
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            throw new InvalidOperationException("Refresh endpoint should not be called for valid cached token.");
+        });
+
+        var sut = new GraphAuthService(
+            new GraphOptions
+            {
+                ClientId = "client-id",
+                TenantId = "common",
+                TokenCachePath = tokenPath
+            },
+            logger,
+            new HttpClient(handler),
+            scopeFactory);
+
+        var firstStatus = await sut.GetStatusAsync();
+        var secondStatus = await sut.GetStatusAsync();
+        var thirdStatus = await sut.GetStatusAsync();
+
+        Assert.True(firstStatus.IsAuthenticated);
+        Assert.True(secondStatus.IsAuthenticated);
+        Assert.True(thirdStatus.IsAuthenticated);
+        Assert.Equal(0, handler.CallCount);
+
+        var dbLoadMessages = logger.Messages.Count(message =>
+            message.Contains("Graph token cache loaded from database", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(1, dbLoadMessages);
+    }
+
     private static string CreateTempTokenCachePath()
     {
         var directory = Path.Combine(Path.GetTempPath(), "LagerthaAssistant", "graph-auth-tests", Guid.NewGuid().ToString("N"));
@@ -316,6 +431,35 @@ public sealed class GraphAuthServiceTests
         {
             CallCount++;
             return await _responder(request);
+        }
+    }
+
+    private sealed class CollectingLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull
+            => NoopDisposable.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Messages.Add(formatter(state, exception));
+        }
+
+        private sealed class NoopDisposable : IDisposable
+        {
+            public static readonly NoopDisposable Instance = new();
+
+            public void Dispose()
+            {
+            }
         }
     }
 }

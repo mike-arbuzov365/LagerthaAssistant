@@ -37,7 +37,8 @@ public sealed class TelegramConversationResponseFormatter : ITelegramConversatio
         {
             var item = result.Items[index];
             builder.Append(index + 1).Append(") ").AppendLine(item.Input);
-            builder.AppendLine(FormatItem(item));
+            var formattedItem = RemoveLeadingInputDuplicate(item.Input, FormatItem(item));
+            builder.AppendLine(formattedItem);
 
             if (index < result.Items.Count - 1)
             {
@@ -78,6 +79,40 @@ public sealed class TelegramConversationResponseFormatter : ITelegramConversatio
         }
 
         return "Processed.";
+    }
+
+    private static string RemoveLeadingInputDuplicate(string input, string formattedItem)
+    {
+        if (string.IsNullOrWhiteSpace(formattedItem))
+        {
+            return formattedItem;
+        }
+
+        var normalizedInput = input?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedInput))
+        {
+            return formattedItem.Trim();
+        }
+
+        var lines = formattedItem
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n');
+
+        if (lines.Length == 0)
+        {
+            return formattedItem.Trim();
+        }
+
+        var firstLine = lines[0].Trim();
+        if (!string.Equals(firstLine, normalizedInput, StringComparison.OrdinalIgnoreCase))
+        {
+            return formattedItem.Trim();
+        }
+
+        var remainder = string.Join('\n', lines.Skip(1)).Trim();
+        return string.IsNullOrWhiteSpace(remainder)
+            ? normalizedInput
+            : remainder;
     }
 
     private string TrimToLimit(string text)

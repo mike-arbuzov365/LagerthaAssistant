@@ -70,6 +70,37 @@ public sealed class TelegramConversationResponseFormatterTests
     }
 
     [Fact]
+    public void Format_ShouldNotDuplicateInputLine_InBatchItemBody()
+    {
+        var sut = CreateSut();
+        var first = new ConversationAgentItemResult(
+            Input: "cancel",
+            Lookup: new VocabularyLookupResult("cancel", []),
+            AssistantCompletion: new AssistantCompletionResult(
+                "cancel\n\n(v) stop or revoke",
+                "gpt-4.1-mini",
+                null),
+            AppendPreview: null);
+        var second = new ConversationAgentItemResult(
+            Input: "celebrate",
+            Lookup: new VocabularyLookupResult("celebrate", []),
+            AssistantCompletion: new AssistantCompletionResult(
+                "celebrate\n\n(v) honor an event",
+                "gpt-4.1-mini",
+                null),
+            AppendPreview: null);
+
+        var result = new ConversationAgentResult("vocabulary-agent", "vocabulary.batch", true, [first, second]);
+
+        var text = sut.Format(result);
+
+        Assert.DoesNotContain("1) cancel\ncancel", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("2) celebrate\ncelebrate", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1) cancel\n(v) stop or revoke", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2) celebrate\n(v) honor an event", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Format_ShouldTruncateText_WhenExceedsCustomLimit()
     {
         var limit = 50;

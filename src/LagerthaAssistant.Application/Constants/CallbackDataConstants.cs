@@ -62,7 +62,8 @@ public static class CallbackDataConstants
     {
         public const string Prefix = "vocab:";
         public const string Add = "vocab:add";
-        public const string List = "vocab:list";
+        public const string Stats = "vocab:stats";
+        public const string ListLegacy = "vocab:list";
         public const string Url = "vocab:url";
         public const string Batch = "vocab:batch";
         public const string SaveYes = "vocab:save:yes";

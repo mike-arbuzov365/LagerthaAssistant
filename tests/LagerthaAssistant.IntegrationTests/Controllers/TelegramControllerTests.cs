@@ -282,6 +282,91 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldHandleVocabStatsCallback_AndRenderStats()
+    {
+        var sender = new FakeTelegramBotSender();
+        var vocabRepo = new FakeVocabularyCardRepository
+        {
+            CountAllResult = 42,
+            PartOfSpeechStatsResult =
+            [
+                new VocabularyPartOfSpeechStat("n", 20),
+                new VocabularyPartOfSpeechStat("v", 15),
+                new VocabularyPartOfSpeechStat(null, 7)
+            ],
+            DeckStatsResult =
+            [
+                new VocabularyDeckStat("wm-nouns-ua-en.xlsx", 21),
+                new VocabularyDeckStat("wm-verbs-us-en.xlsx", 14),
+                new VocabularyDeckStat("wm-phrasal-verbs-ua-en.xlsx", 7)
+            ]
+        };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: vocabRepo,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.Stats, null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.stats", payload.Intent);
+        Assert.Contains("Vocabulary statistics", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Total indexed words: 42", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("wm-nouns-ua-en.xlsx", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("(unclassified)", sender.LastText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldHandleVocabStatsCallback_AndShowEmptyState()
+    {
+        var sender = new FakeTelegramBotSender();
+        var vocabRepo = new FakeVocabularyCardRepository
+        {
+            CountAllResult = 0
+        };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: vocabRepo,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.Stats, null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.stats", payload.Intent);
+        Assert.Contains("Stats empty", sender.LastText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Webhook_CallbackQuery_WhenRoutingThrows_StillCallsAnswerCallbackQuery()
     {
         var sender = new FakeTelegramBotSender();
@@ -1911,6 +1996,8 @@ public sealed class TelegramControllerTests
     private sealed class FakeVocabularyCardRepository : IVocabularyCardRepository
     {
         public int CountAllResult { get; set; }
+        public IReadOnlyList<VocabularyDeckStat> DeckStatsResult { get; set; } = [];
+        public IReadOnlyList<VocabularyPartOfSpeechStat> PartOfSpeechStatsResult { get; set; } = [];
 
         public Task<IReadOnlyList<VocabularyCard>> FindByAnyTokenAsync(IReadOnlyCollection<string> normalizedTokens, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<VocabularyCard>>([]);
@@ -1942,6 +2029,12 @@ public sealed class TelegramControllerTests
         public Task<IReadOnlyList<VocabularyCard>> GetRecentAsync(int take, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<VocabularyCard>>([]);
 
+        public Task<IReadOnlyList<VocabularyDeckStat>> GetDeckStatsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(DeckStatsResult);
+
+        public Task<IReadOnlyList<VocabularyPartOfSpeechStat>> GetPartOfSpeechStatsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(PartOfSpeechStatsResult);
+
         public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(0);
     }
@@ -1961,8 +2054,17 @@ public sealed class TelegramControllerTests
                 "menu.vocabulary.title" => "Vocabulary {0}",
                 "vocab.add.prompt" => "Add word",
                 "vocab.url.prompt" => "Send URL",
-                "vocab.list.empty" => "Empty",
-                "vocab.list.title" => "Latest words",
+                "vocab.stats.empty" => "Stats empty",
+                "vocab.stats.title" => "Vocabulary statistics",
+                "vocab.stats.total" => "Total indexed words: {0}",
+                "vocab.stats.summary" => "Decks: {0} | POS markers: {1}",
+                "vocab.stats.by_marker" => "By part of speech:",
+                "vocab.stats.top_decks" => "Top decks:",
+                "vocab.stats.no_data" => "No data",
+                "vocab.stats.marker_unknown" => "(unclassified)",
+                "vocab.stats.item" => "• {0}: {1}",
+                "vocab.stats.deck_item" => "{0}) {1} — {2}",
+                "vocab.stats.and_more_decks" => "... and {0} more deck(s).",
                 "settings.title" => "Settings",
                 "settings.language" => "Language",
                 "settings.save_mode" => "Save mode",

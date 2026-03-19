@@ -513,6 +513,12 @@ The function returns void when there is no value to return
             return Task.FromResult<IReadOnlyList<VocabularyCard>>(cards);
         }
 
+        public Task<IReadOnlyList<VocabularyDeckStat>> GetDeckStatsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyDeckStat>>([]);
+
+        public Task<IReadOnlyList<VocabularyPartOfSpeechStat>> GetPartOfSpeechStatsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<VocabularyPartOfSpeechStat>>([]);
+
         public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
         {
             var count = Cards.Count;
