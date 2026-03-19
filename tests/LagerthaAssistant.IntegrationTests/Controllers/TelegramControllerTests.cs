@@ -1044,6 +1044,46 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldRenderPreviewWarnings_WithWarningMarkerStyle()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = BuildVocabularyPreviewWarningResult()
+        };
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService
+            {
+                StoredLocale = LocalizationConstants.EnglishLocale,
+                NextLocale = LocalizationConstants.EnglishLocale
+            },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("rest\n\n(v) rest"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "rest", null, languageCode: "en"),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocabulary.single", payload.Intent);
+        Assert.Contains("⚠️", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("warning:", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Webhook_LanguageChangeInSettings_ShouldSendMainReplyKeyboardInNewLocale()
     {
         var localeState = new FakeUserLocaleStateService
@@ -1554,6 +1594,30 @@ public sealed class TelegramControllerTests
                         Meaning: "(adj) quick",
                         Examples: "The API is fast.")
                 ]));
+
+        return new ConversationAgentResult(
+            AgentName: "vocabulary-agent",
+            Intent: "vocabulary.single",
+            IsBatch: false,
+            Items: [item]);
+    }
+
+    private static ConversationAgentResult BuildVocabularyPreviewWarningResult()
+    {
+        var item = new ConversationAgentItemResult(
+            Input: "rest",
+            Lookup: new VocabularyLookupResult("rest", []),
+            AssistantCompletion: new AssistantCompletionResult(
+                "rest\n\n(v) rest",
+                "test-model",
+                Usage: null),
+            AppendPreview: new VocabularyAppendPreviewResult(
+                Status: VocabularyAppendPreviewStatus.Error,
+                Word: "rest",
+                TargetDeckFileName: "wm-verbs-us-en.xlsx",
+                TargetDeckPath: "/apps/Flashcards Deluxe/wm-verbs-us-en.xlsx",
+                DuplicateMatches: null,
+                Message: "Graph authentication is required. Run /graph login first."));
 
         return new ConversationAgentResult(
             AgentName: "vocabulary-agent",

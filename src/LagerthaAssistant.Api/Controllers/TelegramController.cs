@@ -1096,7 +1096,7 @@ public sealed class TelegramController : ControllerBase
             }
 
             var localizedMessage = LocalizeGraphRelatedMessage(item.AppendPreview.Message, locale);
-            warnings.Add($"warning: {localizedMessage}");
+            warnings.Add($"⚠️ {localizedMessage}");
         }
 
         return string.Join(Environment.NewLine, warnings.Distinct(StringComparer.Ordinal));
