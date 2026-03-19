@@ -53,6 +53,7 @@ public sealed class GraphAuthService : IGraphAuthService
     {
         if (!IsConfigured())
         {
+            _logger.LogWarning("Graph status check: integration is not configured (Graph.ClientId is empty).");
             return new GraphAuthStatus(false, false, "Graph integration is not configured. Set Graph.ClientId first.");
         }
 
@@ -60,18 +61,33 @@ public sealed class GraphAuthService : IGraphAuthService
         var cache = await LoadTokenCacheAsync(cancellationToken);
         if (cache is null)
         {
+            _logger.LogWarning("Graph status check: not authenticated (token cache not found in database or file).");
             return new GraphAuthStatus(true, false, "Not authenticated. Use /graph login.");
         }
 
         if (!string.IsNullOrWhiteSpace(accessToken))
         {
             cache = await LoadTokenCacheAsync(cancellationToken) ?? cache;
+            _logger.LogInformation(
+                "Graph status check: authenticated. Access token expires at {ExpiresAtUtc}.",
+                cache.AccessTokenExpiresAtUtc);
             return new GraphAuthStatus(true, true, "Authenticated.", cache.AccessTokenExpiresAtUtc);
         }
 
         if (cache.AccessTokenExpiresAtUtc <= DateTimeOffset.UtcNow.AddMinutes(1))
         {
+            _logger.LogWarning(
+                "Graph status check: token is expired at {ExpiresAtUtc} and refresh did not produce a usable access token.",
+                cache.AccessTokenExpiresAtUtc);
             return new GraphAuthStatus(true, false, "Access token expired. Use /graph login.", cache.AccessTokenExpiresAtUtc);
+        }
+
+        if (string.IsNullOrWhiteSpace(cache.AccessToken))
+        {
+            _logger.LogWarning(
+                "Graph status check: access token is empty while cache record exists. ExpiresAtUtc={ExpiresAtUtc}, HasRefreshToken={HasRefreshToken}.",
+                cache.AccessTokenExpiresAtUtc,
+                !string.IsNullOrWhiteSpace(cache.RefreshToken));
         }
 
         return string.IsNullOrWhiteSpace(cache.AccessToken)
@@ -207,7 +223,14 @@ public sealed class GraphAuthService : IGraphAuthService
             if (File.Exists(cachePath))
             {
                 File.Delete(cachePath);
+                _logger.LogInformation("Graph logout: token cache file removed at {TokenCachePath}.", cachePath);
             }
+            else
+            {
+                _logger.LogInformation("Graph logout: token cache file not found at {TokenCachePath}.", cachePath);
+            }
+
+            _logger.LogInformation("Graph logout completed.");
         }
         finally
         {
@@ -228,27 +251,38 @@ public sealed class GraphAuthService : IGraphAuthService
             var cache = await LoadTokenCacheAsync(cancellationToken);
             if (cache is null)
             {
+                _logger.LogInformation("Graph access token request: token cache is empty.");
                 return null;
             }
 
             if (cache.AccessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(2)
                 && !string.IsNullOrWhiteSpace(cache.AccessToken))
             {
+                _logger.LogInformation(
+                    "Graph access token request: using cached access token. ExpiresAtUtc={ExpiresAtUtc}.",
+                    cache.AccessTokenExpiresAtUtc);
                 return cache.AccessToken;
             }
 
             if (string.IsNullOrWhiteSpace(cache.RefreshToken))
             {
+                _logger.LogWarning(
+                    "Graph access token request: refresh token is missing. ExpiresAtUtc={ExpiresAtUtc}.",
+                    cache.AccessTokenExpiresAtUtc);
                 return null;
             }
 
             var refreshed = await RequestTokenByRefreshTokenAsync(cache.RefreshToken, cancellationToken);
             if (refreshed is null || string.IsNullOrWhiteSpace(refreshed.AccessToken))
             {
+                _logger.LogWarning(
+                    "Graph access token request: refresh token flow did not return a valid access token. ExpiresAtUtc={ExpiresAtUtc}.",
+                    cache.AccessTokenExpiresAtUtc);
                 return null;
             }
 
             await SaveTokenCacheAsync(refreshed, cancellationToken);
+            _logger.LogInformation("Graph access token request: access token refreshed successfully.");
             return refreshed.AccessToken;
         }
         catch (Exception ex)
@@ -439,6 +473,10 @@ public sealed class GraphAuthService : IGraphAuthService
         var dbEntry = await LoadTokenCacheFromDatabaseAsync(cancellationToken);
         if (dbEntry is not null)
         {
+            _logger.LogInformation(
+                "Graph token cache source: database. ExpiresAtUtc={ExpiresAtUtc}, HasRefreshToken={HasRefreshToken}.",
+                dbEntry.AccessTokenExpiresAtUtc,
+                !string.IsNullOrWhiteSpace(dbEntry.RefreshToken));
             await TryMirrorTokenCacheToFileAsync(dbEntry, cancellationToken);
             return dbEntry;
         }
@@ -446,7 +484,15 @@ public sealed class GraphAuthService : IGraphAuthService
         var fileEntry = await LoadTokenCacheFromFileAsync(cancellationToken);
         if (fileEntry is not null)
         {
+            _logger.LogInformation(
+                "Graph token cache source: file. ExpiresAtUtc={ExpiresAtUtc}, HasRefreshToken={HasRefreshToken}.",
+                fileEntry.AccessTokenExpiresAtUtc,
+                !string.IsNullOrWhiteSpace(fileEntry.RefreshToken));
             await TrySaveTokenCacheToDatabaseAsync(fileEntry, cancellationToken);
+        }
+        else
+        {
+            _logger.LogInformation("Graph token cache source: none (database and file are empty).");
         }
 
         return fileEntry;
@@ -468,6 +514,10 @@ public sealed class GraphAuthService : IGraphAuthService
 
         await TrySaveTokenCacheToDatabaseAsync(entry, cancellationToken);
         await TryMirrorTokenCacheToFileAsync(entry, cancellationToken);
+        _logger.LogInformation(
+            "Graph token cache updated. ExpiresAtUtc={ExpiresAtUtc}, HasRefreshToken={HasRefreshToken}.",
+            entry.AccessTokenExpiresAtUtc,
+            !string.IsNullOrWhiteSpace(entry.RefreshToken));
     }
 
     private string ResolveTokenCachePath()
@@ -513,8 +563,15 @@ public sealed class GraphAuthService : IGraphAuthService
 
             if (token is null)
             {
+                _logger.LogInformation("Graph token cache was not found in database for provider {Provider}.", OneDriveProviderKey);
                 return null;
             }
+
+            _logger.LogInformation(
+                "Graph token cache loaded from database for provider {Provider}. ExpiresAtUtc={ExpiresAtUtc}, UpdatedAtUtc={UpdatedAtUtc}.",
+                OneDriveProviderKey,
+                token.AccessTokenExpiresAtUtc,
+                token.UpdatedAtUtc);
 
             return new TokenCacheEntry
             {
@@ -546,11 +603,13 @@ public sealed class GraphAuthService : IGraphAuthService
 
             if (token is null)
             {
+                _logger.LogInformation("Graph token cache delete: nothing to delete for provider {Provider}.", OneDriveProviderKey);
                 return;
             }
 
             db.GraphAuthTokens.Remove(token);
             await db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Graph token cache deleted from database for provider {Provider}.", OneDriveProviderKey);
         }
         catch (Exception ex)
         {
@@ -565,11 +624,20 @@ public sealed class GraphAuthService : IGraphAuthService
             var cachePath = ResolveTokenCachePath();
             if (!File.Exists(cachePath))
             {
+                _logger.LogInformation("Graph token cache file was not found at {TokenCachePath}.", cachePath);
                 return null;
             }
 
             var json = await File.ReadAllTextAsync(cachePath, cancellationToken);
-            return JsonSerializer.Deserialize<TokenCacheEntry>(json, JsonOptions);
+            var entry = JsonSerializer.Deserialize<TokenCacheEntry>(json, JsonOptions);
+            if (entry is null)
+            {
+                _logger.LogWarning("Graph token cache file exists but could not be deserialized: {TokenCachePath}.", cachePath);
+                return null;
+            }
+
+            _logger.LogInformation("Graph token cache loaded from file: {TokenCachePath}.", cachePath);
+            return entry;
         }
         catch (Exception ex)
         {
@@ -632,6 +700,10 @@ public sealed class GraphAuthService : IGraphAuthService
             }
 
             await db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation(
+                "Graph token cache persisted to database for provider {Provider}. ExpiresAtUtc={ExpiresAtUtc}.",
+                OneDriveProviderKey,
+                entry.AccessTokenExpiresAtUtc);
         }
         catch (Exception ex)
         {
