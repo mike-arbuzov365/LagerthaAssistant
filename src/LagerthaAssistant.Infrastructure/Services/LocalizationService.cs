@@ -1,10 +1,18 @@
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace LagerthaAssistant.Infrastructure.Services;
 
 public sealed class LocalizationService : ILocalizationService
 {
+    private readonly ILogger<LocalizationService>? _logger;
+
+    public LocalizationService(ILogger<LocalizationService>? logger = null)
+    {
+        _logger = logger;
+    }
+
     private static readonly IReadOnlyDictionary<string, string> English = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["menu.main.title"] = "What can I help you with?",
@@ -174,10 +182,21 @@ public sealed class LocalizationService : ILocalizationService
 
         if (English.TryGetValue(key, out var fallback))
         {
+            if (!string.Equals(normalizedLocale, LocalizationConstants.EnglishLocale, StringComparison.Ordinal))
+            {
+                _logger?.LogDebug(
+                    "Localization key '{Key}' missing for locale '{Locale}', using 'en' fallback.",
+                    key,
+                    normalizedLocale);
+            }
+
             return fallback;
         }
 
-        return string.Empty;
+        _logger?.LogWarning(
+            "Localization key '{Key}' missing for all locales including 'en'. Returning placeholder.",
+            key);
+        return $"[?:{key}]";
     }
 
     public string GetLocaleForUser(string? telegramLanguageCode)

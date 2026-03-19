@@ -19,6 +19,21 @@ public sealed class TelegramNavigationPresenterTests
     }
 
     [Fact]
+    public void BuildMainReplyKeyboard_ShouldUseEnglishLabels_ForEnglishLocale()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildMainReplyKeyboard("en");
+        var labels = keyboard.Keyboard
+            .SelectMany(row => row)
+            .Select(button => button.Text)
+            .ToList();
+
+        Assert.Contains(labels, x => x.Contains("Vocabulary", StringComparison.Ordinal));
+        Assert.DoesNotContain(labels, x => x.Contains("Словник", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BuildOnboardingLanguageKeyboard_ShouldIncludeCombinedDePlButton()
     {
         var sut = new TelegramNavigationPresenter(new LocalizationService());
@@ -48,4 +63,3 @@ public sealed class TelegramNavigationPresenterTests
         Assert.Contains("nav:main", callbacks);
     }
 }
-

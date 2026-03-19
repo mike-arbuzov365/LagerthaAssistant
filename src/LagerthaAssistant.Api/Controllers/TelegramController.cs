@@ -105,18 +105,20 @@ public sealed class TelegramController : ControllerBase
             return Unauthorized();
         }
 
-        if (!_options.Enabled)
-        {
-            return Ok(new TelegramWebhookResponse(false, false, null, "Telegram integration is disabled."));
-        }
-
-        if (update is null || !ApiTelegramUpdateMapper.TryMapInbound(update, out var inbound))
-        {
-            return Ok(new TelegramWebhookResponse(false, false, null, "Ignored: unsupported update."));
-        }
+        var callbackQueryId = update?.CallbackQuery?.Id;
 
         try
         {
+            if (!_options.Enabled)
+            {
+                return Ok(new TelegramWebhookResponse(false, false, null, "Telegram integration is disabled."));
+            }
+
+            if (update is null || !ApiTelegramUpdateMapper.TryMapInbound(update, out var inbound))
+            {
+                return Ok(new TelegramWebhookResponse(false, false, null, "Ignored: unsupported update."));
+            }
+
             if (await _processedUpdates.IsProcessedAsync(update.UpdateId, cancellationToken))
             {
                 _logger.LogDebug("Telegram update {UpdateId} already processed; skipping.", update.UpdateId);
@@ -186,24 +188,21 @@ public sealed class TelegramController : ControllerBase
                 outboundText = string.Concat(switchedText, Environment.NewLine, Environment.NewLine, outboundText);
             }
 
-            if (inbound.IsCallback && !string.IsNullOrWhiteSpace(inbound.CallbackQueryId))
-            {
-                var answerResult = await _telegramBotSender.AnswerCallbackQueryAsync(inbound.CallbackQueryId, cancellationToken: cancellationToken);
-                if (!answerResult.Succeeded)
-                {
-                    _logger.LogWarning(
-                        "Telegram callback answer failed. CallbackQueryId={CallbackQueryId}; Error={Error}",
-                        inbound.CallbackQueryId,
-                        answerResult.ErrorMessage);
-                }
-            }
-
             var sendResult = await _telegramBotSender.SendTextAsync(
                 inbound.ChatId,
                 outboundText,
                 EnsureHtmlParseMode(response.Options),
                 inbound.MessageThreadId,
                 cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(response.FollowUpMainKeyboardLocale))
+            {
+                await SendMainKeyboardRefreshMessageAsync(
+                    inbound.ChatId,
+                    response.FollowUpMainKeyboardLocale,
+                    inbound.MessageThreadId,
+                    CancellationToken.None);
+            }
 
             await _processedUpdates.MarkProcessedAsync(update.UpdateId, cancellationToken);
             await CleanupOldUpdatesAsync(CancellationToken.None);
@@ -228,8 +227,12 @@ public sealed class TelegramController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error while processing Telegram update {UpdateId}.", update.UpdateId);
+            _logger.LogError(ex, "Unexpected error while processing Telegram update {UpdateId}.", update?.UpdateId);
             return Ok(new TelegramWebhookResponse(false, false, null, "Unexpected webhook processing error."));
+        }
+        finally
+        {
+            await TryAnswerCallbackQueryAsync(callbackQueryId, CancellationToken.None);
         }
     }
 
@@ -336,7 +339,7 @@ public sealed class TelegramController : ControllerBase
         string currentSection,
         CancellationToken cancellationToken)
     {
-        if (string.Equals(callbackData, "nav:main", StringComparison.Ordinal))
+        if (string.Equals(callbackData, CallbackDataConstants.Nav.Main, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Main, cancellationToken);
             return new TelegramRouteResponse(
@@ -345,42 +348,42 @@ public sealed class TelegramController : ControllerBase
                 ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
         }
 
-        if (callbackData.StartsWith("lang:", StringComparison.Ordinal))
+        if (callbackData.StartsWith(CallbackDataConstants.Lang.Prefix, StringComparison.Ordinal))
         {
             return await HandleLanguageCallbackAsync(callbackData, scope, locale, currentSection, cancellationToken);
         }
 
-        if (callbackData.StartsWith("settings:", StringComparison.Ordinal))
+        if (callbackData.StartsWith(CallbackDataConstants.Settings.Prefix, StringComparison.Ordinal))
         {
             return await HandleSettingsCallbackAsync(callbackData, scope, locale, cancellationToken);
         }
 
-        if (callbackData.StartsWith("savemode:", StringComparison.Ordinal))
+        if (callbackData.StartsWith(CallbackDataConstants.SaveMode.Prefix, StringComparison.Ordinal))
         {
             return await HandleSaveModeCallbackAsync(callbackData, scope, locale, cancellationToken);
         }
 
-        if (callbackData.StartsWith("onedrive:", StringComparison.Ordinal))
+        if (callbackData.StartsWith(CallbackDataConstants.OneDrive.Prefix, StringComparison.Ordinal))
         {
             return await HandleOneDriveCallbackAsync(callbackData, scope, locale, cancellationToken);
         }
 
-        if (callbackData.StartsWith("vocab:", StringComparison.Ordinal))
+        if (callbackData.StartsWith(CallbackDataConstants.Vocab.Prefix, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Vocabulary, cancellationToken);
 
             return callbackData switch
             {
-                "vocab:add" => new TelegramRouteResponse(
+                CallbackDataConstants.Vocab.Add => new TelegramRouteResponse(
                     "vocab.add",
                     _navigationPresenter.GetText("vocab.add.prompt", locale),
                     InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale))),
-                "vocab:list" => await BuildVocabularyListResponseAsync(locale, cancellationToken),
-                "vocab:url" => new TelegramRouteResponse(
+                CallbackDataConstants.Vocab.List => await BuildVocabularyListResponseAsync(locale, cancellationToken),
+                CallbackDataConstants.Vocab.Url => new TelegramRouteResponse(
                     "vocab.url",
                     _navigationPresenter.GetText("vocab.url.prompt", locale),
                     InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale))),
-                "vocab:batch" => BuildBatchModeResponse(locale),
+                CallbackDataConstants.Vocab.Batch => BuildBatchModeResponse(locale),
                 _ => new TelegramRouteResponse(
                     "vocab.unknown",
                     _navigationPresenter.GetText("stub.wip", locale),
@@ -388,7 +391,7 @@ public sealed class TelegramController : ControllerBase
             };
         }
 
-        if (callbackData.StartsWith("shop:", StringComparison.Ordinal))
+        if (callbackData.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Shopping, cancellationToken);
             return new TelegramRouteResponse(
@@ -397,7 +400,7 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
         }
 
-        if (callbackData.StartsWith("weekly:", StringComparison.Ordinal))
+        if (callbackData.StartsWith(CallbackDataConstants.Weekly.Prefix, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.WeeklyMenu, cancellationToken);
             return new TelegramRouteResponse(
@@ -416,7 +419,7 @@ public sealed class TelegramController : ControllerBase
         string currentSection,
         CancellationToken cancellationToken)
     {
-        if (string.Equals(callbackData, "lang:de_pl", StringComparison.Ordinal))
+        if (string.Equals(callbackData, CallbackDataConstants.Lang.GermanPolish, StringComparison.Ordinal))
         {
             var section = NavigationSections.Normalize(currentSection);
             return section == NavigationSections.LanguageOnboarding
@@ -431,7 +434,7 @@ public sealed class TelegramController : ControllerBase
                     IsHtml: true);
         }
 
-        if (string.Equals(callbackData, "lang:back_onboarding", StringComparison.Ordinal))
+        if (string.Equals(callbackData, CallbackDataConstants.Lang.BackOnboarding, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.LanguageOnboarding, cancellationToken);
             return BuildOnboardingLanguagePickerResponse(locale);
@@ -468,7 +471,8 @@ public sealed class TelegramController : ControllerBase
         return settingsScreen with
         {
             Intent = "settings.language.changed",
-            Text = string.Concat(changedText, Environment.NewLine, Environment.NewLine, settingsScreen.Text)
+            Text = string.Concat(changedText, Environment.NewLine, Environment.NewLine, settingsScreen.Text),
+            FollowUpMainKeyboardLocale = newLocale
         };
     }
 
@@ -482,19 +486,19 @@ public sealed class TelegramController : ControllerBase
 
         return callbackData switch
         {
-            "settings:language" => new TelegramRouteResponse(
+            CallbackDataConstants.Settings.Language => new TelegramRouteResponse(
                 "settings.language",
                 _navigationPresenter.GetText("language.current", locale, _navigationPresenter.GetLanguageDisplayName(locale)),
                 InlineKeyboard(_navigationPresenter.BuildSettingsLanguageKeyboard(locale)),
                 IsHtml: true),
-            "settings:savemode" => await BuildSaveModeResponseAsync(scope, locale, cancellationToken),
-            "settings:onedrive" => await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken),
-            "settings:notion" => new TelegramRouteResponse(
+            CallbackDataConstants.Settings.SaveMode => await BuildSaveModeResponseAsync(scope, locale, cancellationToken),
+            CallbackDataConstants.Settings.OneDrive => await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken),
+            CallbackDataConstants.Settings.Notion => new TelegramRouteResponse(
                 "settings.notion",
                 _navigationPresenter.GetText("notion.title", locale),
                 InlineKeyboard(_navigationPresenter.BuildNotionKeyboard(locale)),
                 IsHtml: true),
-            "settings:back" => await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken),
+            CallbackDataConstants.Settings.Back => await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken),
             _ => await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken)
         };
     }
@@ -505,12 +509,12 @@ public sealed class TelegramController : ControllerBase
         string locale,
         CancellationToken cancellationToken)
     {
-        if (!callbackData.StartsWith("savemode:", StringComparison.Ordinal))
+        if (!callbackData.StartsWith(CallbackDataConstants.SaveMode.Prefix, StringComparison.Ordinal))
         {
             return await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken);
         }
 
-        var requestedMode = callbackData["savemode:".Length..].Trim();
+        var requestedMode = callbackData[CallbackDataConstants.SaveMode.Prefix.Length..].Trim();
         if (!_saveModePreferenceService.TryParse(requestedMode, out var saveMode))
         {
             return await BuildSaveModeResponseAsync(scope, locale, cancellationToken);
@@ -538,7 +542,7 @@ public sealed class TelegramController : ControllerBase
         string locale,
         CancellationToken cancellationToken)
     {
-        if (string.Equals(callbackData, "onedrive:logout", StringComparison.Ordinal))
+        if (string.Equals(callbackData, CallbackDataConstants.OneDrive.Logout, StringComparison.Ordinal))
         {
             await _graphAuthService.LogoutAsync(cancellationToken);
             PendingGraphChallenges.TryRemove(BuildGraphChallengeKey(scope), out _);
@@ -555,7 +559,7 @@ public sealed class TelegramController : ControllerBase
             };
         }
 
-        if (string.Equals(callbackData, "onedrive:login", StringComparison.Ordinal))
+        if (string.Equals(callbackData, CallbackDataConstants.OneDrive.Login, StringComparison.Ordinal))
         {
             var start = await _graphAuthService.StartLoginAsync(cancellationToken);
             if (!start.Succeeded || start.Challenge is null)
@@ -587,7 +591,7 @@ public sealed class TelegramController : ControllerBase
                 IsHtml: true);
         }
 
-        if (string.Equals(callbackData, "onedrive:check_login", StringComparison.Ordinal))
+        if (string.Equals(callbackData, CallbackDataConstants.OneDrive.CheckLogin, StringComparison.Ordinal))
         {
             var challengeKey = BuildGraphChallengeKey(scope);
             if (!PendingGraphChallenges.TryGetValue(challengeKey, out var challenge))
@@ -801,6 +805,56 @@ public sealed class TelegramController : ControllerBase
         return options with { ParseMode = HtmlParseMode };
     }
 
+    private async Task SendMainKeyboardRefreshMessageAsync(
+        long chatId,
+        string locale,
+        int? messageThreadId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var text = WebUtility.HtmlEncode(_navigationPresenter.GetText("onboarding.language_saved", locale));
+            var options = ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale));
+            var sendResult = await _telegramBotSender.SendTextAsync(chatId, text, options, messageThreadId, cancellationToken);
+            if (!sendResult.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Telegram keyboard refresh send failed. ChatId={ChatId}; Locale={Locale}; Error={Error}",
+                    chatId,
+                    locale,
+                    sendResult.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Telegram keyboard refresh send threw exception. ChatId={ChatId}; Locale={Locale}", chatId, locale);
+        }
+    }
+
+    private async Task TryAnswerCallbackQueryAsync(string? callbackQueryId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(callbackQueryId))
+        {
+            return;
+        }
+
+        try
+        {
+            var answerResult = await _telegramBotSender.AnswerCallbackQueryAsync(callbackQueryId, cancellationToken: cancellationToken);
+            if (!answerResult.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Telegram callback answer failed. CallbackQueryId={CallbackQueryId}; Error={Error}",
+                    callbackQueryId,
+                    answerResult.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Telegram callback answer threw exception. CallbackQueryId={CallbackQueryId}", callbackQueryId);
+        }
+    }
+
     private async Task CleanupOldUpdatesAsync(CancellationToken cancellationToken)
     {
         try
@@ -835,18 +889,19 @@ public sealed class TelegramController : ControllerBase
 
     private static bool IsLanguageCallback(string? callbackData)
         => !string.IsNullOrWhiteSpace(callbackData)
-           && callbackData.StartsWith("lang:", StringComparison.Ordinal);
+           && callbackData.StartsWith(CallbackDataConstants.Lang.Prefix, StringComparison.Ordinal);
 
     private static string? ParseLanguageCallback(string callbackData)
     {
         return callbackData switch
         {
-            "lang:uk" => LocalizationConstants.UkrainianLocale,
-            "lang:en" => LocalizationConstants.EnglishLocale,
-            "lang:es" => LocalizationConstants.SpanishLocale,
-            "lang:fr" => LocalizationConstants.FrenchLocale,
-            "lang:de" => LocalizationConstants.GermanLocale,
-            "lang:pl" => LocalizationConstants.PolishLocale,
+            CallbackDataConstants.Lang.Ukrainian => LocalizationConstants.UkrainianLocale,
+            CallbackDataConstants.Lang.English => LocalizationConstants.EnglishLocale,
+            CallbackDataConstants.Lang.Spanish => LocalizationConstants.SpanishLocale,
+            CallbackDataConstants.Lang.French => LocalizationConstants.FrenchLocale,
+            CallbackDataConstants.Lang.German => LocalizationConstants.GermanLocale,
+            CallbackDataConstants.Lang.Polish => LocalizationConstants.PolishLocale,
+            CallbackDataConstants.Lang.Russian => LocalizationConstants.UkrainianLocale,
             _ => null
         };
     }
@@ -858,5 +913,6 @@ public sealed class TelegramController : ControllerBase
         string Intent,
         string Text,
         TelegramSendOptions? Options = null,
-        bool IsHtml = false);
+        bool IsHtml = false,
+        string? FollowUpMainKeyboardLocale = null);
 }

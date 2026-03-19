@@ -66,9 +66,9 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(
             InlineKeyboard:
             [
-                [Button("menu.vocabulary.add", locale, "vocab:add"), Button("menu.vocabulary.list", locale, "vocab:list")],
-                [Button("menu.vocabulary.url", locale, "vocab:url"), Button("menu.vocabulary.batch", locale, "vocab:batch")],
-                [Button("menu.vocabulary.back", locale, "nav:main")]
+                [Button("menu.vocabulary.add", locale, CallbackDataConstants.Vocab.Add), Button("menu.vocabulary.list", locale, CallbackDataConstants.Vocab.List)],
+                [Button("menu.vocabulary.url", locale, CallbackDataConstants.Vocab.Url), Button("menu.vocabulary.batch", locale, CallbackDataConstants.Vocab.Batch)],
+                [Button("menu.vocabulary.back", locale, CallbackDataConstants.Nav.Main)]
             ]);
     }
 
@@ -77,9 +77,9 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(
             InlineKeyboard:
             [
-                [Button("menu.shopping.add", locale, "shop:add"), Button("menu.shopping.list", locale, "shop:list")],
-                [Button("menu.shopping.delete", locale, "shop:delete")],
-                [Button("menu.shopping.back", locale, "nav:main")]
+                [Button("menu.shopping.add", locale, CallbackDataConstants.Shop.Add), Button("menu.shopping.list", locale, CallbackDataConstants.Shop.List)],
+                [Button("menu.shopping.delete", locale, CallbackDataConstants.Shop.Delete)],
+                [Button("menu.shopping.back", locale, CallbackDataConstants.Nav.Main)]
             ]);
     }
 
@@ -88,9 +88,9 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(
             InlineKeyboard:
             [
-                [Button("menu.weekly.view", locale, "weekly:view"), Button("menu.weekly.plan", locale, "weekly:plan")],
-                [Button("menu.weekly.calories", locale, "weekly:calories")],
-                [Button("menu.weekly.back", locale, "nav:main")]
+                [Button("menu.weekly.view", locale, CallbackDataConstants.Weekly.View), Button("menu.weekly.plan", locale, CallbackDataConstants.Weekly.Plan)],
+                [Button("menu.weekly.calories", locale, CallbackDataConstants.Weekly.Calories)],
+                [Button("menu.weekly.back", locale, CallbackDataConstants.Nav.Main)]
             ]);
     }
 
@@ -99,9 +99,9 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(
             InlineKeyboard:
             [
-                [LanguageButton(locale, "language.name.uk", "lang:uk"), LanguageButton(locale, "language.name.en", "lang:en")],
-                [LanguageButton(locale, "language.name.es", "lang:es"), LanguageButton(locale, "language.name.fr", "lang:fr")],
-                [LanguageButton(locale, "language.name.de_pl", "lang:de_pl")]
+                [LanguageButton(locale, "language.name.uk", CallbackDataConstants.Lang.Ukrainian), LanguageButton(locale, "language.name.en", CallbackDataConstants.Lang.English)],
+                [LanguageButton(locale, "language.name.es", CallbackDataConstants.Lang.Spanish), LanguageButton(locale, "language.name.fr", CallbackDataConstants.Lang.French)],
+                [LanguageButton(locale, "language.name.de_pl", CallbackDataConstants.Lang.GermanPolish)]
             ]);
     }
 
@@ -110,8 +110,8 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(
             InlineKeyboard:
             [
-                [LanguageButton(locale, "language.name.de", "lang:de"), LanguageButton(locale, "language.name.pl", "lang:pl")],
-                [Button("back", locale, "lang:back_onboarding")]
+                [LanguageButton(locale, "language.name.de", CallbackDataConstants.Lang.German), LanguageButton(locale, "language.name.pl", CallbackDataConstants.Lang.Polish)],
+                [Button("back", locale, CallbackDataConstants.Lang.BackOnboarding)]
             ]);
     }
 
@@ -120,11 +120,11 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(
             InlineKeyboard:
             [
-                [Button("settings.change_language", locale, "settings:language")],
-                [Button("settings.change_save_mode", locale, "settings:savemode")],
-                [Button("settings.onedrive", locale, "settings:onedrive")],
-                [Button("settings.notion", locale, "settings:notion")],
-                [Button("settings.back", locale, "nav:main")]
+                [Button("settings.change_language", locale, CallbackDataConstants.Settings.Language)],
+                [Button("settings.change_save_mode", locale, CallbackDataConstants.Settings.SaveMode)],
+                [Button("settings.onedrive", locale, CallbackDataConstants.Settings.OneDrive)],
+                [Button("settings.notion", locale, CallbackDataConstants.Settings.Notion)],
+                [Button("settings.back", locale, CallbackDataConstants.Nav.Main)]
             ]);
     }
 
@@ -133,10 +133,10 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(
             InlineKeyboard:
             [
-                [LanguageButton(locale, "language.name.uk", "lang:uk"), LanguageButton(locale, "language.name.en", "lang:en")],
-                [LanguageButton(locale, "language.name.es", "lang:es"), LanguageButton(locale, "language.name.fr", "lang:fr")],
-                [LanguageButton(locale, "language.name.de_pl", "lang:de_pl")],
-                [Button("back", locale, "settings:back")]
+                [LanguageButton(locale, "language.name.uk", CallbackDataConstants.Lang.Ukrainian), LanguageButton(locale, "language.name.en", CallbackDataConstants.Lang.English)],
+                [LanguageButton(locale, "language.name.es", CallbackDataConstants.Lang.Spanish), LanguageButton(locale, "language.name.fr", CallbackDataConstants.Lang.French)],
+                [LanguageButton(locale, "language.name.de_pl", CallbackDataConstants.Lang.GermanPolish)],
+                [Button("back", locale, CallbackDataConstants.Settings.Back)]
             ]);
     }
 
@@ -145,8 +145,8 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(
             InlineKeyboard:
             [
-                [LanguageButton(locale, "language.name.de", "lang:de"), LanguageButton(locale, "language.name.pl", "lang:pl")],
-                [Button("back", locale, "settings:language")]
+                [LanguageButton(locale, "language.name.de", CallbackDataConstants.Lang.German), LanguageButton(locale, "language.name.pl", CallbackDataConstants.Lang.Polish)],
+                [Button("back", locale, CallbackDataConstants.Settings.Language)]
             ]);
     }
 
@@ -155,8 +155,8 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(
             InlineKeyboard:
             [
-                [Button("savemode.auto", locale, "savemode:auto"), Button("savemode.ask", locale, "savemode:ask"), Button("savemode.off", locale, "savemode:off")],
-                [Button("back", locale, "settings:back")]
+                [Button("savemode.auto", locale, CallbackDataConstants.SaveMode.Auto), Button("savemode.ask", locale, CallbackDataConstants.SaveMode.Ask), Button("savemode.off", locale, CallbackDataConstants.SaveMode.Off)],
+                [Button("back", locale, CallbackDataConstants.Settings.Back)]
             ]);
     }
 
@@ -166,19 +166,19 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
 
         if (isConnected)
         {
-            rows.Add([Button("onedrive.logout", locale, "onedrive:logout")]);
+            rows.Add([Button("onedrive.logout", locale, CallbackDataConstants.OneDrive.Logout)]);
         }
         else
         {
-            rows.Add([Button("onedrive.login", locale, "onedrive:login")]);
+            rows.Add([Button("onedrive.login", locale, CallbackDataConstants.OneDrive.Login)]);
 
             if (includeCheckStatusButton)
             {
-                rows.Add([Button("onedrive.check_status", locale, "onedrive:check_login")]);
+                rows.Add([Button("onedrive.check_status", locale, CallbackDataConstants.OneDrive.CheckLogin)]);
             }
         }
 
-        rows.Add([Button("back", locale, "settings:back")]);
+        rows.Add([Button("back", locale, CallbackDataConstants.Settings.Back)]);
         return new TelegramInlineKeyboardMarkup(rows);
     }
 
@@ -187,7 +187,7 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(
             InlineKeyboard:
             [
-                [Button("back", locale, "settings:back")]
+                [Button("back", locale, CallbackDataConstants.Settings.Back)]
             ]);
     }
 

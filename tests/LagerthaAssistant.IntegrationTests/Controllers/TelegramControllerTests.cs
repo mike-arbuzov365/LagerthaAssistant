@@ -4,6 +4,8 @@ using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Controllers;
 using LagerthaAssistant.Api.Interfaces;
 using LagerthaAssistant.Api.Options;
+using LagerthaAssistant.Api.Services;
+using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces;
@@ -16,6 +18,7 @@ using LagerthaAssistant.Application.Models.Localization;
 using LagerthaAssistant.Application.Navigation;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Domain.Entities;
+using LagerthaAssistant.Infrastructure.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -246,6 +249,68 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_CallbackQuery_WhenRoutingThrows_StillCallsAnswerCallbackQuery()
+    {
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService
+        {
+            CurrentSection = NavigationSections.Main,
+            ThrowOnSetCurrentSection = true
+        };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = LocalizationConstants.EnglishLocale },
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.Add, messageThreadId: null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.False(payload.Processed);
+        Assert.False(payload.Replied);
+        Assert.Equal(1, sender.CallbackAnswers);
+        Assert.Equal("cb-1", sender.LastCallbackQueryId);
+    }
+
+    [Fact]
+    public async Task Webhook_CallbackQuery_WithNullCallbackData_IsHandledSafely()
+    {
+        var sender = new FakeTelegramBotSender();
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, callbackData: null, messageThreadId: null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.False(payload.Processed);
+        Assert.False(payload.Replied);
+        Assert.Equal(1, sender.CallbackAnswers);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldShowOnboardingLanguagePicker_WhenStartAndLocaleMissing()
     {
         var localeState = new FakeUserLocaleStateService { StoredLocale = null, NextLocale = "en" };
@@ -308,6 +373,40 @@ public sealed class TelegramControllerTests
         Assert.Equal("uk", localeState.StoredLocale);
         Assert.IsType<TelegramReplyKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
         Assert.Equal("main", navigationState.CurrentSection);
+    }
+
+    [Fact]
+    public async Task Webhook_LanguageCallback_Lang_ru_MustNotPersistRussian()
+    {
+        var localeState = new FakeUserLocaleStateService { StoredLocale = null, NextLocale = LocalizationConstants.EnglishLocale };
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.LanguageOnboarding };
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: localeState,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Lang.Russian, null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("onboarding.language.selected", payload.Intent);
+        Assert.Equal(LocalizationConstants.UkrainianLocale, localeState.StoredLocale);
+        Assert.NotEqual("ru", localeState.StoredLocale);
     }
 
     [Fact]
@@ -400,6 +499,89 @@ public sealed class TelegramControllerTests
         Assert.Equal("settings.onedrive", payload.Intent);
     }
 
+    [Fact]
+    public async Task Webhook_LanguageChangeInSettings_ShouldSendMainReplyKeyboardInNewLocale()
+    {
+        var localeState = new FakeUserLocaleStateService
+        {
+            StoredLocale = LocalizationConstants.UkrainianLocale,
+            NextLocale = LocalizationConstants.UkrainianLocale
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Settings };
+        var presenter = new TelegramNavigationPresenter(new LocalizationService());
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: localeState,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: presenter,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Lang.English, null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("settings.language.changed", payload.Intent);
+        Assert.Equal(2, sender.Calls);
+
+        var refreshMessage = sender.SentMessages.Last();
+        var refreshKeyboard = Assert.IsType<TelegramReplyKeyboardMarkup>(refreshMessage.Options?.ReplyMarkup);
+        var labels = refreshKeyboard.Keyboard.SelectMany(row => row).Select(button => button.Text).ToList();
+
+        Assert.Contains(labels, x => x.Contains("Vocabulary", StringComparison.Ordinal));
+        Assert.DoesNotContain(labels, x => x.Contains("Словник", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Webhook_MessageFrom_WithNullLanguageCode_ResolvesToDefaultLocale()
+    {
+        var localeState = new FakeUserLocaleStateService
+        {
+            StoredLocale = null,
+            NextLocale = LocalizationConstants.EnglishLocale,
+            StoreLocaleOnEnsureWhenMissing = true
+        };
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: localeState,
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "prepare", null, languageCode: null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Processed);
+        Assert.True(payload.Replied);
+        Assert.Null(localeState.LastEnsureTelegramLanguageCode);
+        Assert.Equal(LocalizationConstants.EnglishLocale, localeState.StoredLocale);
+    }
+
     private static TelegramController CreateSut(
         FakeConversationOrchestrator orchestrator,
         FakeConversationScopeAccessor scopeAccessor,
@@ -458,7 +640,7 @@ public sealed class TelegramControllerTests
         FakeUserLocaleStateService? localeStateService,
         FakeNavigationStateService? navigationStateService,
         FakeVocabularyCardRepository? vocabularyCardRepository,
-        FakeTelegramNavigationPresenter? navigationPresenter,
+        ITelegramNavigationPresenter? navigationPresenter,
         FakeTelegramFormatter formatter,
         FakeTelegramBotSender sender,
         TelegramOptions options,
@@ -484,13 +666,18 @@ public sealed class TelegramControllerTests
             NullLogger<TelegramController>.Instance);
     }
 
-    private static TelegramWebhookUpdateRequest BuildTextUpdate(long chatId, long userId, string text, int? messageThreadId)
+    private static TelegramWebhookUpdateRequest BuildTextUpdate(
+        long chatId,
+        long userId,
+        string text,
+        int? messageThreadId,
+        string? languageCode = "en")
     {
         return new TelegramWebhookUpdateRequest(
             UpdateId: 1,
             Message: new TelegramIncomingMessage(
                 MessageId: 10,
-                From: new TelegramUserInfo(userId, false, "en", "mike", "Mike", null),
+                From: new TelegramUserInfo(userId, false, languageCode, "mike", "Mike", null),
                 Chat: new TelegramChatInfo(chatId, "private", "mike", null),
                 Text: text,
                 Caption: null,
@@ -499,7 +686,12 @@ public sealed class TelegramControllerTests
             CallbackQuery: null);
     }
 
-    private static TelegramWebhookUpdateRequest BuildCallbackUpdate(long chatId, long userId, string callbackData, int? messageThreadId)
+    private static TelegramWebhookUpdateRequest BuildCallbackUpdate(
+        long chatId,
+        long userId,
+        string? callbackData,
+        int? messageThreadId,
+        string? languageCode = "en")
     {
         return new TelegramWebhookUpdateRequest(
             UpdateId: 2,
@@ -507,10 +699,10 @@ public sealed class TelegramControllerTests
             EditedMessage: null,
             CallbackQuery: new TelegramCallbackQuery(
                 Id: "cb-1",
-                From: new TelegramUserInfo(userId, false, "en", "mike", "Mike", null),
+                From: new TelegramUserInfo(userId, false, languageCode, "mike", "Mike", null),
                 Message: new TelegramIncomingMessage(
                     MessageId: 99,
-                    From: new TelegramUserInfo(userId, false, "en", "mike", "Mike", null),
+                    From: new TelegramUserInfo(userId, false, languageCode, "mike", "Mike", null),
                     Chat: new TelegramChatInfo(chatId, "private", "mike", null),
                     Text: null,
                     Caption: null,
@@ -747,6 +939,8 @@ public sealed class TelegramControllerTests
     {
         public string NextLocale { get; set; } = "en";
         public string? StoredLocale { get; set; } = "en";
+        public string? LastEnsureTelegramLanguageCode { get; private set; }
+        public bool StoreLocaleOnEnsureWhenMissing { get; set; }
 
         public Task<string?> GetStoredLocaleAsync(
             string channel,
@@ -773,6 +967,16 @@ public sealed class TelegramControllerTests
             string? incomingText,
             CancellationToken cancellationToken = default)
         {
+            LastEnsureTelegramLanguageCode = telegramLanguageCode;
+
+            if (StoreLocaleOnEnsureWhenMissing && string.IsNullOrWhiteSpace(StoredLocale))
+            {
+                StoredLocale = string.IsNullOrWhiteSpace(telegramLanguageCode)
+                    ? LocalizationConstants.EnglishLocale
+                    : LocalizationConstants.NormalizeLocaleCode(telegramLanguageCode);
+                NextLocale = StoredLocale;
+            }
+
             return Task.FromResult(new UserLocaleStateResult(NextLocale, IsInitialized: false, IsSwitched: false));
         }
     }
@@ -780,6 +984,7 @@ public sealed class TelegramControllerTests
     private sealed class FakeNavigationStateService : INavigationStateService
     {
         public string CurrentSection { get; set; } = "main";
+        public bool ThrowOnSetCurrentSection { get; set; }
 
         public Task<string> GetCurrentSectionAsync(
             string channel,
@@ -795,6 +1000,11 @@ public sealed class TelegramControllerTests
             string section,
             CancellationToken cancellationToken = default)
         {
+            if (ThrowOnSetCurrentSection)
+            {
+                throw new InvalidOperationException("Simulated SetCurrentSection failure.");
+            }
+
             CurrentSection = section;
             return Task.FromResult(section);
         }
@@ -932,8 +1142,11 @@ public sealed class TelegramControllerTests
 
     private sealed class FakeTelegramBotSender : ITelegramBotSender
     {
+        public sealed record SentMessage(long ChatId, string Text, TelegramSendOptions? Options, int? MessageThreadId);
+
         public int Calls { get; private set; }
         public int CallbackAnswers { get; private set; }
+        public List<SentMessage> SentMessages { get; } = [];
 
         public long LastChatId { get; private set; }
 
@@ -959,6 +1172,7 @@ public sealed class TelegramControllerTests
             LastText = text;
             LastOptions = options;
             LastMessageThreadId = messageThreadId;
+            SentMessages.Add(new SentMessage(chatId, text, options, messageThreadId));
             var result = SimulateFailure
                 ? new TelegramSendResult(false, "Simulated send failure")
                 : new TelegramSendResult(true);
