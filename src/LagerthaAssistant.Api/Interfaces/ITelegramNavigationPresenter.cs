@@ -33,6 +33,8 @@ public interface ITelegramNavigationPresenter
 
     TelegramInlineKeyboardMarkup BuildOneDriveKeyboard(string locale, bool isConnected, bool includeCheckStatusButton = false);
 
+    TelegramInlineKeyboardMarkup BuildOneDriveRebuildIndexConfirmationKeyboard(string locale);
+
     TelegramInlineKeyboardMarkup BuildVocabularySaveConfirmationKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildNotionKeyboard(string locale);

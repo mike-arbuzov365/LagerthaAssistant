@@ -48,6 +48,7 @@ public static class CallbackDataConstants
         public const string CheckLogin = "onedrive:check_login";
         public const string SyncNow = "onedrive:sync_now";
         public const string RebuildIndex = "onedrive:index_rebuild";
+        public const string RebuildIndexConfirm = "onedrive:index_rebuild_confirm";
     }
 
     public static class StorageMode
