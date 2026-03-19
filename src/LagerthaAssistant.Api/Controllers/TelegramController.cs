@@ -669,6 +669,13 @@ public sealed class TelegramController : ControllerBase
                             syncSummary.PendingAfterRun));
                 }
 
+                if (await ShouldSuggestIndexRebuildAsync(syncSummary, cancellationToken))
+                {
+                    successText = AppendTextBlock(
+                        successText,
+                        _navigationPresenter.GetText("onedrive.rebuild_index_suggest", locale));
+                }
+
                 return screen with
                 {
                     Intent = "settings.onedrive.check.success",
@@ -753,6 +760,14 @@ public sealed class TelegramController : ControllerBase
 
         if (string.Equals(callbackData, CallbackDataConstants.OneDrive.RebuildIndex, StringComparison.Ordinal))
         {
+            return new TelegramRouteResponse(
+                "settings.onedrive.index.confirm",
+                _navigationPresenter.GetText("onedrive.rebuild_index_warning", locale),
+                InlineKeyboard(_navigationPresenter.BuildOneDriveRebuildIndexConfirmationKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.OneDrive.RebuildIndexConfirm, StringComparison.Ordinal))
+        {
             var status = await _graphAuthService.GetStatusAsync(cancellationToken);
             if (!status.IsAuthenticated)
             {
@@ -779,6 +794,9 @@ public sealed class TelegramController : ControllerBase
                 {
                     Intent = "settings.onedrive.index.done",
                     Text = string.Concat(
+                        _navigationPresenter.GetText("onedrive.rebuild_index_started", locale),
+                        Environment.NewLine,
+                        Environment.NewLine,
                         _navigationPresenter.GetText("onedrive.rebuild_index_done", locale, entries.Count, indexed),
                         Environment.NewLine,
                         Environment.NewLine,
@@ -805,6 +823,32 @@ public sealed class TelegramController : ControllerBase
         }
 
         return await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
+    }
+
+    private async Task<bool> ShouldSuggestIndexRebuildAsync(
+        OneDriveSyncSummary? syncSummary,
+        CancellationToken cancellationToken)
+    {
+        if (syncSummary is null)
+        {
+            return false;
+        }
+
+        if (syncSummary.Completed > 0 || syncSummary.PendingAfterRun > 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var indexedCount = await _vocabularyCardRepository.CountAllAsync(cancellationToken);
+            return indexedCount == 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not evaluate whether index rebuild suggestion is needed.");
+            return false;
+        }
     }
 
     private async Task<OneDriveSyncSummary> RunPendingSyncUntilStableAsync(CancellationToken cancellationToken)
@@ -859,12 +903,18 @@ public sealed class TelegramController : ControllerBase
         var saveCandidates = BuildSaveCandidates(result.Items);
         var previewWarnings = BuildPreviewWarnings(result.Items, locale);
         var wordValidationWarnings = BuildWordValidationWarnings(result.Items, locale);
+        var foundInDeckInfo = BuildFoundInDeckInfo(result.Items, locale);
 
         if (!string.IsNullOrWhiteSpace(wordValidationWarnings))
         {
             formatted = result.Items.All(item => item.IsWordUnrecognized)
                 ? wordValidationWarnings
                 : AppendTextBlock(formatted, wordValidationWarnings);
+        }
+
+        if (!string.IsNullOrWhiteSpace(foundInDeckInfo))
+        {
+            formatted = AppendTextBlock(formatted, foundInDeckInfo);
         }
 
         if (saveMode == VocabularySaveMode.Off)
@@ -1087,6 +1137,46 @@ public sealed class TelegramController : ControllerBase
         }
 
         return string.Join(Environment.NewLine, warnings.Distinct(StringComparer.Ordinal));
+    }
+
+    private string BuildFoundInDeckInfo(IReadOnlyList<ConversationAgentItemResult> items, string locale)
+    {
+        var foundItems = items
+            .Where(item => item.FoundInDeck && item.Lookup.Matches.Count > 0)
+            .ToList();
+
+        if (foundItems.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (foundItems.Count == 1)
+        {
+            var match = foundItems[0].Lookup.Matches[0];
+            return _navigationPresenter.GetText(
+                "vocab.found_in_deck_single",
+                locale,
+                match.DeckFileName,
+                match.RowNumber);
+        }
+
+        var lines = new List<string>
+        {
+            _navigationPresenter.GetText("vocab.found_in_deck_multi_title", locale)
+        };
+
+        foreach (var item in foundItems)
+        {
+            var match = item.Lookup.Matches[0];
+            lines.Add(_navigationPresenter.GetText(
+                "vocab.found_in_deck_multi_item",
+                locale,
+                item.Input,
+                match.DeckFileName,
+                match.RowNumber));
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private string BuildAppendStatusMessage(VocabularyAppendResult appendResult, string locale)

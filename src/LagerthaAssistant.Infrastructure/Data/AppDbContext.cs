@@ -22,6 +22,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<VocabularySyncJob> VocabularySyncJobs => Set<VocabularySyncJob>();
     public DbSet<ConversationIntentMetric> ConversationIntentMetrics => Set<ConversationIntentMetric>();
     public DbSet<TelegramProcessedUpdate> TelegramProcessedUpdates => Set<TelegramProcessedUpdate>();
+    public DbSet<GraphAuthToken> GraphAuthTokens => Set<GraphAuthToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -37,6 +38,7 @@ public sealed class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new VocabularySyncJobConfiguration());
         modelBuilder.ApplyConfiguration(new ConversationIntentMetricConfiguration());
         modelBuilder.ApplyConfiguration(new TelegramProcessedUpdateConfiguration());
+        modelBuilder.ApplyConfiguration(new GraphAuthTokenConfiguration());
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

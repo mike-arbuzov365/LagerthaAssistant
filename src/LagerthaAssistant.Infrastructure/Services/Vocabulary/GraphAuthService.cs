@@ -1,35 +1,52 @@
 namespace LagerthaAssistant.Infrastructure.Services.Vocabulary;
 
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Infrastructure.Constants;
+using LagerthaAssistant.Infrastructure.Data;
 using LagerthaAssistant.Infrastructure.Options;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 public sealed class GraphAuthService : IGraphAuthService
 {
     private const string DefaultVerificationUri = "https://www.microsoft.com/link";
+    private const string OneDriveProviderKey = "onedrive";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
+    private static readonly Regex UnixStyleEnvironmentVariableRegex = new(
+        @"\$(\{(?<name>[A-Za-z_][A-Za-z0-9_]*)\}|(?<name>[A-Za-z_][A-Za-z0-9_]*))",
+        RegexOptions.Compiled);
+
+    private static readonly Regex WindowsStyleUnresolvedEnvironmentVariableRegex = new(
+        @"%[A-Za-z_][A-Za-z0-9_]*%",
+        RegexOptions.Compiled);
+
     private readonly GraphOptions _options;
     private readonly HttpClient _httpClient;
     private readonly ILogger<GraphAuthService> _logger;
+    private readonly IServiceScopeFactory? _serviceScopeFactory;
     private readonly SemaphoreSlim _sync = new(1, 1);
+    private int _tokenCachePathLogged;
 
     public GraphAuthService(
         GraphOptions options,
         ILogger<GraphAuthService> logger,
-        HttpClient? httpClient = null)
+        HttpClient? httpClient = null,
+        IServiceScopeFactory? serviceScopeFactory = null)
     {
         _options = options;
         _logger = logger;
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        _serviceScopeFactory = serviceScopeFactory;
     }
 
     public async Task<GraphAuthStatus> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -184,6 +201,8 @@ public sealed class GraphAuthService : IGraphAuthService
         await _sync.WaitAsync(cancellationToken);
         try
         {
+            await DeleteTokenCacheFromDatabaseAsync(cancellationToken);
+
             var cachePath = ResolveTokenCachePath();
             if (File.Exists(cachePath))
             {
@@ -417,39 +436,271 @@ public sealed class GraphAuthService : IGraphAuthService
 
     private async Task<TokenCacheEntry?> LoadTokenCacheAsync(CancellationToken cancellationToken)
     {
-        var cachePath = ResolveTokenCachePath();
-        if (!File.Exists(cachePath))
+        var dbEntry = await LoadTokenCacheFromDatabaseAsync(cancellationToken);
+        if (dbEntry is not null)
         {
-            return null;
+            await TryMirrorTokenCacheToFileAsync(dbEntry, cancellationToken);
+            return dbEntry;
         }
 
-        var json = await File.ReadAllTextAsync(cachePath, cancellationToken);
-        return JsonSerializer.Deserialize<TokenCacheEntry>(json, JsonOptions);
+        var fileEntry = await LoadTokenCacheFromFileAsync(cancellationToken);
+        if (fileEntry is not null)
+        {
+            await TrySaveTokenCacheToDatabaseAsync(fileEntry, cancellationToken);
+        }
+
+        return fileEntry;
     }
 
     private async Task SaveTokenCacheAsync(TokenResponse tokenResponse, CancellationToken cancellationToken)
     {
-        var cachePath = ResolveTokenCachePath();
-        var directory = Path.GetDirectoryName(cachePath);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
+        var current = await LoadTokenCacheAsync(cancellationToken);
+        var refreshToken = string.IsNullOrWhiteSpace(tokenResponse.RefreshToken)
+            ? current?.RefreshToken ?? string.Empty
+            : tokenResponse.RefreshToken;
 
         var entry = new TokenCacheEntry
         {
             AccessToken = tokenResponse.AccessToken,
-            RefreshToken = tokenResponse.RefreshToken,
+            RefreshToken = refreshToken,
             AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Max(30, tokenResponse.ExpiresIn))
         };
 
-        var json = JsonSerializer.Serialize(entry, JsonOptions);
-        await File.WriteAllTextAsync(cachePath, json, cancellationToken);
+        await TrySaveTokenCacheToDatabaseAsync(entry, cancellationToken);
+        await TryMirrorTokenCacheToFileAsync(entry, cancellationToken);
     }
 
     private string ResolveTokenCachePath()
     {
-        return Environment.ExpandEnvironmentVariables(_options.TokenCachePath);
+        var configuredPath = _options.TokenCachePath?.Trim();
+        var expandedPath = string.IsNullOrWhiteSpace(configuredPath)
+            ? GetDefaultTokenCachePath()
+            : ExpandEnvironmentVariablesPortable(configuredPath);
+
+        var normalizedPath = NormalizePathSeparators(expandedPath);
+        if (HasUnresolvedEnvironmentVariables(normalizedPath))
+        {
+            normalizedPath = GetDefaultTokenCachePath();
+        }
+
+        if (!Path.IsPathRooted(normalizedPath))
+        {
+            normalizedPath = Path.GetFullPath(normalizedPath, AppContext.BaseDirectory);
+        }
+
+        if (Interlocked.Exchange(ref _tokenCachePathLogged, 1) == 0)
+        {
+            _logger.LogInformation("Graph token cache path resolved to: {TokenCachePath}", normalizedPath);
+        }
+
+        return normalizedPath;
+    }
+
+    private async Task<TokenCacheEntry?> LoadTokenCacheFromDatabaseAsync(CancellationToken cancellationToken)
+    {
+        if (_serviceScopeFactory is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            await using var scope = _serviceScopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var token = await db.GraphAuthTokens
+                .AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Provider == OneDriveProviderKey, cancellationToken);
+
+            if (token is null)
+            {
+                return null;
+            }
+
+            return new TokenCacheEntry
+            {
+                AccessToken = token.AccessToken,
+                RefreshToken = token.RefreshToken,
+                AccessTokenExpiresAtUtc = token.AccessTokenExpiresAtUtc
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load Graph token cache from database.");
+            return null;
+        }
+    }
+
+    private async Task DeleteTokenCacheFromDatabaseAsync(CancellationToken cancellationToken)
+    {
+        if (_serviceScopeFactory is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var scope = _serviceScopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var token = await db.GraphAuthTokens
+                .SingleOrDefaultAsync(x => x.Provider == OneDriveProviderKey, cancellationToken);
+
+            if (token is null)
+            {
+                return;
+            }
+
+            db.GraphAuthTokens.Remove(token);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete Graph token cache from database.");
+        }
+    }
+
+    private async Task<TokenCacheEntry?> LoadTokenCacheFromFileAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var cachePath = ResolveTokenCachePath();
+            if (!File.Exists(cachePath))
+            {
+                return null;
+            }
+
+            var json = await File.ReadAllTextAsync(cachePath, cancellationToken);
+            return JsonSerializer.Deserialize<TokenCacheEntry>(json, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read Graph token cache from file.");
+            return null;
+        }
+    }
+
+    private async Task TryMirrorTokenCacheToFileAsync(TokenCacheEntry entry, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var cachePath = ResolveTokenCachePath();
+            var directory = Path.GetDirectoryName(cachePath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var json = JsonSerializer.Serialize(entry, JsonOptions);
+            await File.WriteAllTextAsync(cachePath, json, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not mirror Graph token cache to file.");
+        }
+    }
+
+    private async Task TrySaveTokenCacheToDatabaseAsync(TokenCacheEntry entry, CancellationToken cancellationToken)
+    {
+        if (_serviceScopeFactory is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var scope = _serviceScopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var token = await db.GraphAuthTokens
+                .SingleOrDefaultAsync(x => x.Provider == OneDriveProviderKey, cancellationToken);
+
+            if (token is null)
+            {
+                db.GraphAuthTokens.Add(new Domain.Entities.GraphAuthToken
+                {
+                    Provider = OneDriveProviderKey,
+                    AccessToken = entry.AccessToken,
+                    RefreshToken = entry.RefreshToken,
+                    AccessTokenExpiresAtUtc = entry.AccessTokenExpiresAtUtc,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow
+                });
+            }
+            else
+            {
+                token.AccessToken = entry.AccessToken;
+                token.RefreshToken = entry.RefreshToken;
+                token.AccessTokenExpiresAtUtc = entry.AccessTokenExpiresAtUtc;
+                token.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist Graph token cache to database.");
+        }
+    }
+
+    private static bool HasUnresolvedEnvironmentVariables(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        if (WindowsStyleUnresolvedEnvironmentVariableRegex.IsMatch(path))
+        {
+            return true;
+        }
+
+        return UnixStyleEnvironmentVariableRegex.IsMatch(path);
+    }
+
+    private static string NormalizePathSeparators(string path)
+    {
+        return path
+            .Replace('\\', Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar);
+    }
+
+    private static string ExpandEnvironmentVariablesPortable(string rawPath)
+    {
+        var expanded = Environment.ExpandEnvironmentVariables(rawPath);
+        return UnixStyleEnvironmentVariableRegex.Replace(
+            expanded,
+            match =>
+            {
+                var variableName = match.Groups["name"].Value;
+                if (string.IsNullOrWhiteSpace(variableName))
+                {
+                    return match.Value;
+                }
+
+                var value = Environment.GetEnvironmentVariable(variableName);
+                return string.IsNullOrWhiteSpace(value)
+                    ? match.Value
+                    : value;
+            });
+    }
+
+    private static string GetDefaultTokenCachePath()
+    {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localAppData))
+        {
+            var xdgDataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+            if (!string.IsNullOrWhiteSpace(xdgDataHome))
+            {
+                localAppData = xdgDataHome;
+            }
+            else
+            {
+                var home = Environment.GetEnvironmentVariable("HOME");
+                localAppData = !string.IsNullOrWhiteSpace(home)
+                    ? Path.Combine(home, ".local", "share")
+                    : Path.GetTempPath();
+            }
+        }
+
+        return Path.Combine(localAppData, "LagerthaAssistant", "graph-token.json");
     }
 
     private string BuildScopeString()

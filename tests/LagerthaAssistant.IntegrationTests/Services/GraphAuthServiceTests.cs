@@ -3,9 +3,13 @@ namespace LagerthaAssistant.IntegrationTests.Services;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using LagerthaAssistant.Infrastructure.Data;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Infrastructure.Options;
 using LagerthaAssistant.Infrastructure.Services.Vocabulary;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -217,6 +221,82 @@ public sealed class GraphAuthServiceTests
         Assert.True(status.IsConfigured);
         Assert.True(status.IsAuthenticated);
         Assert.Equal(0, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_ShouldLoadTokenFromDatabase_WhenFileCacheMissingAfterRestart()
+    {
+        var tokenPath = CreateTempTokenCachePath();
+        var expiredEntry = new
+        {
+            AccessToken = "expired-token",
+            RefreshToken = "refresh-token",
+            AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5)
+        };
+        await File.WriteAllTextAsync(tokenPath, JsonSerializer.Serialize(expiredEntry));
+
+        var services = new ServiceCollection();
+        var inMemoryRoot = new InMemoryDatabaseRoot();
+        var dbName = Guid.NewGuid().ToString("N");
+        services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(dbName, inMemoryRoot));
+        await using var provider = services.BuildServiceProvider();
+        var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+
+        var refreshHandler = new StubHttpMessageHandler(_ =>
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"access_token\":\"fresh-token\",\"expires_in\":3600}",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+        });
+
+        var firstRun = new GraphAuthService(
+            new GraphOptions
+            {
+                ClientId = "client-id",
+                TenantId = "common",
+                TokenCachePath = tokenPath
+            },
+            NullLogger<GraphAuthService>.Instance,
+            new HttpClient(refreshHandler),
+            scopeFactory);
+
+        var firstStatus = await firstRun.GetStatusAsync();
+        Assert.True(firstStatus.IsAuthenticated);
+        Assert.Equal(1, refreshHandler.CallCount);
+
+        await using (var verificationScope = provider.CreateAsyncScope())
+        {
+            var db = verificationScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var token = await db.GraphAuthTokens.AsNoTracking().SingleOrDefaultAsync(x => x.Provider == "onedrive");
+            Assert.NotNull(token);
+            Assert.Equal("fresh-token", token!.AccessToken);
+        }
+
+        File.Delete(tokenPath);
+
+        var secondHandler = new StubHttpMessageHandler(_ =>
+        {
+            throw new InvalidOperationException("Network refresh should not be called when DB cache is available.");
+        });
+
+        var secondRun = new GraphAuthService(
+            new GraphOptions
+            {
+                ClientId = "client-id",
+                TenantId = "common",
+                TokenCachePath = tokenPath
+            },
+            NullLogger<GraphAuthService>.Instance,
+            new HttpClient(secondHandler),
+            scopeFactory);
+
+        var secondStatus = await secondRun.GetStatusAsync();
+        Assert.True(secondStatus.IsAuthenticated);
+        Assert.Equal(0, secondHandler.CallCount);
     }
 
     private static string CreateTempTokenCachePath()

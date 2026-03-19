@@ -184,6 +184,16 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
         return new TelegramInlineKeyboardMarkup(rows);
     }
 
+    public TelegramInlineKeyboardMarkup BuildOneDriveRebuildIndexConfirmationKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("onedrive.rebuild_index_start", locale, CallbackDataConstants.OneDrive.RebuildIndexConfirm)],
+                [Button("back", locale, CallbackDataConstants.Settings.OneDrive)]
+            ]);
+    }
+
     public TelegramInlineKeyboardMarkup BuildNotionKeyboard(string locale)
     {
         return new TelegramInlineKeyboardMarkup(
