@@ -11,6 +11,15 @@ internal static class VocabularyWriteFailurePolicy
 {
     private static readonly string[] RecoverableMarkers =
     [
+        "graph authentication is required",
+        "not authenticated",
+        "authorization is required",
+        "authorization failed",
+        "run /graph login",
+        "use /graph login",
+        "could not resolve onedrive target deck",
+        "not writable or was not found",
+        "required deck files are missing",
         "open in another app",
         "currently in use",
         "file is locked",

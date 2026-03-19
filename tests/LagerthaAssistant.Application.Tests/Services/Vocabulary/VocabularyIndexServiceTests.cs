@@ -268,6 +268,84 @@ The function returns void when there is no value to return
     }
 
     [Fact]
+    public async Task HandleAppendResultAsync_ShouldCreatePendingSyncJob_WhenGraphAuthIsRequired()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var errorResult = new VocabularyAppendResult(
+            VocabularyAppendStatus.Error,
+            Message: "Graph authentication is required. Run /graph login first.");
+
+        var reply = """
+awkward
+
+(adj) незручний
+
+This was an awkward deploy.
+""";
+
+        await sut.HandleAppendResultAsync(
+            "awkward",
+            reply,
+            "wm-adjectives-ua-en.xlsx",
+            "adj",
+            errorResult,
+            VocabularyStorageMode.Graph);
+
+        var job = Assert.Single(syncRepo.Jobs);
+        Assert.Equal(VocabularySyncJobStatus.Pending, job.Status);
+        Assert.Equal("wm-adjectives-ua-en.xlsx", job.TargetDeckFileName);
+
+        var card = Assert.Single(cardRepo.Cards);
+        Assert.Equal(VocabularySyncStatus.Pending, card.SyncStatus);
+        Assert.Equal(1, unitOfWork.SaveCalls);
+    }
+
+    [Fact]
+    public async Task HandleAppendResultAsync_ShouldCreatePendingSyncJob_WhenTargetDeckIsMissingInOneDrive()
+    {
+        var cardRepo = new FakeVocabularyCardRepository();
+        var syncRepo = new FakeVocabularySyncJobRepository();
+        var parser = new VocabularyReplyParser();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var sut = new VocabularyIndexService(cardRepo, syncRepo, parser, unitOfWork, NullLogger<VocabularyIndexService>.Instance);
+
+        var errorResult = new VocabularyAppendResult(
+            VocabularyAppendStatus.Error,
+            Message: "Could not resolve OneDrive target deck 'wm-adjectives-ua-en.xlsx'.");
+
+        var reply = """
+awkward
+
+(adj) незручний
+
+This was an awkward deploy.
+""";
+
+        await sut.HandleAppendResultAsync(
+            "awkward",
+            reply,
+            "wm-adjectives-ua-en.xlsx",
+            "adj",
+            errorResult,
+            VocabularyStorageMode.Graph);
+
+        var job = Assert.Single(syncRepo.Jobs);
+        Assert.Equal(VocabularySyncJobStatus.Pending, job.Status);
+        Assert.Equal("wm-adjectives-ua-en.xlsx", job.TargetDeckFileName);
+
+        var card = Assert.Single(cardRepo.Cards);
+        Assert.Equal(VocabularySyncStatus.Pending, card.SyncStatus);
+        Assert.Equal(1, unitOfWork.SaveCalls);
+    }
+
+    [Fact]
     public async Task HandleAppendResultAsync_ShouldReuseActivePendingJob_WhenDuplicateQueuedJobExists()
     {
         var cardRepo = new FakeVocabularyCardRepository();

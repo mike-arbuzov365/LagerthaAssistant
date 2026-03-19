@@ -114,6 +114,28 @@ The function returns void when there is no value to return.
     }
 
     [Fact]
+    public async Task GetWritableDeckFilesAsync_WhenMirrorNotInitialized_ShouldListRemoteFilesWithoutDownload()
+    {
+        var workbookBytes = CreateTemplateWorkbookBytes("build", "(v) to build software components", "We build services daily.");
+        var remoteFile = new GraphDriveFile("file-1", "wm-verbs-us-en.xlsx", "etag-1", "/Apps/Flashcards Deluxe/wm-verbs-us-en.xlsx");
+
+        var graphClient = new FakeGraphDriveClient(
+            [remoteFile],
+            new Dictionary<string, byte[]> { [remoteFile.Id] = workbookBytes },
+            []);
+
+        await using var sut = CreateSut(graphClient);
+
+        var decks = await sut.GetWritableDeckFilesAsync();
+
+        var deck = Assert.Single(decks);
+        Assert.Equal("wm-verbs-us-en.xlsx", deck.FileName);
+        Assert.Equal("/Apps/Flashcards Deluxe/wm-verbs-us-en.xlsx", deck.FullPath);
+        Assert.Equal(1, graphClient.ListFilesCalls);
+        Assert.Equal(0, graphClient.DownloadCalls);
+    }
+
+    [Fact]
     public async Task AppendRetryAfterLock_ShouldRetryPendingUpload_WithoutDuplicateLocalAppend()
     {
         var workbookBytes = CreateTemplateWorkbookBytes("build", "(v) to build software components", "We build services daily.");

@@ -72,8 +72,10 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
                 || !indexedLookup.Found)
             .ToList();
 
+        var useDatabaseOnlyReadPath = ShouldUseDatabaseOnlyReadPath();
         IReadOnlyDictionary<string, VocabularyLookupResult>? deckLookups = null;
         if (unresolvedInputs.Count > 0
+            && !useDatabaseOnlyReadPath
             && _vocabularyDeckService is IVocabularyBatchDeckLookupService batchDeckLookupService)
         {
             deckLookups = await batchDeckLookupService.FindInWritableDecksBatchAsync(unresolvedInputs, cancellationToken);
@@ -119,7 +121,10 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
                     continue;
                 }
 
-                var aiResult = await BuildAiResultAsync(input, cancellationToken);
+                var aiResult = await BuildAiResultAsync(
+                    input,
+                    includeAppendPreview: !useDatabaseOnlyReadPath,
+                    cancellationToken);
                 perInputCache[input] = aiResult;
                 results.Add(aiResult);
                 continue;
@@ -186,43 +191,64 @@ public sealed class VocabularyWorkflowService : IVocabularyWorkflowService
             }
         }
 
-        var lookup = await _vocabularyDeckService.FindInWritableDecksAsync(normalizedInput, cancellationToken);
-        if (lookup.Found)
+        if (!ShouldUseDatabaseOnlyReadPath())
         {
-            if (_vocabularyIndexService is not null)
+            var lookup = await _vocabularyDeckService.FindInWritableDecksAsync(normalizedInput, cancellationToken);
+            if (lookup.Found)
             {
-                var mode = _storageModeProvider?.CurrentMode ?? VocabularyStorageMode.Local;
-                await _vocabularyIndexService.IndexLookupResultAsync(lookup, mode, cancellationToken);
-            }
+                if (_vocabularyIndexService is not null)
+                {
+                    var mode = _storageModeProvider?.CurrentMode ?? VocabularyStorageMode.Local;
+                    await _vocabularyIndexService.IndexLookupResultAsync(lookup, mode, cancellationToken);
+                }
 
-            return new VocabularyWorkflowItemResult(normalizedInput, lookup);
+                return new VocabularyWorkflowItemResult(normalizedInput, lookup);
+            }
         }
 
+        var lookupMiss = new VocabularyLookupResult(normalizedInput, []);
         var completion = await _assistantSessionService.AskAsync(normalizedInput, cancellationToken);
-        var preview = await _vocabularyDeckService.PreviewAppendFromAssistantReplyAsync(
-            normalizedInput,
-            completion.Content,
-            forcedDeckFileName,
-            overridePartOfSpeech,
-            cancellationToken);
+        VocabularyAppendPreviewResult? preview = null;
 
-        return new VocabularyWorkflowItemResult(normalizedInput, lookup, completion, preview);
+        if (!ShouldUseDatabaseOnlyReadPath())
+        {
+            preview = await _vocabularyDeckService.PreviewAppendFromAssistantReplyAsync(
+                normalizedInput,
+                completion.Content,
+                forcedDeckFileName,
+                overridePartOfSpeech,
+                cancellationToken);
+        }
+
+        return new VocabularyWorkflowItemResult(normalizedInput, lookupMiss, completion, preview);
     }
 
     private async Task<VocabularyWorkflowItemResult> BuildAiResultAsync(
         string normalizedInput,
+        bool includeAppendPreview,
         CancellationToken cancellationToken)
     {
         var lookup = new VocabularyLookupResult(normalizedInput, []);
         var completion = await _assistantSessionService.AskAsync(normalizedInput, cancellationToken);
-        var preview = await _vocabularyDeckService.PreviewAppendFromAssistantReplyAsync(
-            normalizedInput,
-            completion.Content,
-            forcedDeckFileName: null,
-            overridePartOfSpeech: null,
-            cancellationToken);
+        VocabularyAppendPreviewResult? preview = null;
+
+        if (includeAppendPreview)
+        {
+            preview = await _vocabularyDeckService.PreviewAppendFromAssistantReplyAsync(
+                normalizedInput,
+                completion.Content,
+                forcedDeckFileName: null,
+                overridePartOfSpeech: null,
+                cancellationToken);
+        }
 
         return new VocabularyWorkflowItemResult(normalizedInput, lookup, completion, preview);
+    }
+
+    private bool ShouldUseDatabaseOnlyReadPath()
+    {
+        return _vocabularyIndexService is not null
+            && (_storageModeProvider?.CurrentMode ?? VocabularyStorageMode.Local) == VocabularyStorageMode.Graph;
     }
 
     /// <summary>

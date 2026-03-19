@@ -321,13 +321,21 @@ public sealed class VocabularyCardRepository : IVocabularyCardRepository
         {
             _logger.LogDebug("Executing {Operation} for vocabulary deck stats", RepositoryOperations.GetRecent);
 
-            return await _context.VocabularyCards
+            var grouped = await _context.VocabularyCards
                 .AsNoTracking()
                 .GroupBy(card => card.DeckFileName)
-                .Select(group => new VocabularyDeckStat(group.Key, group.Count()))
+                .Select(group => new
+                {
+                    DeckFileName = group.Key,
+                    Count = group.Count()
+                })
                 .OrderByDescending(item => item.Count)
                 .ThenBy(item => item.DeckFileName)
                 .ToListAsync(cancellationToken);
+
+            return grouped
+                .Select(item => new VocabularyDeckStat(item.DeckFileName, item.Count))
+                .ToList();
         }
         catch (Exception ex)
         {
@@ -343,13 +351,21 @@ public sealed class VocabularyCardRepository : IVocabularyCardRepository
         {
             _logger.LogDebug("Executing {Operation} for vocabulary part-of-speech stats", RepositoryOperations.GetRecent);
 
-            return await _context.VocabularyCards
+            var grouped = await _context.VocabularyCards
                 .AsNoTracking()
                 .GroupBy(card => card.PartOfSpeechMarker)
-                .Select(group => new VocabularyPartOfSpeechStat(group.Key, group.Count()))
+                .Select(group => new
+                {
+                    Marker = group.Key,
+                    Count = group.Count()
+                })
                 .OrderByDescending(item => item.Count)
                 .ThenBy(item => item.Marker)
                 .ToListAsync(cancellationToken);
+
+            return grouped
+                .Select(item => new VocabularyPartOfSpeechStat(item.Marker, item.Count))
+                .ToList();
         }
         catch (Exception ex)
         {
