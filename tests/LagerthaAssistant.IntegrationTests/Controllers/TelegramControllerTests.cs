@@ -687,6 +687,61 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldReportIndexReady_WhenLoginCompletedAndIndexAlreadyPopulated()
+    {
+        var storagePreference = new FakeVocabularyStoragePreferenceService
+        {
+            CurrentMode = VocabularyStorageMode.Local
+        };
+        var syncProcessor = new FakeVocabularySyncProcessor
+        {
+            NextSummary = new VocabularySyncRunSummary(
+                Requested: 0,
+                Processed: 0,
+                Completed: 0,
+                Requeued: 0,
+                Failed: 0,
+                PendingAfterRun: 0)
+        };
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            storagePreference,
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Settings },
+            vocabularyCardRepository: new FakeVocabularyCardRepository
+            {
+                CountAllResult = 3987
+            },
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularySyncProcessor: syncProcessor);
+
+        await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.Login, null, updateId: 33),
+            CancellationToken.None);
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.CheckLogin, null, updateId: 34),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("settings.onedrive.check.success", payload.Intent);
+        Assert.Contains("index is ready", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("3987", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("index appears empty", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldRunPendingSync_WhenOneDriveSyncNowCallbackReceived()
     {
         var sender = new FakeTelegramBotSender();
@@ -1041,6 +1096,46 @@ public sealed class TelegramControllerTests
         Assert.Equal("vocabulary.single", payload.Intent);
         Assert.Contains("already exists in dictionary", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("wm-adjectives-ua-en.xlsx", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldRenderPreviewWarnings_WithWarningMarkerStyle()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = BuildVocabularyPreviewWarningResult()
+        };
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService
+            {
+                StoredLocale = LocalizationConstants.EnglishLocale,
+                NextLocale = LocalizationConstants.EnglishLocale
+            },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("rest\n\n(v) rest"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "rest", null, languageCode: "en"),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocabulary.single", payload.Intent);
+        Assert.Contains("⚠️", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("warning:", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1562,6 +1657,30 @@ public sealed class TelegramControllerTests
             Items: [item]);
     }
 
+    private static ConversationAgentResult BuildVocabularyPreviewWarningResult()
+    {
+        var item = new ConversationAgentItemResult(
+            Input: "rest",
+            Lookup: new VocabularyLookupResult("rest", []),
+            AssistantCompletion: new AssistantCompletionResult(
+                "rest\n\n(v) rest",
+                "test-model",
+                Usage: null),
+            AppendPreview: new VocabularyAppendPreviewResult(
+                Status: VocabularyAppendPreviewStatus.Error,
+                Word: "rest",
+                TargetDeckFileName: "wm-verbs-us-en.xlsx",
+                TargetDeckPath: "/apps/Flashcards Deluxe/wm-verbs-us-en.xlsx",
+                DuplicateMatches: null,
+                Message: "Graph authentication is required. Run /graph login first."));
+
+        return new ConversationAgentResult(
+            AgentName: "vocabulary-agent",
+            Intent: "vocabulary.single",
+            IsBatch: false,
+            Items: [item]);
+    }
+
     private sealed class FakeVocabularySyncProcessor : IVocabularySyncProcessor
     {
         public int ProcessCalls { get; private set; }
@@ -1791,6 +1910,8 @@ public sealed class TelegramControllerTests
 
     private sealed class FakeVocabularyCardRepository : IVocabularyCardRepository
     {
+        public int CountAllResult { get; set; }
+
         public Task<IReadOnlyList<VocabularyCard>> FindByAnyTokenAsync(IReadOnlyCollection<string> normalizedTokens, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<VocabularyCard>>([]);
 
@@ -1816,7 +1937,7 @@ public sealed class TelegramControllerTests
             => Task.FromResult(0);
 
         public Task<int> CountAllAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult(0);
+            => Task.FromResult(CountAllResult);
 
         public Task<IReadOnlyList<VocabularyCard>> GetRecentAsync(int take, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<VocabularyCard>>([]);
@@ -1886,6 +2007,7 @@ public sealed class TelegramControllerTests
                 "onedrive.rebuild_index_start" => "Start rebuild",
                 "onedrive.rebuild_index_started" => "Rebuilding index started...",
                 "onedrive.rebuild_index_suggest" => "Tip: index appears empty. Rebuild it.",
+                "onedrive.index_ready" => "Index is ready: {0} words.",
                 "onedrive.sync_now_done" => "Sync complete: completed={0}, requeued={1}, failed={2}, pending={3}.",
                 "onedrive.rebuild_index_done" => "Index rebuilt from writable decks: scanned={0}, indexed={1}.",
                 "onedrive.operation_failed" => "Operation failed: {0}",

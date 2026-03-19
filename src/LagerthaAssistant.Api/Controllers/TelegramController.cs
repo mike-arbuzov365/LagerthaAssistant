@@ -669,11 +669,12 @@ public sealed class TelegramController : ControllerBase
                             syncSummary.PendingAfterRun));
                 }
 
-                if (await ShouldSuggestIndexRebuildAsync(syncSummary, cancellationToken))
+                var indexHint = await BuildPostLoginIndexHintAsync(syncSummary, locale, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(indexHint))
                 {
                     successText = AppendTextBlock(
                         successText,
-                        _navigationPresenter.GetText("onedrive.rebuild_index_suggest", locale));
+                        indexHint);
                 }
 
                 return screen with
@@ -825,29 +826,35 @@ public sealed class TelegramController : ControllerBase
         return await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
     }
 
-    private async Task<bool> ShouldSuggestIndexRebuildAsync(
+    private async Task<string?> BuildPostLoginIndexHintAsync(
         OneDriveSyncSummary? syncSummary,
+        string locale,
         CancellationToken cancellationToken)
     {
         if (syncSummary is null)
         {
-            return false;
+            return null;
         }
 
         if (syncSummary.Completed > 0 || syncSummary.PendingAfterRun > 0)
         {
-            return false;
+            return null;
         }
 
         try
         {
             var indexedCount = await _vocabularyCardRepository.CountAllAsync(cancellationToken);
-            return indexedCount == 0;
+            if (indexedCount == 0)
+            {
+                return _navigationPresenter.GetText("onedrive.rebuild_index_suggest", locale);
+            }
+
+            return _navigationPresenter.GetText("onedrive.index_ready", locale, indexedCount);
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Could not evaluate whether index rebuild suggestion is needed.");
-            return false;
+            return null;
         }
     }
 
@@ -1096,7 +1103,7 @@ public sealed class TelegramController : ControllerBase
             }
 
             var localizedMessage = LocalizeGraphRelatedMessage(item.AppendPreview.Message, locale);
-            warnings.Add($"warning: {localizedMessage}");
+            warnings.Add($"⚠️ {localizedMessage}");
         }
 
         return string.Join(Environment.NewLine, warnings.Distinct(StringComparer.Ordinal));
