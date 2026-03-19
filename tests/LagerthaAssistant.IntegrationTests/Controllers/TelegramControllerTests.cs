@@ -654,6 +654,140 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldLocalizeGraphStatusMessage_OnOneDriveScreen()
+    {
+        var localeState = new FakeUserLocaleStateService { StoredLocale = LocalizationConstants.UkrainianLocale, NextLocale = LocalizationConstants.UkrainianLocale };
+        var sender = new FakeTelegramBotSender();
+        var presenter = new TelegramNavigationPresenter(new LocalizationService());
+        var graphAuth = new FakeGraphAuthService
+        {
+            Status = new GraphAuthStatus(true, false, "Not authenticated. Use /graph login.")
+        };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: localeState,
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Settings },
+            vocabularyCardRepository: null,
+            navigationPresenter: presenter,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            graphAuthService: graphAuth);
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Settings.OneDrive, null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("settings.onedrive", payload.Intent);
+        Assert.Contains("Потрібна авторизація OneDrive", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Use /graph login", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldShowTelegramHint_WhenConsoleGraphCommandUsed()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = ConversationAgentResult.Empty(
+                "command-agent",
+                "command.unsupported",
+                "Unsupported command in API mode. Use natural language for vocabulary or ask for help.")
+        };
+
+        var sender = new FakeTelegramBotSender();
+        var presenter = new TelegramNavigationPresenter(new LocalizationService());
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService
+            {
+                StoredLocale = LocalizationConstants.UkrainianLocale,
+                NextLocale = LocalizationConstants.UkrainianLocale
+            },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: presenter,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "/graph status", null, languageCode: "uk"),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("command.unsupported", payload.Intent);
+        Assert.Contains("доступна лише в консолі", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("OneDrive / Graph", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Unsupported command in API mode", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldShowSaveSetupHint_WhenGraphAuthRequiredOnSave()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = BuildVocabularySingleResult()
+        };
+        var persistence = new FakeVocabularyPersistenceService
+        {
+            NextResult = new VocabularyAppendResult(
+                VocabularyAppendStatus.Error,
+                Message: "Graph authentication is required. Run /graph login first.")
+        };
+        var sender = new FakeTelegramBotSender();
+        var presenter = new TelegramNavigationPresenter(new LocalizationService());
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService
+            {
+                StoredLocale = LocalizationConstants.UkrainianLocale,
+                NextLocale = LocalizationConstants.UkrainianLocale
+            },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: presenter,
+            new FakeTelegramFormatter("assistant reply"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularyPersistenceService: persistence);
+
+        await sut.Webhook(BuildTextUpdate(1001, 2002, "rest", null, languageCode: "uk"), CancellationToken.None);
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.SaveYes, null, languageCode: "uk"),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.save.retry", payload.Intent);
+        Assert.Contains("Щоб зберігати слова", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Run /graph login", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Webhook_LanguageChangeInSettings_ShouldSendMainReplyKeyboardInNewLocale()
     {
         var localeState = new FakeUserLocaleStateService
@@ -744,7 +878,8 @@ public sealed class TelegramControllerTests
         FakeTelegramFormatter formatter,
         FakeTelegramBotSender sender,
         TelegramOptions options,
-        FakeTelegramProcessedUpdateRepository? processedUpdates = null)
+        FakeTelegramProcessedUpdateRepository? processedUpdates = null,
+        FakeGraphAuthService? graphAuthService = null)
     {
         return CreateSut(
             orchestrator,
@@ -755,7 +890,8 @@ public sealed class TelegramControllerTests
             formatter,
             sender,
             options,
-            processedUpdates);
+            processedUpdates,
+            graphAuthService: graphAuthService);
     }
 
     private static TelegramController CreateSut(
@@ -768,7 +904,8 @@ public sealed class TelegramControllerTests
         FakeTelegramBotSender sender,
         TelegramOptions options,
         FakeTelegramProcessedUpdateRepository? processedUpdates = null,
-        FakeVocabularyPersistenceService? vocabularyPersistenceService = null)
+        FakeVocabularyPersistenceService? vocabularyPersistenceService = null,
+        FakeGraphAuthService? graphAuthService = null)
     {
         return CreateSut(
             orchestrator,
@@ -784,7 +921,8 @@ public sealed class TelegramControllerTests
             sender,
             options,
             processedUpdates,
-            vocabularyPersistenceService);
+            vocabularyPersistenceService,
+            graphAuthService: graphAuthService);
     }
 
     private static TelegramController CreateSut(
@@ -801,7 +939,8 @@ public sealed class TelegramControllerTests
         FakeTelegramBotSender sender,
         TelegramOptions options,
         FakeTelegramProcessedUpdateRepository? processedUpdates = null,
-        FakeVocabularyPersistenceService? vocabularyPersistenceService = null)
+        FakeVocabularyPersistenceService? vocabularyPersistenceService = null,
+        FakeGraphAuthService? graphAuthService = null)
     {
         return new TelegramController(
             orchestrator,
@@ -815,7 +954,7 @@ public sealed class TelegramControllerTests
             vocabularyCardRepository ?? new FakeVocabularyCardRepository(),
             new FakeVocabularySaveModePreferenceService(),
             vocabularyPersistenceService ?? new FakeVocabularyPersistenceService(),
-            new FakeGraphAuthService(),
+            graphAuthService ?? new FakeGraphAuthService(),
             navigationPresenter ?? new FakeTelegramNavigationPresenter(),
             formatter,
             sender,
@@ -1294,15 +1433,23 @@ public sealed class TelegramControllerTests
                 "vocab.save.duplicate" => "Duplicate",
                 "vocab.save.skip" => "Save skipped",
                 "vocab.save_failed" => "Save failed: {0}",
+                "vocab.graph_save_setup_required" => "To save words, open Settings -> OneDrive / Graph, sign in, and try again.",
                 "vocab.save_batch_ask_hint" => "Batch ask hint",
                 "vocab.save_mode_off_hint" => "Save mode off hint",
                 "vocab.save_yes" => "Save",
                 "vocab.save_no" => "Skip",
                 "vocab.no_pending_save" => "No pending save",
+                "command.console_only_generic" => "The {0} command is console-only",
+                "command.console_only_graph" => "The {0} command is console-only. Open Settings -> OneDrive / Graph.",
                 "onedrive.login_switched_to_graph" => "Connected and switched to graph",
                 "onedrive.title" => "OneDrive / Graph",
                 "onedrive.status_connected" => "Status: connected",
                 "onedrive.status_disconnected" => "Status: disconnected",
+                "onedrive.error_not_authenticated" => "Authorization is required",
+                "onedrive.error_expired" => "Session expired",
+                "onedrive.error_not_configured" => "Graph is not configured",
+                "onedrive.error_timed_out" => "Login timed out",
+                "onedrive.error_declined" => "Login declined",
                 "onedrive.still_not_signed_in" => "Still not signed in",
                 "onboarding.choose_language" => "Choose language",
                 "language.current" => "Current: {0}",
