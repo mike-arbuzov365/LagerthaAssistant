@@ -8,6 +8,8 @@ namespace LagerthaAssistant.Api.Services;
 
 public sealed class TelegramConversationResponseFormatter : ITelegramConversationResponseFormatter
 {
+    private const string BatchItemMarker = "\uD83D\uDD39";
+    private const string BatchSeparator = "--------------------";
     private readonly int _textLengthLimit;
 
     public TelegramConversationResponseFormatter(IOptions<TelegramOptions> options)
@@ -36,13 +38,15 @@ public sealed class TelegramConversationResponseFormatter : ITelegramConversatio
         for (var index = 0; index < result.Items.Count; index++)
         {
             var item = result.Items[index];
-            builder.Append("• ").AppendLine(item.Input);
+            builder.Append(BatchItemMarker).Append(' ').AppendLine(item.Input);
             builder.AppendLine();
             var formattedItem = RemoveLeadingInputDuplicate(item.Input, FormatItem(item));
             builder.AppendLine(formattedItem);
 
             if (index < result.Items.Count - 1)
             {
+                builder.AppendLine();
+                builder.AppendLine(BatchSeparator);
                 builder.AppendLine();
             }
         }
@@ -127,3 +131,4 @@ public sealed class TelegramConversationResponseFormatter : ITelegramConversatio
         return normalized[..(_textLengthLimit - 3)] + "...";
     }
 }
+

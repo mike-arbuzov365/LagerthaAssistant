@@ -127,7 +127,7 @@ public sealed class TelegramController : ControllerBase
             return Unauthorized();
         }
 
-        var callbackQueryId = update?.CallbackQuery?.Id;
+        string? callbackQueryId = update?.CallbackQuery?.Id;
 
         try
         {
@@ -139,6 +139,12 @@ public sealed class TelegramController : ControllerBase
             if (update is null || !ApiTelegramUpdateMapper.TryMapInbound(update, out var inbound))
             {
                 return Ok(new TelegramWebhookResponse(false, false, null, "Ignored: unsupported update."));
+            }
+
+            if (!string.IsNullOrWhiteSpace(callbackQueryId))
+            {
+                await TryAnswerCallbackQueryAsync(callbackQueryId, CancellationToken.None);
+                callbackQueryId = null;
             }
 
             if (await _processedUpdates.IsProcessedAsync(update.UpdateId, cancellationToken))

@@ -136,6 +136,48 @@ The function returns void when there is no value to return.
     }
 
     [Fact]
+    public async Task AppendFromAssistantReplyAsync_WithForcedDeckAndNoMirror_ShouldDownloadOnlyTargetDeck()
+    {
+        var verbsBytes = CreateTemplateWorkbookBytes("build", "(v) to build software components", "We build services daily.");
+        var adjectivesBytes = CreateTemplateWorkbookBytes("calm", "(adj) calm", "Keep calm during the release.");
+        var verbsFile = new GraphDriveFile("file-1", "wm-verbs-us-en.xlsx", "etag-v1", "/Apps/Flashcards Deluxe/wm-verbs-us-en.xlsx");
+        var adjectivesFile = new GraphDriveFile("file-2", "wm-adjectives-ua-en.xlsx", "etag-a1", "/Apps/Flashcards Deluxe/wm-adjectives-ua-en.xlsx");
+
+        var graphClient = new FakeGraphDriveClient(
+            [verbsFile, adjectivesFile],
+            new Dictionary<string, byte[]>
+            {
+                [verbsFile.Id] = verbsBytes,
+                [adjectivesFile.Id] = adjectivesBytes
+            },
+            [new GraphUploadResult(true, UpdatedETag: "etag-a2")]);
+
+        await using var sut = CreateSut(graphClient);
+
+        const string reply = """
+awkward
+
+(adj) незручний, незграбний
+
+The awkward design confused users.
+""";
+
+        var append = await sut.AppendFromAssistantReplyAsync(
+            "awkward",
+            reply,
+            forcedDeckFileName: "wm-adjectives-ua-en.xlsx",
+            overridePartOfSpeech: "adj");
+
+        Assert.Equal(VocabularyAppendStatus.Added, append.Status);
+        Assert.Equal("wm-adjectives-ua-en.xlsx", append.Entry?.DeckFileName);
+        Assert.Equal(1, graphClient.ListFilesCalls);
+        Assert.Equal(1, graphClient.DownloadCalls);
+        Assert.Equal(1, graphClient.UploadCalls);
+        Assert.Single(graphClient.DownloadedItemIds);
+        Assert.Equal(adjectivesFile.Id, graphClient.DownloadedItemIds[0]);
+    }
+
+    [Fact]
     public async Task AppendRetryAfterLock_ShouldRetryPendingUpload_WithoutDuplicateLocalAppend()
     {
         var workbookBytes = CreateTemplateWorkbookBytes("build", "(v) to build software components", "We build services daily.");
@@ -336,6 +378,8 @@ The function returns void when there is no value to return.
 
         public int UploadCalls { get; private set; }
 
+        public List<string> DownloadedItemIds { get; } = [];
+
         public Task<IReadOnlyList<GraphDriveFile>> ListFilesAsync(CancellationToken cancellationToken = default)
         {
             ListFilesCalls++;
@@ -345,6 +389,7 @@ The function returns void when there is no value to return.
         public Task<byte[]> DownloadFileContentAsync(string itemId, CancellationToken cancellationToken = default)
         {
             DownloadCalls++;
+            DownloadedItemIds.Add(itemId);
 
             if (!_contentsById.TryGetValue(itemId, out var bytes))
             {

@@ -189,6 +189,23 @@ public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IVocabu
         await _operationSync.WaitAsync(cancellationToken);
         try
         {
+            if (_sessionMirror is null)
+            {
+                var fastPathResult = await TryAppendSingleDeckWithoutMirrorAsync(
+                    requestedWord,
+                    assistantReply,
+                    forcedDeckFileName,
+                    overridePartOfSpeech,
+                    cancellationToken);
+
+                if (fastPathResult is not null)
+                {
+                    _cachedAppendPlan = null;
+                    _pendingUpload = null;
+                    return fastPathResult;
+                }
+            }
+
             var mirror = await GetOrCreateMirrorAsync(cancellationToken);
             var signature = VocabularyAppendPlanning.CreateSignature(requestedWord, assistantReply, forcedDeckFileName, overridePartOfSpeech);
 
@@ -311,6 +328,93 @@ public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IVocabu
             }
 
             _operationSync.Dispose();
+        }
+    }
+
+    private async Task<VocabularyAppendResult?> TryAppendSingleDeckWithoutMirrorAsync(
+        string requestedWord,
+        string assistantReply,
+        string? forcedDeckFileName,
+        string? overridePartOfSpeech,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(forcedDeckFileName))
+        {
+            return null;
+        }
+
+        var remoteFiles = await GetWritableRemoteFilesAsync(cancellationToken);
+        var remoteFile = remoteFiles.FirstOrDefault(file => file.Name.Equals(forcedDeckFileName, StringComparison.OrdinalIgnoreCase));
+        if (remoteFile is null)
+        {
+            return new VocabularyAppendResult(
+                VocabularyAppendStatus.Error,
+                Message: $"Could not resolve OneDrive target deck '{forcedDeckFileName}'.");
+        }
+
+        var tempFolder = Path.Combine(Path.GetTempPath(), $"lagertha-graph-single-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var bytes = await _graphDriveClient.DownloadFileContentAsync(remoteFile.Id, cancellationToken);
+            var localPath = Path.Combine(tempFolder, remoteFile.Name);
+            await File.WriteAllBytesAsync(localPath, bytes, cancellationToken);
+
+            var localService = new VocabularyDeckService(
+                CreateTempOptions(tempFolder),
+                _replyParser,
+                _loggerFactory.CreateLogger<VocabularyDeckService>());
+
+            var appendResult = await localService.AppendFromAssistantReplyAsync(
+                requestedWord,
+                assistantReply,
+                forcedDeckFileName,
+                overridePartOfSpeech,
+                cancellationToken);
+
+            if (appendResult.Status != VocabularyAppendStatus.Added || appendResult.Entry is null)
+            {
+                return appendResult;
+            }
+
+            var updatedBytes = await File.ReadAllBytesAsync(localPath, cancellationToken);
+            var uploadResult = await _graphDriveClient.UploadFileContentAsync(
+                remoteFile.Id,
+                updatedBytes,
+                remoteFile.ETag,
+                cancellationToken);
+
+            if (!uploadResult.Succeeded)
+            {
+                return new VocabularyAppendResult(
+                    VocabularyAppendStatus.Error,
+                    Message: uploadResult.Message ?? "Failed to upload updated deck to OneDrive.");
+            }
+
+            var remappedEntry = new VocabularyDeckEntry(
+                appendResult.Entry.DeckFileName,
+                remoteFile.FullPath,
+                appendResult.Entry.RowNumber,
+                appendResult.Entry.Word,
+                appendResult.Entry.Meaning,
+                appendResult.Entry.Examples);
+
+            return appendResult with { Entry = remappedEntry };
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(tempFolder))
+                {
+                    Directory.Delete(tempFolder, true);
+                }
+            }
+            catch
+            {
+                // Ignore cleanup errors.
+            }
         }
     }
 
@@ -529,9 +633,20 @@ public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IVocabu
             await File.WriteAllBytesAsync(localPath, bytes, cancellationToken);
         }
 
-        var tempOptions = new VocabularyDeckOptions
+        var localService = new VocabularyDeckService(
+            CreateTempOptions(tempFolder),
+            _replyParser,
+            _loggerFactory.CreateLogger<VocabularyDeckService>());
+
+        var remoteMap = remoteFiles.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
+        return new MirrorContext(tempFolder, localService, remoteMap);
+    }
+
+    private VocabularyDeckOptions CreateTempOptions(string folderPath)
+    {
+        return new VocabularyDeckOptions
         {
-            FolderPath = tempFolder,
+            FolderPath = folderPath,
             FilePattern = _options.FilePattern,
             ReadOnlyFileNames = [],
             NounDeckFileName = _options.NounDeckFileName,
@@ -546,14 +661,6 @@ public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IVocabu
             PersistentExpressionDeckFileName = _options.PersistentExpressionDeckFileName,
             FallbackDeckFileName = _options.FallbackDeckFileName
         };
-
-        var localService = new VocabularyDeckService(
-            tempOptions,
-            _replyParser,
-            _loggerFactory.CreateLogger<VocabularyDeckService>());
-
-        var remoteMap = remoteFiles.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
-        return new MirrorContext(tempFolder, localService, remoteMap);
     }
 
     private async Task<IReadOnlyList<GraphDriveFile>> GetWritableRemoteFilesAsync(CancellationToken cancellationToken)
