@@ -1360,9 +1360,14 @@ public sealed class TelegramControllerTests
 
         Assert.True(payload.Replied);
         Assert.Equal("vocabulary.batch", payload.Intent);
+        var normalized = sender.LastText.Replace("\r\n", "\n", StringComparison.Ordinal);
         Assert.Contains(
             "--------------------\nThese words already exist in dictionary:",
-            sender.LastText.Replace("\r\n", "\n", StringComparison.Ordinal),
+            normalized,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "\n\n--------------------\nThese words already exist in dictionary:",
+            normalized,
             StringComparison.OrdinalIgnoreCase);
     }
 

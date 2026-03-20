@@ -354,30 +354,18 @@ public sealed class VocabularyDeckService : IVocabularyDeckBackend, IVocabularyB
 
         try
         {
-            var meanings = preparation.MeaningText.Split(
-                ["\r\n\r\n", "\n\n"],
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-            if (meanings.Length == 0)
-            {
-                meanings = [preparation.MeaningText];
-            }
-
-            int firstRowNumber = -1;
-            for (int i = 0; i < meanings.Length; i++)
-            {
-                var examples = i == 0 ? preparation.ExamplesText : string.Empty;
-                var rowNumber = AppendRow(preparation.SelectedDeck.FullPath, preparation.TargetWord, meanings[i], examples);
-                if (i == 0)
-                {
-                    firstRowNumber = rowNumber;
-                }
-            }
+            // Keep one vocabulary card per source word.
+            // Meanings are stored in a single A-cell (with line breaks), examples in H-cell.
+            var rowNumber = AppendRow(
+                preparation.SelectedDeck.FullPath,
+                preparation.TargetWord,
+                preparation.MeaningText,
+                preparation.ExamplesText);
 
             var addedEntry = new VocabularyDeckEntry(
                 preparation.SelectedDeck.FileName,
                 preparation.SelectedDeck.FullPath,
-                firstRowNumber,
+                rowNumber,
                 preparation.TargetWord,
                 preparation.MeaningText,
                 preparation.ExamplesText);
