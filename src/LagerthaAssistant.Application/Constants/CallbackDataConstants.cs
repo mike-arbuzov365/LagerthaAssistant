@@ -49,6 +49,8 @@ public static class CallbackDataConstants
         public const string SyncNow = "onedrive:sync_now";
         public const string RebuildIndex = "onedrive:index_rebuild";
         public const string RebuildIndexConfirm = "onedrive:index_rebuild_confirm";
+        public const string ClearCache = "onedrive:cache_clear";
+        public const string ClearCacheConfirm = "onedrive:cache_clear_confirm";
     }
 
     public static class StorageMode
@@ -65,6 +67,8 @@ public static class CallbackDataConstants
         public const string Stats = "vocab:stats";
         public const string ListLegacy = "vocab:list";
         public const string Url = "vocab:url";
+        public const string UrlSelectAll = "vocab:url:select_all";
+        public const string UrlCancel = "vocab:url:cancel";
         public const string Batch = "vocab:batch";
         public const string SaveYes = "vocab:save:yes";
         public const string SaveNo = "vocab:save:no";

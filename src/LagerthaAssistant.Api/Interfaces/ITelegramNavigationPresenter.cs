@@ -35,7 +35,11 @@ public interface ITelegramNavigationPresenter
 
     TelegramInlineKeyboardMarkup BuildOneDriveRebuildIndexConfirmationKeyboard(string locale);
 
+    TelegramInlineKeyboardMarkup BuildOneDriveClearCacheConfirmationKeyboard(string locale);
+
     TelegramInlineKeyboardMarkup BuildVocabularySaveConfirmationKeyboard(string locale);
+
+    TelegramInlineKeyboardMarkup BuildVocabularyUrlSelectionKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildNotionKeyboard(string locale);
 }

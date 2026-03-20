@@ -284,6 +284,139 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldBuildUrlSuggestions_WhenFromUrlModeIsActive()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var discovery = new FakeVocabularyDiscoveryService();
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularyDiscoveryService: discovery);
+
+        await sut.Webhook(BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.Url, null), CancellationToken.None);
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "https://example.com/article", null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.url.suggestions", payload.Intent);
+        Assert.Equal(1, discovery.Calls);
+        Assert.Equal("https://example.com/article", discovery.LastSourceInput);
+        Assert.Contains("Suggested new words", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1)", sender.LastText, StringComparison.Ordinal);
+        Assert.Equal(0, orchestrator.Calls);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldAcceptNumericSelection_ForUrlSuggestions()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = new ConversationAgentResult(
+                AgentName: "vocabulary-agent",
+                Intent: "vocabulary.batch",
+                IsBatch: true,
+                Items: [])
+        };
+        var discovery = new FakeVocabularyDiscoveryService();
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("assistant reply"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularyDiscoveryService: discovery);
+
+        await sut.Webhook(BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.Url, null), CancellationToken.None);
+        await sut.Webhook(BuildTextUpdate(1001, 2002, "https://example.com/article", null, updateId: 31), CancellationToken.None);
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "1, 3", null, updateId: 32), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocabulary.batch", payload.Intent);
+        Assert.Equal("architecture\r\nscalable", orchestrator.LastInput);
+        Assert.Equal(1, orchestrator.Calls);
+        Assert.Equal("assistant reply", sender.LastText);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldAutoStartUrlFlow_WhenUserSendsUrlInVocabularySection()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var discovery = new FakeVocabularyDiscoveryService();
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("assistant reply"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularyDiscoveryService: discovery);
+
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "https://example.com/page", null, updateId: 41), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.url.suggestions", payload.Intent);
+        Assert.Equal(1, discovery.Calls);
+        Assert.Equal(0, orchestrator.Calls);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldRejectInvalidUrlSelection_AndKeepSelectionState()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var discovery = new FakeVocabularyDiscoveryService();
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("assistant reply"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularyDiscoveryService: discovery);
+
+        await sut.Webhook(BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.Url, null), CancellationToken.None);
+        await sut.Webhook(BuildTextUpdate(1001, 2002, "https://example.com/article", null, updateId: 51), CancellationToken.None);
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "999", null, updateId: 52), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.url.selection.invalid", payload.Intent);
+        Assert.Contains("Could not parse selection", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, orchestrator.Calls);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldHandleVocabStatsCallback_AndRenderStats()
     {
         var sender = new FakeTelegramBotSender();
@@ -870,7 +1003,7 @@ public sealed class TelegramControllerTests
 
         Assert.True(payload.Replied);
         Assert.Equal("settings.onedrive.check.success", payload.Intent);
-        Assert.Contains("index appears empty", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cache appears empty", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -925,7 +1058,7 @@ public sealed class TelegramControllerTests
         Assert.Equal("settings.onedrive.check.success", payload.Intent);
         Assert.Contains("index is ready", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("3987", sender.LastText, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("index appears empty", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("cache appears empty", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1024,7 +1157,7 @@ public sealed class TelegramControllerTests
         Assert.True(confirmPayload.Replied);
         Assert.Equal("settings.onedrive.index.confirm", confirmPayload.Intent);
         Assert.Equal(0, indexService.RebuildCalls);
-        Assert.Contains("❓ Rebuilding index can take some time. Start now?", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("❓ Rebuilding cache can take some time. Start now?", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("take some time", sender.LastText, StringComparison.OrdinalIgnoreCase);
 
         var response = await sut.Webhook(
@@ -1038,7 +1171,60 @@ public sealed class TelegramControllerTests
         Assert.Equal("settings.onedrive.index.done", payload.Intent);
         Assert.Equal(1, indexService.RebuildCalls);
         Assert.Equal(VocabularyStorageMode.Graph, indexService.LastMode);
-        Assert.Contains("Index rebuilt", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Cache rebuilt", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldConfirmAndClearCache_WhenOneDriveClearCacheCallbackReceived()
+    {
+        var sender = new FakeTelegramBotSender();
+        var indexService = new FakeVocabularyIndexService
+        {
+            ClearResult = 12
+        };
+        var vocabRepo = new FakeVocabularyCardRepository
+        {
+            CountAllResult = 57
+        };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Settings },
+            vocabularyCardRepository: vocabRepo,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularyIndexService: indexService);
+
+        var confirmResponse = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.ClearCache, null, updateId: 11),
+            CancellationToken.None);
+
+        var confirmOk = Assert.IsType<OkObjectResult>(confirmResponse.Result);
+        var confirmPayload = Assert.IsType<TelegramWebhookResponse>(confirmOk.Value);
+
+        Assert.True(confirmPayload.Replied);
+        Assert.Equal("settings.onedrive.cache.confirm", confirmPayload.Intent);
+        Assert.Contains("records=57", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, indexService.ClearCalls);
+
+        var doneResponse = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.ClearCacheConfirm, null, updateId: 12),
+            CancellationToken.None);
+
+        var doneOk = Assert.IsType<OkObjectResult>(doneResponse.Result);
+        var donePayload = Assert.IsType<TelegramWebhookResponse>(doneOk.Value);
+
+        Assert.True(donePayload.Replied);
+        Assert.Equal("settings.onedrive.cache.done", donePayload.Intent);
+        Assert.Equal(1, indexService.ClearCalls);
+        Assert.Contains("Cache cleared: 12", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1605,7 +1791,8 @@ public sealed class TelegramControllerTests
         FakeGraphAuthService? graphAuthService = null,
         FakeVocabularySyncProcessor? vocabularySyncProcessor = null,
         FakeVocabularyIndexService? vocabularyIndexService = null,
-        FakeVocabularyDeckService? vocabularyDeckService = null)
+        FakeVocabularyDeckService? vocabularyDeckService = null,
+        FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null)
     {
         return CreateSut(
             orchestrator,
@@ -1620,7 +1807,8 @@ public sealed class TelegramControllerTests
             graphAuthService: graphAuthService,
             vocabularySyncProcessor: vocabularySyncProcessor,
             vocabularyIndexService: vocabularyIndexService,
-            vocabularyDeckService: vocabularyDeckService);
+            vocabularyDeckService: vocabularyDeckService,
+            vocabularyDiscoveryService: vocabularyDiscoveryService);
     }
 
     private static TelegramController CreateSut(
@@ -1637,7 +1825,8 @@ public sealed class TelegramControllerTests
         FakeGraphAuthService? graphAuthService = null,
         FakeVocabularySyncProcessor? vocabularySyncProcessor = null,
         FakeVocabularyIndexService? vocabularyIndexService = null,
-        FakeVocabularyDeckService? vocabularyDeckService = null)
+        FakeVocabularyDeckService? vocabularyDeckService = null,
+        FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null)
     {
         return CreateSut(
             orchestrator,
@@ -1657,7 +1846,8 @@ public sealed class TelegramControllerTests
             graphAuthService: graphAuthService,
             vocabularySyncProcessor: vocabularySyncProcessor,
             vocabularyIndexService: vocabularyIndexService,
-            vocabularyDeckService: vocabularyDeckService);
+            vocabularyDeckService: vocabularyDeckService,
+            vocabularyDiscoveryService: vocabularyDiscoveryService);
     }
 
     private static TelegramController CreateSut(
@@ -1678,7 +1868,8 @@ public sealed class TelegramControllerTests
         FakeGraphAuthService? graphAuthService = null,
         FakeVocabularySyncProcessor? vocabularySyncProcessor = null,
         FakeVocabularyIndexService? vocabularyIndexService = null,
-        FakeVocabularyDeckService? vocabularyDeckService = null)
+        FakeVocabularyDeckService? vocabularyDeckService = null,
+        FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null)
     {
         return new TelegramController(
             orchestrator,
@@ -1696,6 +1887,7 @@ public sealed class TelegramControllerTests
             vocabularyIndexService ?? new FakeVocabularyIndexService(),
             vocabularyDeckService ?? new FakeVocabularyDeckService(),
             new VocabularyReplyParser(),
+            vocabularyDiscoveryService ?? new FakeVocabularyDiscoveryService(),
             new VocabularyDeckOptions(),
             graphAuthService ?? new FakeGraphAuthService(),
             navigationPresenter ?? new FakeTelegramNavigationPresenter(),
@@ -1711,10 +1903,11 @@ public sealed class TelegramControllerTests
         long userId,
         string text,
         int? messageThreadId,
-        string? languageCode = "en")
+        string? languageCode = "en",
+        long updateId = 1)
     {
         return new TelegramWebhookUpdateRequest(
-            UpdateId: 1,
+            UpdateId: updateId,
             Message: new TelegramIncomingMessage(
                 MessageId: 10,
                 From: new TelegramUserInfo(userId, false, languageCode, "mike", "Mike", null),
@@ -2138,12 +2331,14 @@ public sealed class TelegramControllerTests
     private sealed class FakeVocabularyIndexService : IVocabularyIndexService
     {
         public int RebuildCalls { get; private set; }
+        public int ClearCalls { get; private set; }
 
         public IReadOnlyList<VocabularyDeckEntry> LastEntries { get; private set; } = [];
 
         public VocabularyStorageMode LastMode { get; private set; } = VocabularyStorageMode.Local;
 
         public int RebuildResult { get; set; }
+        public int ClearResult { get; set; }
 
         public Task<VocabularyLookupResult> FindByInputAsync(string input, CancellationToken cancellationToken = default)
             => Task.FromResult(new VocabularyLookupResult(input, []));
@@ -2171,7 +2366,10 @@ public sealed class TelegramControllerTests
             => Task.CompletedTask;
 
         public Task<int> ClearAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult(0);
+        {
+            ClearCalls++;
+            return Task.FromResult(ClearResult);
+        }
 
         public Task<int> RebuildAsync(
             IReadOnlyList<VocabularyDeckEntry> entries,
@@ -2214,6 +2412,32 @@ public sealed class TelegramControllerTests
 
         public Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(AllEntries);
+    }
+
+    private sealed class FakeVocabularyDiscoveryService : IVocabularyDiscoveryService
+    {
+        public int Calls { get; private set; }
+
+        public string? LastSourceInput { get; private set; }
+
+        public VocabularyDiscoveryResult NextResult { get; set; } = new(
+            VocabularyDiscoveryStatus.Success,
+            [
+                new VocabularyDiscoveryCandidate("architecture", "n", 3),
+                new VocabularyDiscoveryCandidate("deploy", "v", 2),
+                new VocabularyDiscoveryCandidate("scalable", "adj", 1)
+            ],
+            "ok",
+            SourceWasUrl: true);
+
+        public Task<VocabularyDiscoveryResult> DiscoverAsync(
+            string sourceInput,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            LastSourceInput = sourceInput;
+            return Task.FromResult(NextResult);
+        }
     }
 
     private sealed class FakeAssistantSessionService : IAssistantSessionService
@@ -2420,6 +2644,18 @@ public sealed class TelegramControllerTests
                 "menu.vocabulary.title" => "Vocabulary {0}",
                 "vocab.add.prompt" => "Add word",
                 "vocab.url.prompt" => "Send URL",
+                "vocab.url.invalid" => "Invalid source",
+                "vocab.url.empty" => "No candidates",
+                "vocab.url.suggestions_title" => "Suggested new words: {0}",
+                "vocab.url.suggestions_group_n" => "Nouns",
+                "vocab.url.suggestions_group_v" => "Verbs",
+                "vocab.url.suggestions_group_adj" => "Adjectives",
+                "vocab.url.suggestions_hint" => "Reply with numbers",
+                "vocab.url.select_parse_failed" => "Could not parse selection",
+                "vocab.url.selection_cancelled" => "Cancelled",
+                "vocab.url.no_pending" => "No pending URL/text import request.",
+                "vocab.url.select_all" => "Add all",
+                "vocab.url.cancel" => "Cancel",
                 "vocab.stats.empty" => "Stats empty",
                 "vocab.stats.title" => "Vocabulary statistics",
                 "vocab.stats.total" => "Total indexed words: {0}",
@@ -2471,14 +2707,19 @@ public sealed class TelegramControllerTests
                 "onedrive.error_declined" => "Login declined",
                 "onedrive.still_not_signed_in" => "Still not signed in",
                 "onedrive.sync_now" => "Sync pending saves",
-                "onedrive.rebuild_index" => "Rebuild index",
-                "onedrive.rebuild_index_warning" => "Rebuilding index can take some time. Start now?",
+                "onedrive.rebuild_index" => "Rebuild cache",
+                "onedrive.rebuild_index_warning" => "Rebuilding cache can take some time. Start now?",
                 "onedrive.rebuild_index_start" => "Start rebuild",
-                "onedrive.rebuild_index_started" => "Rebuilding index started...",
-                "onedrive.rebuild_index_suggest" => "Tip: index appears empty. Rebuild it.",
+                "onedrive.rebuild_index_started" => "Rebuilding cache started...",
+                "onedrive.rebuild_index_suggest" => "Tip: cache appears empty. Rebuild it.",
                 "onedrive.index_ready" => "Index is ready: {0} words.",
                 "onedrive.sync_now_done" => "Sync complete: completed={0}, requeued={1}, failed={2}, pending={3}.",
-                "onedrive.rebuild_index_done" => "Index rebuilt from writable decks: scanned={0}, indexed={1}.",
+                "onedrive.rebuild_index_done" => "Cache rebuilt from writable decks: scanned={0}, indexed={1}.",
+                "onedrive.clear_cache" => "Clear cache",
+                "onedrive.clear_cache_warning" => "Clear cache? records={0}",
+                "onedrive.clear_cache_start" => "Clear now",
+                "onedrive.clear_cache_done" => "Cache cleared: {0}",
+                "onedrive.clear_cache_hint" => "Run rebuild cache if needed.",
                 "onedrive.operation_failed" => "Operation failed: {0}",
                 "onboarding.choose_language" => "Choose language",
                 "language.current" => "Current: {0}",
@@ -2537,8 +2778,18 @@ public sealed class TelegramControllerTests
         public TelegramInlineKeyboardMarkup BuildOneDriveRebuildIndexConfirmationKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Start", CallbackDataConstants.OneDrive.RebuildIndexConfirm)]]);
 
+        public TelegramInlineKeyboardMarkup BuildOneDriveClearCacheConfirmationKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Clear", CallbackDataConstants.OneDrive.ClearCacheConfirm)]]);
+
         public TelegramInlineKeyboardMarkup BuildVocabularySaveConfirmationKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Save", "vocab:save:yes"), new TelegramInlineKeyboardButton("Skip", "vocab:save:no")]]);
+
+        public TelegramInlineKeyboardMarkup BuildVocabularyUrlSelectionKeyboard(string locale)
+            => new(
+            [
+                [new TelegramInlineKeyboardButton("Add all", CallbackDataConstants.Vocab.UrlSelectAll)],
+                [new TelegramInlineKeyboardButton("Cancel", CallbackDataConstants.Vocab.UrlCancel)]
+            ]);
 
         public TelegramInlineKeyboardMarkup BuildNotionKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Back", "settings:back")]]);

@@ -169,6 +169,7 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             rows.Add([Button("onedrive.logout", locale, CallbackDataConstants.OneDrive.Logout)]);
             rows.Add([Button("onedrive.sync_now", locale, CallbackDataConstants.OneDrive.SyncNow)]);
             rows.Add([Button("onedrive.rebuild_index", locale, CallbackDataConstants.OneDrive.RebuildIndex)]);
+            rows.Add([Button("onedrive.clear_cache", locale, CallbackDataConstants.OneDrive.ClearCache)]);
         }
         else
         {
@@ -194,6 +195,16 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             ]);
     }
 
+    public TelegramInlineKeyboardMarkup BuildOneDriveClearCacheConfirmationKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("onedrive.clear_cache_start", locale, CallbackDataConstants.OneDrive.ClearCacheConfirm)],
+                [Button("back", locale, CallbackDataConstants.Settings.OneDrive)]
+            ]);
+    }
+
     public TelegramInlineKeyboardMarkup BuildNotionKeyboard(string locale)
     {
         return new TelegramInlineKeyboardMarkup(
@@ -209,6 +220,17 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             InlineKeyboard:
             [
                 [Button("vocab.save_yes", locale, CallbackDataConstants.Vocab.SaveYes), Button("vocab.save_no", locale, CallbackDataConstants.Vocab.SaveNo)]
+            ]);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildVocabularyUrlSelectionKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("vocab.url.select_all", locale, CallbackDataConstants.Vocab.UrlSelectAll)],
+                [Button("vocab.url.cancel", locale, CallbackDataConstants.Vocab.UrlCancel)],
+                [Button("menu.vocabulary.back", locale, CallbackDataConstants.Nav.Main)]
             ]);
     }
 
