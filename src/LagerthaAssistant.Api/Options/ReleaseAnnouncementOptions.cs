@@ -8,6 +8,8 @@ public sealed class ReleaseAnnouncementOptions
 
     public string Version { get; set; } = "auto";
 
+    public string ReleaseDate { get; set; } = string.Empty;
+
     public string NotesEn { get; set; } = string.Empty;
 
     public string NotesUk { get; set; } = string.Empty;

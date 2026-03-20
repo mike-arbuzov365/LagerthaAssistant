@@ -53,6 +53,11 @@ public sealed class CommandConversationAgent : IConversationAgent, IConversation
 
     public bool CanHandle(ConversationAgentContext context)
     {
+        if (context.Input.StartsWith(ConversationInputMarkers.Chat, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
         if (context.HasResolvedCommandIntent)
         {
             return true;
