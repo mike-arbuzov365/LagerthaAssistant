@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Interfaces;
 using LagerthaAssistant.Api.Options;
@@ -15,6 +16,7 @@ using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Navigation;
+using LagerthaAssistant.Application.Services.Vocabulary;
 using LagerthaAssistant.Infrastructure.Options;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -30,8 +32,11 @@ public sealed class TelegramController : ControllerBase
     private const string TelegramSecretHeader = "X-Telegram-Bot-Api-Secret-Token";
     private const string HtmlParseMode = "HTML";
     private const string SectionSeparator = "--------------------";
+    private const string QuestionMarker = "❓";
     private const int ManualSyncBatchSize = 25;
     private const int ManualSyncMaxPasses = 5;
+    private static readonly Regex LeadingDecorationRegex = new("^[^\\p{L}\\p{N}]+", RegexOptions.Compiled);
+    private static readonly string[] PrimaryPartOfSpeechMarkers = ["n", "v", "pv", "iv", "adv", "prep"];
 
     private static readonly ConcurrentDictionary<string, GraphDeviceLoginChallenge> PendingGraphChallenges = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, PendingVocabularySaveRequest> PendingVocabularySaves = new(StringComparer.Ordinal);
@@ -625,7 +630,7 @@ public sealed class TelegramController : ControllerBase
                 {
                     Intent = "settings.onedrive.check.missing",
                     Text = string.Concat(
-                        _navigationPresenter.GetText("onedrive.still_not_signed_in", locale),
+                        EnsureQuestionMarker(_navigationPresenter.GetText("onedrive.still_not_signed_in", locale)),
                         Environment.NewLine,
                         Environment.NewLine,
                         missingScreen.Text)
@@ -640,7 +645,7 @@ public sealed class TelegramController : ControllerBase
                 {
                     Intent = "settings.onedrive.check.expired",
                     Text = string.Concat(
-                        _navigationPresenter.GetText("onedrive.still_not_signed_in", locale),
+                        EnsureQuestionMarker(_navigationPresenter.GetText("onedrive.still_not_signed_in", locale)),
                         Environment.NewLine,
                         Environment.NewLine,
                         expiredScreen.Text)
@@ -707,7 +712,7 @@ public sealed class TelegramController : ControllerBase
             {
                 Intent = "settings.onedrive.check.pending",
                 Text = string.Concat(
-                    _navigationPresenter.GetText("onedrive.still_not_signed_in", locale),
+                    EnsureQuestionMarker(_navigationPresenter.GetText("onedrive.still_not_signed_in", locale)),
                     Environment.NewLine,
                     Environment.NewLine,
                     WebUtility.HtmlEncode(LocalizeGraphRelatedMessage(complete.Message, locale)),
@@ -778,7 +783,7 @@ public sealed class TelegramController : ControllerBase
         {
             return new TelegramRouteResponse(
                 "settings.onedrive.index.confirm",
-                _navigationPresenter.GetText("onedrive.rebuild_index_warning", locale),
+                EnsureQuestionMarker(_navigationPresenter.GetText("onedrive.rebuild_index_warning", locale)),
                 InlineKeyboard(_navigationPresenter.BuildOneDriveRebuildIndexConfirmationKeyboard(locale)));
         }
 
@@ -966,6 +971,7 @@ public sealed class TelegramController : ControllerBase
                     locale,
                     pending.RequestedWord,
                     pending.TargetDeckFileName);
+                askText = EnsureQuestionMarker(askText);
 
                 var message = formatted;
                 if (!string.IsNullOrWhiteSpace(previewWarnings))
@@ -1071,6 +1077,7 @@ public sealed class TelegramController : ControllerBase
                 locale,
                 pending.RequestedWord,
                 pending.TargetDeckFileName);
+            askText = EnsureQuestionMarker(askText);
 
             return new TelegramRouteResponse(
                 "vocab.save.retry",
@@ -1155,11 +1162,11 @@ public sealed class TelegramController : ControllerBase
 
             if (suggestions.Count > 0)
             {
-                warnings.Add(_navigationPresenter.GetText(
+                warnings.Add(EnsureQuestionMarker(_navigationPresenter.GetText(
                     "vocab.word_unrecognized_with_suggestions",
                     locale,
                     item.Input,
-                    string.Join(", ", suggestions)));
+                    string.Join(", ", suggestions))));
                 continue;
             }
 
@@ -1490,12 +1497,31 @@ public sealed class TelegramController : ControllerBase
         var markerStats = await _vocabularyCardRepository.GetPartOfSpeechStatsAsync(cancellationToken);
         var deckStats = await _vocabularyCardRepository.GetDeckStatsAsync(cancellationToken);
 
-        var nonEmptyMarkerStats = markerStats
+        var normalizedMarkerStats = markerStats
             .Where(item => item.Count > 0)
+            .Select(item => new
+            {
+                Marker = VocabularyPartOfSpeechCatalog.NormalizeOrNull(item.Marker)
+                    ?? item.Marker?.Trim().ToLowerInvariant()
+                    ?? string.Empty,
+                item.Count
+            })
+            .GroupBy(item => item.Marker, StringComparer.Ordinal)
+            .Select(group => new VocabularyPartOfSpeechStat(group.Key, group.Sum(item => item.Count)))
             .ToList();
         var nonEmptyDeckStats = deckStats
             .Where(item => item.Count > 0)
             .ToList();
+
+        var markerCounts = normalizedMarkerStats.ToDictionary(item => item.Marker ?? string.Empty, item => item.Count, StringComparer.Ordinal);
+        var primaryMarkerSet = new HashSet<string>(PrimaryPartOfSpeechMarkers, StringComparer.Ordinal);
+        var primaryMarkerLines = PrimaryPartOfSpeechMarkers
+            .Where(marker => markerCounts.TryGetValue(marker, out var count) && count > 0)
+            .Select(marker => $"{GetPartOfSpeechLabel(locale, marker)}: {markerCounts[marker]}")
+            .ToList();
+        var otherPartOfSpeechTotal = normalizedMarkerStats
+            .Where(item => !primaryMarkerSet.Contains(item.Marker ?? string.Empty))
+            .Sum(item => item.Count);
 
         var topDecks = nonEmptyDeckStats.Take(10).ToList();
         var remainingDeckCount = Math.Max(0, nonEmptyDeckStats.Count - topDecks.Count);
@@ -1505,24 +1531,22 @@ public sealed class TelegramController : ControllerBase
             _navigationPresenter.GetText("vocab.stats.title", locale),
             string.Empty,
             _navigationPresenter.GetText("vocab.stats.total", locale, total),
-            _navigationPresenter.GetText("vocab.stats.summary", locale, nonEmptyDeckStats.Count, nonEmptyMarkerStats.Count),
+            _navigationPresenter.GetText("vocab.stats.summary", locale, nonEmptyDeckStats.Count, normalizedMarkerStats.Count),
             string.Empty,
             _navigationPresenter.GetText("vocab.stats.by_marker", locale)
         };
 
-        if (nonEmptyMarkerStats.Count == 0)
+        if (primaryMarkerLines.Count == 0 && otherPartOfSpeechTotal == 0)
         {
             lines.Add(_navigationPresenter.GetText("vocab.stats.no_data", locale));
         }
         else
         {
-            foreach (var stat in nonEmptyMarkerStats)
-            {
-                var marker = string.IsNullOrWhiteSpace(stat.Marker)
-                    ? _navigationPresenter.GetText("vocab.stats.marker_unknown", locale)
-                    : stat.Marker!;
+            lines.AddRange(primaryMarkerLines);
 
-                lines.Add(_navigationPresenter.GetText("vocab.stats.item", locale, WebUtility.HtmlEncode(marker), stat.Count));
+            if (otherPartOfSpeechTotal > 0)
+            {
+                lines.Add(GetAndMorePartOfSpeechLine(locale, otherPartOfSpeechTotal));
             }
         }
 
@@ -1555,6 +1579,91 @@ public sealed class TelegramController : ControllerBase
             "vocab.stats",
             string.Join(Environment.NewLine, lines),
             InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+    }
+
+    private static string GetPartOfSpeechLabel(string locale, string marker)
+    {
+        var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(locale);
+
+        return normalizedLocale switch
+        {
+            LocalizationConstants.UkrainianLocale => marker switch
+            {
+                "n" => "Іменники",
+                "v" => "Дієслова",
+                "pv" => "Фразові дієслова",
+                "iv" => "Неправильні дієслова",
+                "adv" => "Прислівники",
+                "prep" => "Прийменники",
+                _ => marker
+            },
+            LocalizationConstants.SpanishLocale => marker switch
+            {
+                "n" => "Sustantivos",
+                "v" => "Verbos",
+                "pv" => "Verbos frasales",
+                "iv" => "Verbos irregulares",
+                "adv" => "Adverbios",
+                "prep" => "Preposiciones",
+                _ => marker
+            },
+            LocalizationConstants.FrenchLocale => marker switch
+            {
+                "n" => "Noms",
+                "v" => "Verbes",
+                "pv" => "Verbes à particule",
+                "iv" => "Verbes irréguliers",
+                "adv" => "Adverbes",
+                "prep" => "Prépositions",
+                _ => marker
+            },
+            LocalizationConstants.GermanLocale => marker switch
+            {
+                "n" => "Substantive",
+                "v" => "Verben",
+                "pv" => "Phrasalverben",
+                "iv" => "Unregelmäßige Verben",
+                "adv" => "Adverbien",
+                "prep" => "Präpositionen",
+                _ => marker
+            },
+            LocalizationConstants.PolishLocale => marker switch
+            {
+                "n" => "Rzeczowniki",
+                "v" => "Czasowniki",
+                "pv" => "Czasowniki frazowe",
+                "iv" => "Czasowniki nieregularne",
+                "adv" => "Przysłówki",
+                "prep" => "Przyimki",
+                _ => marker
+            },
+            _ => marker switch
+            {
+                "n" => "Nouns",
+                "v" => "Verbs",
+                "pv" => "Phrasal verbs",
+                "iv" => "Irregular verbs",
+                "adv" => "Adverbs",
+                "prep" => "Prepositions",
+                _ => marker
+            }
+        };
+    }
+
+    private static string GetAndMorePartOfSpeechLine(string locale, int count)
+    {
+        var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(locale);
+        var template = normalizedLocale switch
+        {
+            LocalizationConstants.UkrainianLocale => "... і ще {0}",
+            LocalizationConstants.SpanishLocale => "... y {0} más",
+            LocalizationConstants.FrenchLocale => "... et encore {0}",
+            LocalizationConstants.GermanLocale => "... und noch {0}",
+            LocalizationConstants.PolishLocale => "... i jeszcze {0}",
+            _ => "... and {0} more"
+        };
+
+        return string.Format(template, count);
     }
 
     private async Task<TelegramRouteResponse> HandleVocabularyStatsCallbackAsync(
@@ -1597,16 +1706,25 @@ public sealed class TelegramController : ControllerBase
         var storageMode = VocabularyStorageMode.Graph;
         _storageModeProvider.SetMode(storageMode);
         var graphStatus = await _graphAuthService.GetStatusAsync(cancellationToken);
+        var languageLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.language", locale));
+        var saveModeLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.save_mode", locale));
+        var storageModeLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.storage_mode", locale));
+        var oneDriveLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.onedrive", locale));
+        var notionLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.notion", locale));
+        var oneDriveStatus = StripStatusPrefix(
+            _navigationPresenter.GetText(
+                graphStatus.IsAuthenticated ? "onedrive.status_connected" : "onedrive.status_disconnected",
+                locale));
 
         var text = string.Join(Environment.NewLine, new[]
         {
             _navigationPresenter.GetText("settings.title", locale),
             string.Empty,
-            $"{_navigationPresenter.GetText("settings.language", locale)}: {_navigationPresenter.GetLanguageDisplayName(locale)}",
-            $"{_navigationPresenter.GetText("settings.save_mode", locale)}: <b>{WebUtility.HtmlEncode(_saveModePreferenceService.ToText(saveMode))}</b>",
-            $"{_navigationPresenter.GetText("settings.storage_mode", locale)}: <b>{WebUtility.HtmlEncode(_storageModeProvider.ToText(storageMode))}</b>",
-            $"{_navigationPresenter.GetText("settings.onedrive", locale)}: {WebUtility.HtmlEncode(_navigationPresenter.GetText(graphStatus.IsAuthenticated ? "onedrive.status_connected" : "onedrive.status_disconnected", locale))}",
-            _navigationPresenter.GetText("settings.notion", locale)
+            $"• <b>{WebUtility.HtmlEncode(languageLabel)}:</b> {WebUtility.HtmlEncode(_navigationPresenter.GetLanguageDisplayName(locale))}",
+            $"• <b>{WebUtility.HtmlEncode(saveModeLabel)}:</b> <b>{WebUtility.HtmlEncode(_saveModePreferenceService.ToText(saveMode))}</b>",
+            $"• <b>{WebUtility.HtmlEncode(storageModeLabel)}:</b> <b>{WebUtility.HtmlEncode(_storageModeProvider.ToText(storageMode))}</b>",
+            $"• <b>{WebUtility.HtmlEncode(oneDriveLabel)}:</b> {WebUtility.HtmlEncode(oneDriveStatus)}",
+            $"• {WebUtility.HtmlEncode(notionLabel)}"
         });
 
         return new TelegramRouteResponse(
@@ -1614,6 +1732,47 @@ public sealed class TelegramController : ControllerBase
             text,
             InlineKeyboard(_navigationPresenter.BuildSettingsKeyboard(locale)),
             IsHtml: true);
+    }
+
+    private static string StripLeadingDecorations(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var withoutPrefix = LeadingDecorationRegex.Replace(value, string.Empty);
+        return withoutPrefix.Trim();
+    }
+
+    private static string StripStatusPrefix(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = value.Trim();
+        var colonIndex = trimmed.IndexOf(':');
+        return colonIndex >= 0 && colonIndex < trimmed.Length - 1
+            ? trimmed[(colonIndex + 1)..].Trim()
+            : trimmed;
+    }
+
+    private static string EnsureQuestionMarker(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var trimmedStart = value.TrimStart();
+        if (trimmedStart.StartsWith(QuestionMarker, StringComparison.Ordinal))
+        {
+            return value;
+        }
+
+        return $"{QuestionMarker} {value}";
     }
 
     private async Task<TelegramRouteResponse> BuildSaveModeResponseAsync(

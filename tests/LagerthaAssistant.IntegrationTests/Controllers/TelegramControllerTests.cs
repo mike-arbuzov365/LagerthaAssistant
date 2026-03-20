@@ -329,8 +329,68 @@ public sealed class TelegramControllerTests
         Assert.Equal("vocab.stats", payload.Intent);
         Assert.Contains("Vocabulary statistics", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("Total indexed words: 42", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Nouns: 20", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Verbs: 15", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("... and 7 more", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("wm-nouns-ua-en.xlsx", sender.LastText, StringComparison.Ordinal);
-        Assert.Contains("(unclassified)", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("(unclassified)", sender.LastText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldHandleVocabStatsCallback_AndRenderLocalizedPrimaryPartOfSpeechGroups()
+    {
+        var sender = new FakeTelegramBotSender();
+        var vocabRepo = new FakeVocabularyCardRepository
+        {
+            CountAllResult = 2703,
+            PartOfSpeechStatsResult =
+            [
+                new VocabularyPartOfSpeechStat("n", 1116),
+                new VocabularyPartOfSpeechStat("v", 637),
+                new VocabularyPartOfSpeechStat("pv", 213),
+                new VocabularyPartOfSpeechStat("iv", 140),
+                new VocabularyPartOfSpeechStat("adv", 122),
+                new VocabularyPartOfSpeechStat("prep", 81),
+                new VocabularyPartOfSpeechStat("adj", 511),
+                new VocabularyPartOfSpeechStat(null, 723)
+            ],
+            DeckStatsResult =
+            [
+                new VocabularyDeckStat("wm-nouns-ua-en.xlsx", 837),
+                new VocabularyDeckStat("wm-verbs-us-en.xlsx", 622)
+            ]
+        };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "uk", NextLocale = "uk" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: vocabRepo,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.Stats, null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.stats", payload.Intent);
+        Assert.Contains("Іменники: 1116", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Дієслова: 637", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Фразові дієслова: 213", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Неправильні дієслова: 140", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Прислівники: 122", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Прийменники: 81", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("... і ще 1234", sender.LastText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -595,6 +655,9 @@ public sealed class TelegramControllerTests
         Assert.Equal("settings.section", payload.Intent);
         Assert.Equal("settings", navigationState.CurrentSection);
         Assert.IsType<TelegramInlineKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+        Assert.Contains("• <b>Language:</b> en", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("• <b>OneDrive / Graph:</b> disconnected", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("OneDrive / Graph: Status:", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -661,6 +724,7 @@ public sealed class TelegramControllerTests
         Assert.True(payload.Replied);
         Assert.Equal("vocabulary.single", payload.Intent);
         Assert.Equal(0, persistence.Calls);
+        Assert.Contains("❓ Save &quot;smile&quot; to &quot;wm-verbs-us-en.xlsx&quot;?", sender.LastText, StringComparison.Ordinal);
 
         var keyboard = Assert.IsType<TelegramInlineKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
         var callbackData = keyboard.InlineKeyboard.SelectMany(row => row).Select(button => button.CallbackData).ToList();
@@ -960,6 +1024,7 @@ public sealed class TelegramControllerTests
         Assert.True(confirmPayload.Replied);
         Assert.Equal("settings.onedrive.index.confirm", confirmPayload.Intent);
         Assert.Equal(0, indexService.RebuildCalls);
+        Assert.Contains("❓ Rebuilding index can take some time. Start now?", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("take some time", sender.LastText, StringComparison.OrdinalIgnoreCase);
 
         var response = await sut.Webhook(
@@ -1003,6 +1068,37 @@ public sealed class TelegramControllerTests
 
         Assert.True(payload.Replied);
         Assert.Equal("settings.onedrive", payload.Intent);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldMarkQuestion_WhenOneDriveCheckLoginHasNoPendingChallenge()
+    {
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Settings },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.OneDrive.CheckLogin, null, updateId: 1144),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("settings.onedrive.check.missing", payload.Intent);
+        Assert.Contains("❓ Still not signed in", sender.LastText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1278,6 +1374,8 @@ public sealed class TelegramControllerTests
 
         Assert.True(payload.Replied);
         Assert.Equal("vocabulary.single", payload.Intent);
+        Assert.Contains("❓ Word", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Did you mean:", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("not recognized", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Did you mean", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("smile", sender.LastText, StringComparison.OrdinalIgnoreCase);

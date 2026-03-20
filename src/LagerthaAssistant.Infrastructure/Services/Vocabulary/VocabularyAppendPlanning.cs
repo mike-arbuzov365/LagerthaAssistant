@@ -77,8 +77,8 @@ internal static class VocabularyAppendPlanning
         }
 
         var normalizedMeanings = NormalizeMeaningsWithOverridePos(parsedReply.Meanings, overridePartOfSpeech);
-        var meaningText = string.Join(Environment.NewLine + Environment.NewLine, normalizedMeanings);
-        var examplesText = string.Join(Environment.NewLine + Environment.NewLine, parsedReply.Examples);
+        var meaningText = JoinParagraphs(normalizedMeanings);
+        var examplesText = JoinParagraphs(parsedReply.Examples);
 
         payload = new VocabularyAppendPayload(targetWord, meaningText, examplesText);
         return true;
@@ -135,8 +135,26 @@ internal static class VocabularyAppendPlanning
             }
         }
 
-        var translationText = string.Join(Environment.NewLine + Environment.NewLine, translationLines);
+        var translationText = JoinParagraphs(translationLines);
         return new VocabularyAppendPayload(expressionText, translationText, string.Empty);
+    }
+
+    private static string JoinParagraphs(IEnumerable<string> lines)
+    {
+        var normalized = lines
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(NormalizeExcelLineEndings)
+            .ToList();
+
+        return string.Join("\n\n", normalized);
+    }
+
+    private static string NormalizeExcelLineEndings(string line)
+    {
+        return line
+            .Trim()
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("\r", "\n", StringComparison.Ordinal);
     }
 
     private static string NormalizeExpressionText(string value)

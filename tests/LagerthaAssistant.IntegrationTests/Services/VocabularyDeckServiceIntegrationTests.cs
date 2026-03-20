@@ -735,6 +735,7 @@ on the same page
             Assert.NotEmpty(rowExamples!);
             Assert.Contains("We watch system logs", rowExamples, StringComparison.Ordinal);
             Assert.Contains("He checked his watch", rowExamples, StringComparison.Ordinal);
+            Assert.Contains("\n\n", rowExamples, StringComparison.Ordinal);
         }
         finally
         {
