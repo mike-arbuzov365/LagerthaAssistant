@@ -73,6 +73,7 @@ public sealed class TelegramController : ControllerBase
     private readonly IVocabularyDeckService _vocabularyDeckService;
     private readonly IVocabularyReplyParser _vocabularyReplyParser;
     private readonly IVocabularyDiscoveryService _vocabularyDiscoveryService;
+    private readonly ITelegramImportSourceReader _importSourceReader;
     private readonly VocabularyDeckOptions _vocabularyDeckOptions;
     private readonly IGraphAuthService _graphAuthService;
     private readonly ITelegramNavigationPresenter _navigationPresenter;
@@ -99,6 +100,7 @@ public sealed class TelegramController : ControllerBase
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyReplyParser vocabularyReplyParser,
         IVocabularyDiscoveryService vocabularyDiscoveryService,
+        ITelegramImportSourceReader importSourceReader,
         VocabularyDeckOptions vocabularyDeckOptions,
         IGraphAuthService graphAuthService,
         ITelegramNavigationPresenter navigationPresenter,
@@ -124,6 +126,7 @@ public sealed class TelegramController : ControllerBase
         _vocabularyDeckService = vocabularyDeckService;
         _vocabularyReplyParser = vocabularyReplyParser;
         _vocabularyDiscoveryService = vocabularyDiscoveryService;
+        _importSourceReader = importSourceReader;
         _vocabularyDeckOptions = vocabularyDeckOptions;
         _graphAuthService = graphAuthService;
         _navigationPresenter = navigationPresenter;
@@ -339,14 +342,14 @@ public sealed class TelegramController : ControllerBase
 
             case NavigationRouteKind.VocabularyText:
                 {
-                    var urlFlowResponse = await TryHandleVocabularyUrlFlowAsync(
-                        inbound.Text,
+                    var importFlowResponse = await TryHandleVocabularyImportFlowAsync(
+                        inbound,
                         scope,
                         locale,
                         cancellationToken);
-                    if (urlFlowResponse is not null)
+                    if (importFlowResponse is not null)
                     {
-                        return urlFlowResponse;
+                        return importFlowResponse;
                     }
 
                     var result = await _orchestrator.ProcessAsync(
@@ -434,7 +437,11 @@ public sealed class TelegramController : ControllerBase
                 CallbackDataConstants.Vocab.Add => HandleVocabularyAddCallback(scope, locale),
                 CallbackDataConstants.Vocab.Stats or CallbackDataConstants.Vocab.ListLegacy
                     => await HandleVocabularyStatsCallbackAsync(locale, cancellationToken),
-                CallbackDataConstants.Vocab.Url => HandleVocabularyUrlStartCallback(scope, locale),
+                CallbackDataConstants.Vocab.Url => HandleVocabularyImportStartCallback(scope, locale),
+                CallbackDataConstants.Vocab.ImportSourcePhoto => HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.Photo),
+                CallbackDataConstants.Vocab.ImportSourceFile => HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.File),
+                CallbackDataConstants.Vocab.ImportSourceUrl => HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.Url),
+                CallbackDataConstants.Vocab.ImportSourceText => HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.Text),
                 CallbackDataConstants.Vocab.UrlSelectAll => await HandleVocabularyUrlSelectAllAsync(scope, locale, cancellationToken),
                 CallbackDataConstants.Vocab.UrlCancel => HandleVocabularyUrlCancelCallback(scope, locale),
                 CallbackDataConstants.Vocab.Batch => BuildBatchModeResponse(scope, locale),
@@ -1004,16 +1011,37 @@ public sealed class TelegramController : ControllerBase
             InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
     }
 
-    private TelegramRouteResponse HandleVocabularyUrlStartCallback(
+    private TelegramRouteResponse HandleVocabularyImportStartCallback(
         ConversationScope scope,
         string locale)
     {
-        PendingVocabularyUrlSessions[BuildPendingUrlSessionKey(scope)] = PendingVocabularyUrlSession.AwaitingSource;
+        PendingVocabularyUrlSessions[BuildPendingUrlSessionKey(scope)] = PendingVocabularyUrlSession.AwaitingSourceType;
 
         return new TelegramRouteResponse(
-            "vocab.url",
-            _navigationPresenter.GetText("vocab.url.prompt", locale),
-            InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+            "vocab.import",
+            _navigationPresenter.GetText("vocab.import.choose_source", locale),
+            InlineKeyboard(_navigationPresenter.BuildVocabularyImportSourceKeyboard(locale)));
+    }
+
+    private TelegramRouteResponse HandleVocabularyImportSourceCallback(
+        ConversationScope scope,
+        string locale,
+        TelegramImportSourceType sourceType)
+    {
+        PendingVocabularyUrlSessions[BuildPendingUrlSessionKey(scope)] = PendingVocabularyUrlSession.AwaitingSourceInput(sourceType);
+
+        var promptKey = sourceType switch
+        {
+            TelegramImportSourceType.Photo => "vocab.import.prompt.photo",
+            TelegramImportSourceType.File => "vocab.import.prompt.file",
+            TelegramImportSourceType.Url => "vocab.import.prompt.url",
+            _ => "vocab.import.prompt.text"
+        };
+
+        return new TelegramRouteResponse(
+            "vocab.import.source",
+            _navigationPresenter.GetText(promptKey, locale),
+            InlineKeyboard(_navigationPresenter.BuildVocabularyImportSourceKeyboard(locale)));
     }
 
     private TelegramRouteResponse HandleVocabularyUrlCancelCallback(
@@ -1052,28 +1080,48 @@ public sealed class TelegramController : ControllerBase
         return await ProcessVocabularyUrlSelectionAsync(selectedWords, scope, locale, cancellationToken);
     }
 
-    private async Task<TelegramRouteResponse?> TryHandleVocabularyUrlFlowAsync(
-        string inboundText,
+    private async Task<TelegramRouteResponse?> TryHandleVocabularyImportFlowAsync(
+        TelegramInboundMessage inbound,
         ConversationScope scope,
         string locale,
         CancellationToken cancellationToken)
     {
-        var normalizedInput = inboundText?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(normalizedInput))
+        var normalizedInput = inbound.Text?.Trim() ?? string.Empty;
+        var hasAnyInput = !string.IsNullOrWhiteSpace(normalizedInput)
+                          || !string.IsNullOrWhiteSpace(inbound.PhotoFileId)
+                          || !string.IsNullOrWhiteSpace(inbound.DocumentFileId);
+        if (!hasAnyInput)
         {
             return null;
         }
 
         var pendingKey = BuildPendingUrlSessionKey(scope);
         var hasSession = PendingVocabularyUrlSessions.TryGetValue(pendingKey, out var session);
-        var shouldAutoStartFromUrl = !hasSession && UrlLikeRegex.IsMatch(normalizedInput);
+        var autoDetectedSource = DetectSourceTypeFromInbound(inbound);
+        var shouldAutoStart = !hasSession
+                              && (UrlLikeRegex.IsMatch(normalizedInput)
+                                  || !string.IsNullOrWhiteSpace(inbound.PhotoFileId)
+                                  || !string.IsNullOrWhiteSpace(inbound.DocumentFileId));
 
-        if (!hasSession && !shouldAutoStartFromUrl)
+        if (!hasSession && !shouldAutoStart)
         {
             return null;
         }
 
-        session ??= PendingVocabularyUrlSession.AwaitingSource;
+        session ??= PendingVocabularyUrlSession.AwaitingSourceInput(autoDetectedSource ?? TelegramImportSourceType.Url);
+
+        if (session.Stage == PendingVocabularyUrlStage.AwaitingSourceType)
+        {
+            var autoDetected = DetectSourceTypeFromInbound(inbound);
+            if (autoDetected is null || autoDetected == TelegramImportSourceType.Text)
+            {
+                PendingVocabularyUrlSessions.TryRemove(pendingKey, out _);
+                return null;
+            }
+
+            session = PendingVocabularyUrlSession.AwaitingSourceInput(autoDetected.Value);
+            PendingVocabularyUrlSessions[pendingKey] = session;
+        }
 
         if (session.Stage == PendingVocabularyUrlStage.AwaitingSelection)
         {
@@ -1104,16 +1152,38 @@ public sealed class TelegramController : ControllerBase
                 cancellationToken);
         }
 
-        var discovery = await _vocabularyDiscoveryService.DiscoverAsync(normalizedInput, cancellationToken);
+        if (session.SourceType is null)
+        {
+            PendingVocabularyUrlSessions[pendingKey] = PendingVocabularyUrlSession.AwaitingSourceType;
+            return new TelegramRouteResponse(
+                "vocab.import",
+                _navigationPresenter.GetText("vocab.import.choose_source", locale),
+                InlineKeyboard(_navigationPresenter.BuildVocabularyImportSourceKeyboard(locale)));
+        }
+
+        var importInbound = new TelegramImportInbound(
+            inbound.Text ?? string.Empty,
+            inbound.DocumentFileId,
+            inbound.DocumentFileName,
+            inbound.DocumentMimeType,
+            inbound.PhotoFileId);
+        var read = await _importSourceReader.ReadTextAsync(importInbound, session.SourceType.Value, cancellationToken);
+        if (read.Status != TelegramImportSourceReadStatus.Success || string.IsNullOrWhiteSpace(read.Text))
+        {
+            PendingVocabularyUrlSessions[pendingKey] = session;
+            return BuildImportReadErrorResponse(read, session.SourceType.Value, locale);
+        }
+
+        var discovery = await _vocabularyDiscoveryService.DiscoverAsync(read.Text, cancellationToken);
         if (discovery.Status == VocabularyDiscoveryStatus.InvalidSource
             || discovery.Status == VocabularyDiscoveryStatus.Failed)
         {
-            PendingVocabularyUrlSessions[pendingKey] = PendingVocabularyUrlSession.AwaitingSource;
+            PendingVocabularyUrlSessions[pendingKey] = session;
 
             return new TelegramRouteResponse(
                 "vocab.url.invalid",
                 _navigationPresenter.GetText("vocab.url.invalid", locale),
-                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+                InlineKeyboard(_navigationPresenter.BuildVocabularyImportSourceKeyboard(locale)));
         }
 
         if (discovery.Status != VocabularyDiscoveryStatus.Success || discovery.Candidates.Count == 0)
@@ -1126,9 +1196,7 @@ public sealed class TelegramController : ControllerBase
         }
 
         var orderedCandidates = OrderUrlCandidates(discovery.Candidates);
-        PendingVocabularyUrlSessions[pendingKey] = new PendingVocabularyUrlSession(
-            PendingVocabularyUrlStage.AwaitingSelection,
-            orderedCandidates);
+        PendingVocabularyUrlSessions[pendingKey] = PendingVocabularyUrlSession.AwaitingSelection(orderedCandidates);
 
         return new TelegramRouteResponse(
             "vocab.url.suggestions",
@@ -1294,6 +1362,63 @@ public sealed class TelegramController : ControllerBase
 
         return normalized.Contains(',', StringComparison.Ordinal)
             || normalized.Contains(';', StringComparison.Ordinal);
+    }
+
+    private TelegramRouteResponse BuildImportReadErrorResponse(
+        TelegramImportSourceReadResult readResult,
+        TelegramImportSourceType sourceType,
+        string locale)
+    {
+        var key = readResult.Status switch
+        {
+            TelegramImportSourceReadStatus.WrongInputType => sourceType switch
+            {
+                TelegramImportSourceType.Photo => "vocab.import.invalid_expected_photo",
+                TelegramImportSourceType.File => "vocab.import.invalid_expected_file",
+                TelegramImportSourceType.Url => "vocab.import.invalid_expected_url",
+                _ => "vocab.import.invalid_expected_text"
+            },
+            TelegramImportSourceReadStatus.UnsupportedFileType => "vocab.import.file_unsupported",
+            TelegramImportSourceReadStatus.NoTextExtracted => sourceType == TelegramImportSourceType.Photo
+                ? "vocab.import.photo_no_text"
+                : "vocab.import.file_no_text",
+            TelegramImportSourceReadStatus.InvalidSource => sourceType == TelegramImportSourceType.Url
+                ? "vocab.import.invalid_expected_url"
+                : "vocab.import.invalid_expected_text",
+            _ => "vocab.import.read_failed"
+        };
+
+        var text = key == "vocab.import.read_failed"
+            ? _navigationPresenter.GetText(key, locale, readResult.Error ?? "unknown error")
+            : _navigationPresenter.GetText(key, locale);
+
+        return new TelegramRouteResponse(
+            "vocab.import.invalid",
+            text,
+            InlineKeyboard(_navigationPresenter.BuildVocabularyImportSourceKeyboard(locale)));
+    }
+
+    private static TelegramImportSourceType? DetectSourceTypeFromInbound(TelegramInboundMessage inbound)
+    {
+        if (!string.IsNullOrWhiteSpace(inbound.PhotoFileId))
+        {
+            return TelegramImportSourceType.Photo;
+        }
+
+        if (!string.IsNullOrWhiteSpace(inbound.DocumentFileId))
+        {
+            return TelegramImportSourceType.File;
+        }
+
+        var text = inbound.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        return UrlLikeRegex.IsMatch(text)
+            ? TelegramImportSourceType.Url
+            : TelegramImportSourceType.Text;
     }
 
     private async Task<TelegramRouteResponse> BuildVocabularyTextResponseAsync(
@@ -2607,16 +2732,24 @@ public sealed class TelegramController : ControllerBase
 
     private sealed record PendingVocabularyUrlSession(
         PendingVocabularyUrlStage Stage,
+        TelegramImportSourceType? SourceType,
         IReadOnlyList<PendingVocabularyUrlCandidate> Candidates)
     {
-        public static PendingVocabularyUrlSession AwaitingSource { get; }
-            = new(PendingVocabularyUrlStage.AwaitingSource, []);
+        public static PendingVocabularyUrlSession AwaitingSourceType { get; }
+            = new(PendingVocabularyUrlStage.AwaitingSourceType, null, []);
+
+        public static PendingVocabularyUrlSession AwaitingSourceInput(TelegramImportSourceType sourceType)
+            => new(PendingVocabularyUrlStage.AwaitingSourceInput, sourceType, []);
+
+        public static PendingVocabularyUrlSession AwaitingSelection(IReadOnlyList<PendingVocabularyUrlCandidate> candidates)
+            => new(PendingVocabularyUrlStage.AwaitingSelection, null, candidates);
     }
 
     private enum PendingVocabularyUrlStage
     {
-        AwaitingSource = 0,
-        AwaitingSelection = 1
+        AwaitingSourceType = 0,
+        AwaitingSourceInput = 1,
+        AwaitingSelection = 2
     }
 
     private sealed record PendingVocabularyUrlCandidate(

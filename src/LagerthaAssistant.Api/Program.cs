@@ -44,6 +44,7 @@ builder.Services.AddHttpClient("vocab-discovery", client =>
 builder.Services.AddSingleton<ITelegramConversationResponseFormatter, TelegramConversationResponseFormatter>();
 builder.Services.AddSingleton<ITelegramBotSender, TelegramBotSender>();
 builder.Services.AddSingleton<ITelegramNavigationPresenter, TelegramNavigationPresenter>();
+builder.Services.AddScoped<ITelegramImportSourceReader, TelegramImportSourceReader>();
 builder.Services.AddScoped<IVocabularyDiscoveryService, VocabularyDiscoveryService>();
 builder.Services.AddRateLimiter(opts =>
 {
