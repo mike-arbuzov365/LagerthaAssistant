@@ -452,8 +452,10 @@ public sealed class GraphVocabularyDeckService : IVocabularyDeckBackend, IVocabu
         await _operationSync.WaitAsync(cancellationToken);
         try
         {
-            var mirror = await GetOrCreateMirrorAsync(cancellationToken);
-            return await mirror.LocalService.GetAllEntriesAsync(cancellationToken);
+            // Rebuild must use an authoritative snapshot from OneDrive, not the session mirror.
+            // Otherwise, externally edited deck files can remain stale in DB after rebuild.
+            await using var snapshot = await CreateMirrorAsync(cancellationToken);
+            return await snapshot.LocalService.GetAllEntriesAsync(cancellationToken);
         }
         finally
         {
