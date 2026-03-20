@@ -3,6 +3,7 @@ namespace LagerthaAssistant.Application.Constants;
 public static class NavigationSections
 {
     public const string Main = "main";
+    public const string Chat = "chat";
     public const string Vocabulary = "vocabulary";
     public const string Shopping = "shopping";
     public const string WeeklyMenu = "weekly_menu";
@@ -17,6 +18,7 @@ public static class NavigationSections
         }
 
         return section.Equals(Main, StringComparison.OrdinalIgnoreCase)
+            || section.Equals(Chat, StringComparison.OrdinalIgnoreCase)
             || section.Equals(Vocabulary, StringComparison.OrdinalIgnoreCase)
             || section.Equals(Shopping, StringComparison.OrdinalIgnoreCase)
             || section.Equals(WeeklyMenu, StringComparison.OrdinalIgnoreCase)

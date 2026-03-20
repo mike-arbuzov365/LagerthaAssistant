@@ -48,6 +48,7 @@ public sealed class NavigationRouter
         var section = NavigationSections.Normalize(input.CurrentSection);
         return section switch
         {
+            NavigationSections.Chat => new NavigationRoute(NavigationRouteKind.ChatText),
             NavigationSections.Vocabulary => new NavigationRoute(NavigationRouteKind.VocabularyText),
             NavigationSections.Shopping => new NavigationRoute(NavigationRouteKind.ShoppingText),
             NavigationSections.WeeklyMenu => new NavigationRoute(NavigationRouteKind.WeeklyMenuText),
@@ -83,10 +84,11 @@ public enum NavigationRouteKind
     MainShoppingButton = 4,
     MainWeeklyMenuButton = 5,
     MainSettingsButton = 6,
-    VocabularyText = 7,
-    ShoppingText = 8,
-    WeeklyMenuText = 9,
-    SettingsText = 10,
-    LanguageOnboardingText = 11,
-    DefaultText = 12
+    ChatText = 7,
+    VocabularyText = 8,
+    ShoppingText = 9,
+    WeeklyMenuText = 10,
+    SettingsText = 11,
+    LanguageOnboardingText = 12,
+    DefaultText = 13
 }

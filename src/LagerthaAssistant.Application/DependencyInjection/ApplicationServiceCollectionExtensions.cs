@@ -43,6 +43,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IConversationBootstrapService, ConversationBootstrapService>();
         services.AddScoped<IConversationMetricsService, ConversationMetricsService>();
         services.AddScoped<IConversationAgent, CommandConversationAgent>();
+        services.AddScoped<IConversationAgent, AssistantConversationAgent>();
         services.AddScoped<IConversationAgent, VocabularyConversationAgent>();
 
         return services;

@@ -66,6 +66,7 @@ public sealed class NavigationRouterTests
     }
 
     [Theory]
+    [InlineData(NavigationSections.Chat, "hello", NavigationRouteKind.ChatText)]
     [InlineData(NavigationSections.Vocabulary, "ephemeral", NavigationRouteKind.VocabularyText)]
     [InlineData(NavigationSections.Shopping, "buy milk", NavigationRouteKind.ShoppingText)]
     [InlineData(NavigationSections.WeeklyMenu, "plan food", NavigationRouteKind.WeeklyMenuText)]
