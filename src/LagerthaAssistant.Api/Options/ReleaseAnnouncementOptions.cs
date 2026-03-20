@@ -4,9 +4,9 @@ using LagerthaAssistant.Application.Constants;
 
 public sealed class ReleaseAnnouncementOptions
 {
-    public bool Enabled { get; set; }
+    public bool Enabled { get; set; } = true;
 
-    public string Version { get; set; } = string.Empty;
+    public string Version { get; set; } = "auto";
 
     public string NotesEn { get; set; } = string.Empty;
 
