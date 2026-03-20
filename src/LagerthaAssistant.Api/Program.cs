@@ -32,6 +32,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.Configure<VocabularySyncWorkerOptions>(builder.Configuration.GetSection("VocabularySyncWorker"));
 builder.Services.Configure<NotionSyncWorkerOptions>(builder.Configuration.GetSection("NotionSyncWorker"));
 builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
+builder.Services.Configure<ReleaseAnnouncementOptions>(builder.Configuration.GetSection("ReleaseAnnouncement"));
 builder.Services.AddSingleton<IValidateOptions<TelegramOptions>, TelegramOptionsValidator>();
 builder.Services.AddHttpClient("telegram", client =>
 {
