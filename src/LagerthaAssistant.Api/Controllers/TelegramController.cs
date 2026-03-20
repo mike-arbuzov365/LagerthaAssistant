@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Interfaces;
 using LagerthaAssistant.Api.Options;
@@ -32,6 +33,7 @@ public sealed class TelegramController : ControllerBase
     private const string SectionSeparator = "--------------------";
     private const int ManualSyncBatchSize = 25;
     private const int ManualSyncMaxPasses = 5;
+    private static readonly Regex LeadingDecorationRegex = new("^[^\\p{L}\\p{N}]+", RegexOptions.Compiled);
 
     private static readonly ConcurrentDictionary<string, GraphDeviceLoginChallenge> PendingGraphChallenges = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, PendingVocabularySaveRequest> PendingVocabularySaves = new(StringComparer.Ordinal);
@@ -1597,16 +1599,25 @@ public sealed class TelegramController : ControllerBase
         var storageMode = VocabularyStorageMode.Graph;
         _storageModeProvider.SetMode(storageMode);
         var graphStatus = await _graphAuthService.GetStatusAsync(cancellationToken);
+        var languageLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.language", locale));
+        var saveModeLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.save_mode", locale));
+        var storageModeLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.storage_mode", locale));
+        var oneDriveLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.onedrive", locale));
+        var notionLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.notion", locale));
+        var oneDriveStatus = StripStatusPrefix(
+            _navigationPresenter.GetText(
+                graphStatus.IsAuthenticated ? "onedrive.status_connected" : "onedrive.status_disconnected",
+                locale));
 
         var text = string.Join(Environment.NewLine, new[]
         {
             _navigationPresenter.GetText("settings.title", locale),
             string.Empty,
-            $"{_navigationPresenter.GetText("settings.language", locale)}: {_navigationPresenter.GetLanguageDisplayName(locale)}",
-            $"{_navigationPresenter.GetText("settings.save_mode", locale)}: <b>{WebUtility.HtmlEncode(_saveModePreferenceService.ToText(saveMode))}</b>",
-            $"{_navigationPresenter.GetText("settings.storage_mode", locale)}: <b>{WebUtility.HtmlEncode(_storageModeProvider.ToText(storageMode))}</b>",
-            $"{_navigationPresenter.GetText("settings.onedrive", locale)}: {WebUtility.HtmlEncode(_navigationPresenter.GetText(graphStatus.IsAuthenticated ? "onedrive.status_connected" : "onedrive.status_disconnected", locale))}",
-            _navigationPresenter.GetText("settings.notion", locale)
+            $"• <b>{WebUtility.HtmlEncode(languageLabel)}:</b> {WebUtility.HtmlEncode(_navigationPresenter.GetLanguageDisplayName(locale))}",
+            $"• <b>{WebUtility.HtmlEncode(saveModeLabel)}:</b> <b>{WebUtility.HtmlEncode(_saveModePreferenceService.ToText(saveMode))}</b>",
+            $"• <b>{WebUtility.HtmlEncode(storageModeLabel)}:</b> <b>{WebUtility.HtmlEncode(_storageModeProvider.ToText(storageMode))}</b>",
+            $"• <b>{WebUtility.HtmlEncode(oneDriveLabel)}:</b> {WebUtility.HtmlEncode(oneDriveStatus)}",
+            $"• {WebUtility.HtmlEncode(notionLabel)}"
         });
 
         return new TelegramRouteResponse(
@@ -1614,6 +1625,31 @@ public sealed class TelegramController : ControllerBase
             text,
             InlineKeyboard(_navigationPresenter.BuildSettingsKeyboard(locale)),
             IsHtml: true);
+    }
+
+    private static string StripLeadingDecorations(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var withoutPrefix = LeadingDecorationRegex.Replace(value, string.Empty);
+        return withoutPrefix.Trim();
+    }
+
+    private static string StripStatusPrefix(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = value.Trim();
+        var colonIndex = trimmed.IndexOf(':');
+        return colonIndex >= 0 && colonIndex < trimmed.Length - 1
+            ? trimmed[(colonIndex + 1)..].Trim()
+            : trimmed;
     }
 
     private async Task<TelegramRouteResponse> BuildSaveModeResponseAsync(

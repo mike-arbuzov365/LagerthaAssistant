@@ -595,6 +595,9 @@ public sealed class TelegramControllerTests
         Assert.Equal("settings.section", payload.Intent);
         Assert.Equal("settings", navigationState.CurrentSection);
         Assert.IsType<TelegramInlineKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+        Assert.Contains("• <b>Language:</b> en", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("• <b>OneDrive / Graph:</b> disconnected", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("OneDrive / Graph: Status:", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
