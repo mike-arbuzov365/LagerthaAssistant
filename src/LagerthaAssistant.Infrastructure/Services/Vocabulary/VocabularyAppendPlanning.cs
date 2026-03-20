@@ -1,5 +1,6 @@
 namespace LagerthaAssistant.Infrastructure.Services.Vocabulary;
 
+using System.Text.RegularExpressions;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Vocabulary;
@@ -19,6 +20,9 @@ internal readonly record struct VocabularyAppendPayload(
 internal static class VocabularyAppendPlanning
 {
     private static readonly char[] WordFormSeparators = ['-', ',', '/', '='];
+    private static readonly Regex SentenceBoundaryRegex = new("(?<=[.!?])\\s+(?=[A-Z])", RegexOptions.Compiled);
+    private static readonly Regex TightSentenceBoundaryRegex = new("(?<=[.!?])(?=[A-Z])", RegexOptions.Compiled);
+    private static readonly Regex LowerToUpperBoundaryRegex = new("(?<=[a-z0-9])(?=[A-Z])", RegexOptions.Compiled);
 
     public static string NormalizeWord(string value)
     {
@@ -78,7 +82,8 @@ internal static class VocabularyAppendPlanning
 
         var normalizedMeanings = NormalizeMeaningsWithOverridePos(parsedReply.Meanings, overridePartOfSpeech);
         var meaningText = JoinParagraphs(normalizedMeanings);
-        var examplesText = JoinParagraphs(parsedReply.Examples);
+        var normalizedExamples = NormalizeExamples(parsedReply.Examples, normalizedMeanings.Count);
+        var examplesText = JoinParagraphs(normalizedExamples);
 
         payload = new VocabularyAppendPayload(targetWord, meaningText, examplesText);
         return true;
@@ -155,6 +160,99 @@ internal static class VocabularyAppendPlanning
             .Trim()
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace("\r", "\n", StringComparison.Ordinal);
+    }
+
+    private static IReadOnlyList<string> NormalizeExamples(IReadOnlyList<string> examples, int expectedCount)
+    {
+        if (examples.Count == 0)
+        {
+            return [];
+        }
+
+        var normalized = new List<string>();
+
+        foreach (var example in examples)
+        {
+            if (string.IsNullOrWhiteSpace(example))
+            {
+                continue;
+            }
+
+            var lines = NormalizeExcelLineEndings(example)
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                if (!string.IsNullOrWhiteSpace(trimmed))
+                {
+                    normalized.Add(trimmed);
+                }
+            }
+        }
+
+        if (normalized.Count == 0 || expectedCount <= 1 || normalized.Count >= expectedCount)
+        {
+            return normalized;
+        }
+
+        var expanded = new List<string>();
+
+        foreach (var line in normalized)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var split = SplitMergedExamples(line, expectedCount);
+            expanded.AddRange(split);
+        }
+
+        return expanded.Count > 0 ? expanded : normalized;
+    }
+
+    private static IReadOnlyList<string> SplitMergedExamples(string line, int expectedCount)
+    {
+        var splitBySpaceAfterPunctuation = SentenceBoundaryRegex
+            .Split(line)
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        if (splitBySpaceAfterPunctuation.Count > 1)
+        {
+            return splitBySpaceAfterPunctuation;
+        }
+
+        var splitByTightPunctuation = TightSentenceBoundaryRegex
+            .Split(line)
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        if (splitByTightPunctuation.Count > 1)
+        {
+            return splitByTightPunctuation;
+        }
+
+        if (expectedCount <= 1)
+        {
+            return [line.Trim()];
+        }
+
+        var splitByLowerUpperBoundary = LowerToUpperBoundaryRegex
+            .Split(line)
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        if (splitByLowerUpperBoundary.Count > 1)
+        {
+            return splitByLowerUpperBoundary;
+        }
+
+        return [line.Trim()];
     }
 
     private static string NormalizeExpressionText(string value)
