@@ -39,6 +39,8 @@ public interface ITelegramNavigationPresenter
 
     TelegramInlineKeyboardMarkup BuildVocabularySaveConfirmationKeyboard(string locale);
 
+    TelegramInlineKeyboardMarkup BuildVocabularyBatchSaveConfirmationKeyboard(string locale);
+
     TelegramInlineKeyboardMarkup BuildVocabularyUrlSelectionKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildNotionKeyboard(string locale);
