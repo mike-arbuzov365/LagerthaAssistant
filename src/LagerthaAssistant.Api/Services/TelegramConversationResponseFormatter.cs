@@ -35,6 +35,7 @@ public sealed class TelegramConversationResponseFormatter : ITelegramConversatio
         }
 
         var builder = new StringBuilder();
+        builder.AppendLine(BatchSeparator);
         for (var index = 0; index < result.Items.Count; index++)
         {
             var item = result.Items[index];

@@ -10,6 +10,8 @@ using Xunit;
 
 public sealed class TelegramConversationResponseFormatterTests
 {
+    private const string Marker = "\uD83D\uDD39";
+
     private static TelegramConversationResponseFormatter CreateSut(int textLengthLimit = 3900)
         => new(Options.Create(new TelegramOptions { TextLengthLimit = textLengthLimit }));
 
@@ -66,12 +68,13 @@ public sealed class TelegramConversationResponseFormatterTests
         var text = sut.Format(result);
         var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        Assert.Contains("🔹 void", text);
-        Assert.Contains("🔹 prepare", text);
-        Assert.Contains("🔹 void\n\nvoid answer", text, StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith($"--------------------\n{Marker} void", normalized, StringComparison.Ordinal);
+        Assert.Contains($"{Marker} void", text, StringComparison.Ordinal);
+        Assert.Contains($"{Marker} prepare", text, StringComparison.Ordinal);
+        Assert.Contains($"{Marker} void\n\nvoid answer", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("--------------------", text);
         Assert.DoesNotContain("\n\n--------------------\n\n", normalized, StringComparison.Ordinal);
-        Assert.Contains("void answer\n--------------------\n🔹 prepare", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains($"void answer\n--------------------\n{Marker} prepare", normalized, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -99,10 +102,10 @@ public sealed class TelegramConversationResponseFormatterTests
 
         var text = sut.Format(result);
 
-        Assert.DoesNotContain("🔹 cancel\ncancel", text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("🔹 celebrate\ncelebrate", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("🔹 cancel\n\n(v) stop or revoke", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("🔹 celebrate\n\n(v) honor an event", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain($"{Marker} cancel\ncancel", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain($"{Marker} celebrate\ncelebrate", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains($"{Marker} cancel\n\n(v) stop or revoke", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains($"{Marker} celebrate\n\n(v) honor an event", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

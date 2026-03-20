@@ -18,6 +18,8 @@ internal readonly record struct VocabularyAppendPayload(
 
 internal static class VocabularyAppendPlanning
 {
+    private static readonly char[] WordFormSeparators = ['-', ',', '/', '='];
+
     public static string NormalizeWord(string value)
     {
         return value.Trim().ToLowerInvariant();
@@ -67,9 +69,7 @@ internal static class VocabularyAppendPlanning
         }
 
         var normalizedParsedWord = NormalizeWord(parsedReply.Word);
-        var targetWord = string.IsNullOrWhiteSpace(normalizedParsedWord)
-            ? NormalizeWord(normalizedRequestedWord)
-            : normalizedParsedWord;
+        var targetWord = ResolveTargetWord(normalizedRequestedWord, normalizedParsedWord);
 
         if (string.IsNullOrWhiteSpace(targetWord))
         {
@@ -234,5 +234,59 @@ internal static class VocabularyAppendPlanning
     private static string? NormalizePartOfSpeech(string? raw)
     {
         return VocabularyPartOfSpeechCatalog.NormalizeOrNull(raw);
+    }
+
+    private static string ResolveTargetWord(string normalizedRequestedWord, string normalizedParsedWord)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedParsedWord))
+        {
+            return NormalizeWord(normalizedRequestedWord);
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedRequestedWord))
+        {
+            return normalizedParsedWord;
+        }
+
+        if (string.Equals(normalizedRequestedWord, normalizedParsedWord, StringComparison.Ordinal))
+        {
+            return normalizedParsedWord;
+        }
+
+        if (IsSingleWord(normalizedRequestedWord)
+            && !ContainsWordForm(normalizedParsedWord, normalizedRequestedWord))
+        {
+            return normalizedRequestedWord;
+        }
+
+        return normalizedParsedWord;
+    }
+
+    private static bool IsSingleWord(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return !value.Contains(' ', StringComparison.Ordinal);
+    }
+
+    private static bool ContainsWordForm(string parsedWord, string requestedWord)
+    {
+        if (string.IsNullOrWhiteSpace(parsedWord) || string.IsNullOrWhiteSpace(requestedWord))
+        {
+            return false;
+        }
+
+        if (string.Equals(parsedWord, requestedWord, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var forms = parsedWord
+            .Split(WordFormSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return forms.Any(form => string.Equals(form, requestedWord, StringComparison.Ordinal));
     }
 }

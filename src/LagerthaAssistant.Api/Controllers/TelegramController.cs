@@ -936,7 +936,7 @@ public sealed class TelegramController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(foundInDeckInfo))
         {
-            formatted = AppendTextBlock(formatted, foundInDeckInfo);
+            formatted = AppendFoundInDeckInfo(formatted, foundInDeckInfo);
         }
 
         if (saveMode == VocabularySaveMode.Off)
@@ -1442,6 +1442,27 @@ public sealed class TelegramController : ControllerBase
         }
 
         return string.Concat(source.TrimEnd(), Environment.NewLine, Environment.NewLine, extra.Trim());
+    }
+
+    private static string AppendFoundInDeckInfo(string source, string foundInDeckInfo)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return foundInDeckInfo?.Trim() ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(foundInDeckInfo))
+        {
+            return source;
+        }
+
+        var extra = foundInDeckInfo.Trim();
+        if (extra.StartsWith(SectionSeparator, StringComparison.Ordinal))
+        {
+            return string.Concat(source.TrimEnd(), Environment.NewLine, extra);
+        }
+
+        return AppendTextBlock(source, extra);
     }
 
     private async Task<TelegramRouteResponse> BuildVocabularySectionResponseAsync(string locale, CancellationToken cancellationToken)

@@ -605,7 +605,7 @@ on the same page
     }
 
     [Fact]
-    public async Task AppendFromAssistantReplyAsync_ShouldSaveMultipleMeaningsAsSeperateRows()
+    public async Task AppendFromAssistantReplyAsync_ShouldSaveMultipleMeaningsInSingleRow()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
@@ -613,7 +613,7 @@ on the same page
         try
         {
             var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
-            CreateTemplateWorkbook(workbookPath, "travel", "(v) подорожувати", "Developers often travel to conferences.");
+            CreateTemplateWorkbook(workbookPath, "travel", "(v) travel", "Developers often travel to conferences.");
 
             var options = new VocabularyDeckOptions
             {
@@ -629,8 +629,8 @@ on the same page
             var response = """
             watch
 
-            (v) дивитися, спостерігати
-            (n) годинник
+            (v) watch
+            (n) watch
 
             We watch system logs to detect anomalies early.
             He checked his watch during the long deployment process.
@@ -653,16 +653,13 @@ on the same page
                 .OrderBy(r => (int)r.Attribute("r")!)
                 .ToList();
 
-            Assert.Equal(2, rows.Count);
+            Assert.Single(rows);
 
-            var firstRowText = rows[0].ToString();
-            var secondRowText = rows[1].ToString();
-
-            Assert.Contains("дивитися", firstRowText, StringComparison.Ordinal);
-            Assert.Contains("годинник", secondRowText, StringComparison.Ordinal);
-
-            Assert.DoesNotContain("годинник", firstRowText, StringComparison.Ordinal);
-            Assert.DoesNotContain("дивитися", secondRowText, StringComparison.Ordinal);
+            var rowText = rows[0].ToString();
+            Assert.Contains("(v) watch", rowText, StringComparison.Ordinal);
+            Assert.Contains("(n) watch", rowText, StringComparison.Ordinal);
+            Assert.Contains("We watch system logs", rowText, StringComparison.Ordinal);
+            Assert.Contains("He checked his watch", rowText, StringComparison.Ordinal);
         }
         finally
         {
@@ -674,7 +671,7 @@ on the same page
     }
 
     [Fact]
-    public async Task AppendFromAssistantReplyAsync_ShouldPutExamplesOnlyOnFirstRow_WhenMultipleMeanings()
+    public async Task AppendFromAssistantReplyAsync_ShouldKeepExamplesInSameSingleRow_WhenMultipleMeanings()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
@@ -682,7 +679,7 @@ on the same page
         try
         {
             var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
-            CreateTemplateWorkbook(workbookPath, "travel", "(v) подорожувати", "Developers often travel to conferences.");
+            CreateTemplateWorkbook(workbookPath, "travel", "(v) travel", "Developers often travel to conferences.");
 
             var options = new VocabularyDeckOptions
             {
@@ -698,8 +695,8 @@ on the same page
             var response = """
             watch
 
-            (v) дивитися, спостерігати
-            (n) годинник
+            (v) watch
+            (n) watch
 
             We watch system logs to detect anomalies early.
             He checked his watch during the long deployment process.
@@ -720,7 +717,7 @@ on the same page
                 .OrderBy(r => (int)r.Attribute("r")!)
                 .ToList();
 
-            Assert.Equal(2, newRows.Count);
+            Assert.Single(newRows);
 
             static string? GetCellText(XElement row, string colRef, XNamespace ns)
             {
@@ -733,12 +730,11 @@ on the same page
                     ?.Value;
             }
 
-            var firstRowExamples = GetCellText(newRows[0], "H", ns);
-            var secondRowExamples = GetCellText(newRows[1], "H", ns);
-
-            Assert.NotNull(firstRowExamples);
-            Assert.NotEmpty(firstRowExamples!);
-            Assert.True(string.IsNullOrEmpty(secondRowExamples));
+            var rowExamples = GetCellText(newRows[0], "H", ns);
+            Assert.NotNull(rowExamples);
+            Assert.NotEmpty(rowExamples!);
+            Assert.Contains("We watch system logs", rowExamples, StringComparison.Ordinal);
+            Assert.Contains("He checked his watch", rowExamples, StringComparison.Ordinal);
         }
         finally
         {
@@ -750,41 +746,36 @@ on the same page
     }
 
     [Fact]
-    public async Task AppendFromAssistantReplyAsync_ShouldSaveBothMeanings_WhenResponseIsInterleaved()
+    public async Task AppendFromAssistantReplyAsync_ShouldPreferRequestedWord_WhenParsedHeaderDiffersForSingleWord()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
 
         try
         {
-            var workbookPath = Path.Combine(tempDir, "wm-verbs-us-en.xlsx");
-            CreateTemplateWorkbook(workbookPath, "travel", "(v) подорожувати", "Developers travel to conferences.");
+            var workbookPath = Path.Combine(tempDir, "wm-adjectives-ua-en.xlsx");
+            CreateTemplateWorkbook(workbookPath, "awkward", "(adj) awkward", "The awkward setup slowed us down.");
 
             var options = new VocabularyDeckOptions
             {
                 FolderPath = tempDir,
                 FilePattern = "wm-*.xlsx",
                 ReadOnlyFileNames = [],
-                VerbDeckFileName = "wm-verbs-us-en.xlsx",
-                FallbackDeckFileName = "wm-verbs-us-en.xlsx"
+                AdjectiveDeckFileName = "wm-adjectives-ua-en.xlsx",
+                FallbackDeckFileName = "wm-adjectives-ua-en.xlsx"
             };
 
             var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
 
             var response = """
-            watch
+            awkward
 
-            (v) дивитися, спостерігати
+            (adj) precise, accurate
 
-            We watch system logs to detect anomalies early.
-
-            (n) годинник
-
-            He checked his watch during the long deployment process.
+            Please provide the exact specifications for the software.
             """;
 
-            var result = await sut.AppendFromAssistantReplyAsync("watch", response);
-
+            var result = await sut.AppendFromAssistantReplyAsync("exact", response, "wm-adjectives-ua-en.xlsx");
             Assert.Equal(VocabularyAppendStatus.Added, result.Status);
 
             using var archive = ZipFile.OpenRead(workbookPath);
@@ -799,10 +790,22 @@ on the same page
                 .OrderBy(r => (int)r.Attribute("r")!)
                 .ToList();
 
-            Assert.Equal(2, newRows.Count);
-            Assert.Contains("дивитися", newRows[0].ToString(), StringComparison.Ordinal);
-            Assert.Contains("годинник", newRows[1].ToString(), StringComparison.Ordinal);
-            Assert.DoesNotContain("годинник", newRows[0].ToString(), StringComparison.Ordinal);
+            Assert.Single(newRows);
+
+            static string? GetCellText(XElement row, string colRef, XNamespace ns)
+            {
+                var rowNum = (int)row.Attribute("r")!;
+                var cellRef = $"{colRef}{rowNum}";
+                return row.Elements(ns + "c")
+                    .FirstOrDefault(c => c.Attribute("r")?.Value == cellRef)
+                    ?.Descendants(ns + "t")
+                    .FirstOrDefault()
+                    ?.Value;
+            }
+
+            var row = newRows[0];
+            Assert.Equal("exact", GetCellText(row, "B", ns));
+            Assert.Contains("(adj) precise, accurate", GetCellText(row, "A", ns), StringComparison.Ordinal);
         }
         finally
         {
@@ -812,7 +815,6 @@ on the same page
             }
         }
     }
-
 
     private sealed class CountingReplyParser : IVocabularyReplyParser
     {
@@ -995,6 +997,7 @@ on the same page
         writer.Write(content);
     }
 }
+
 
 
 
