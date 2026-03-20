@@ -16,6 +16,7 @@ public sealed class LocalizationService : ILocalizationService
     private static readonly IReadOnlyDictionary<string, string> English = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["menu.main.title"] = "What can I help you with?",
+        ["menu.chat.title"] = "🗣 Chat mode enabled. Ask me in natural language — I can explain features and perform supported actions.",
         ["menu.main.chat"] = "🗣 Chat",
         ["menu.main.vocabulary"] = "📚 Vocabulary",
         ["menu.main.shopping"] = "🛒 Shopping",
@@ -180,6 +181,7 @@ public sealed class LocalizationService : ILocalizationService
     private static readonly IReadOnlyDictionary<string, string> Ukrainian = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["menu.main.title"] = "Чим можу допомогти?",
+        ["menu.chat.title"] = "🗣 Режим чату увімкнено. Пиши звичайною мовою — я поясню функції та виконаю доступні дії.",
         ["menu.main.chat"] = "🗣 Чат",
         ["menu.main.vocabulary"] = "📚 Словник",
         ["menu.main.shopping"] = "🛒 Покупки",
@@ -344,6 +346,7 @@ public sealed class LocalizationService : ILocalizationService
     private static readonly IReadOnlyDictionary<string, string> Spanish = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["menu.main.title"] = "¿Cómo puedo ayudarte?",
+        ["menu.chat.title"] = "🗣 Modo chat activado. Escríbeme de forma natural: puedo explicar funciones y ejecutar acciones compatibles.",
         ["menu.main.chat"] = "🗣 Chat",
         ["menu.main.vocabulary"] = "📚 Vocabulario",
         ["menu.main.shopping"] = "🛒 Compras",
@@ -508,6 +511,7 @@ public sealed class LocalizationService : ILocalizationService
     private static readonly IReadOnlyDictionary<string, string> German = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["menu.main.title"] = "Womit kann ich dir helfen?",
+        ["menu.chat.title"] = "🗣 Chat-Modus aktiviert. Schreib natürlich — ich erkläre Funktionen und führe unterstützte Aktionen aus.",
         ["menu.main.chat"] = "🗣 Chat",
         ["menu.main.vocabulary"] = "📚 Vokabeln",
         ["menu.main.shopping"] = "🛒 Einkauf",
@@ -672,6 +676,7 @@ public sealed class LocalizationService : ILocalizationService
     private static readonly IReadOnlyDictionary<string, string> Polish = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["menu.main.title"] = "W czym mogę pomóc?",
+        ["menu.chat.title"] = "🗣 Tryb czatu włączony. Pisz naturalnie — mogę wyjaśnić funkcje i wykonać obsługiwane akcje.",
         ["menu.main.chat"] = "🗣 Czat",
         ["menu.main.vocabulary"] = "📚 Słownictwo",
         ["menu.main.shopping"] = "🛒 Zakupy",
@@ -836,6 +841,7 @@ public sealed class LocalizationService : ILocalizationService
     private static readonly IReadOnlyDictionary<string, string> French = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["menu.main.title"] = "Comment puis-je t'aider ?",
+        ["menu.chat.title"] = "🗣 Mode chat activé. Écris naturellement — je peux expliquer les fonctionnalités et exécuter les actions prises en charge.",
         ["menu.main.chat"] = "🗣 Chat",
         ["menu.main.vocabulary"] = "📚 Vocabulaire",
         ["menu.main.shopping"] = "🛒 Courses",

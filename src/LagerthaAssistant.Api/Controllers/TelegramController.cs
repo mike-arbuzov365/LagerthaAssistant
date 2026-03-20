@@ -309,11 +309,32 @@ public sealed class TelegramController : ControllerBase
                     ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
 
             case NavigationRouteKind.MainChatButton:
-                await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Main, cancellationToken);
+                await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Chat, cancellationToken);
                 return new TelegramRouteResponse(
                     "nav.main.chat",
-                    _navigationPresenter.GetText("menu.main.title", locale),
+                    _navigationPresenter.GetText("menu.chat.title", locale),
                     ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
+
+            case NavigationRouteKind.ChatText:
+                {
+                    var chatInput = inbound.Text;
+                    if (!chatInput.StartsWith("/", StringComparison.Ordinal))
+                    {
+                        chatInput = $"{ConversationInputMarkers.Chat} {chatInput}";
+                    }
+
+                    var result = await _orchestrator.ProcessAsync(
+                        chatInput,
+                        scope.Channel,
+                        scope.UserId,
+                        scope.ConversationId,
+                        cancellationToken);
+
+                    return new TelegramRouteResponse(
+                        result.Intent,
+                        _responseFormatter.Format(result),
+                        ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
+                }
 
             case NavigationRouteKind.MainVocabularyButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Vocabulary, cancellationToken);

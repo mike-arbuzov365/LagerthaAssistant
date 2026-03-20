@@ -259,6 +259,44 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldRouteFreeTextToAssistantFlow_AfterChatButtonPressed()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = ConversationAgentResult.Empty(
+                agentName: "assistant-agent",
+                intent: "assistant.chat",
+                message: "assistant reply")
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Settings };
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("formatted"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "Chat", null, updateId: 91), CancellationToken.None);
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "What can you do?", null, updateId: 92), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("assistant.chat", payload.Intent);
+        Assert.StartsWith(ConversationInputMarkers.Chat, orchestrator.LastInput, StringComparison.Ordinal);
+        Assert.Equal(NavigationSections.Chat, navigationState.CurrentSection);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldHandleVocabBatchCallback_WithoutUnsupportedCommandMessage()
     {
         var orchestrator = new FakeConversationOrchestrator();
