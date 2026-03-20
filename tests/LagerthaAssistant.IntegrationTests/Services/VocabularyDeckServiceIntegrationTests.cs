@@ -747,6 +747,81 @@ on the same page
     }
 
     [Fact]
+    public async Task AppendFromAssistantReplyAsync_ShouldInsertBlankLineBetweenMergedExamples_WhenMultipleMeanings()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var workbookPath = Path.Combine(tempDir, "wm-adjectives-ua-en.xlsx");
+            CreateTemplateWorkbook(workbookPath, "stable", "(adj) stable", "The system is stable.");
+
+            var options = new VocabularyDeckOptions
+            {
+                FolderPath = tempDir,
+                FilePattern = "wm-*.xlsx",
+                ReadOnlyFileNames = [],
+                AdjectiveDeckFileName = "wm-adjectives-ua-en.xlsx",
+                FallbackDeckFileName = "wm-adjectives-ua-en.xlsx"
+            };
+
+            var sut = new VocabularyDeckService(options, new VocabularyReplyParser(), NullLogger<VocabularyDeckService>.Instance);
+
+            var response = """
+            awkward
+
+            (adj) awkward
+            (adj) difficult
+
+            The awkward error message confused the usersFixing the awkward bug took longer than expected
+            """;
+
+            var result = await sut.AppendFromAssistantReplyAsync("awkward", response);
+            Assert.Equal(VocabularyAppendStatus.Added, result.Status);
+
+            using var archive = ZipFile.OpenRead(workbookPath);
+            var sheetEntry = archive.GetEntry("xl/worksheets/sheet1.xml");
+            Assert.NotNull(sheetEntry);
+            using var reader = new StreamReader(sheetEntry!.Open());
+            var sheetXml = reader.ReadToEnd();
+
+            var doc = XDocument.Parse(sheetXml);
+            XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+            var newRows = doc.Descendants(ns + "row")
+                .Where(r => (int?)r.Attribute("r") >= 12)
+                .OrderBy(r => (int)r.Attribute("r")!)
+                .ToList();
+
+            Assert.Single(newRows);
+
+            static string? GetCellText(XElement row, string colRef, XNamespace ns)
+            {
+                var rowNum = (int)row.Attribute("r")!;
+                var cellRef = $"{colRef}{rowNum}";
+                return row.Elements(ns + "c")
+                    .FirstOrDefault(c => c.Attribute("r")?.Value == cellRef)
+                    ?.Descendants(ns + "t")
+                    .FirstOrDefault()
+                    ?.Value;
+            }
+
+            var rowExamples = GetCellText(newRows[0], "H", ns);
+            Assert.NotNull(rowExamples);
+            Assert.Contains("The awkward error message confused the users", rowExamples!, StringComparison.Ordinal);
+            Assert.Contains("Fixing the awkward bug took longer than expected", rowExamples!, StringComparison.Ordinal);
+            Assert.Contains("\n\n", rowExamples!, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task AppendFromAssistantReplyAsync_ShouldPreferRequestedWord_WhenParsedHeaderDiffersForSingleWord()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"lagertha-vocabulary-{Guid.NewGuid():N}");
