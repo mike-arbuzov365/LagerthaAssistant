@@ -28,7 +28,11 @@ internal static class ApiTelegramUpdateMapper
             text = message.Caption;
         }
 
-        if (string.IsNullOrWhiteSpace(text))
+        var photoFileId = ResolveLargestPhotoFileId(message);
+        var documentFileId = message.Document?.FileId?.Trim();
+        var hasMedia = !string.IsNullOrWhiteSpace(photoFileId) || !string.IsNullOrWhiteSpace(documentFileId);
+
+        if (string.IsNullOrWhiteSpace(text) && !hasMedia)
         {
             return false;
         }
@@ -43,11 +47,15 @@ internal static class ApiTelegramUpdateMapper
             ChatId: chatId,
             UserId: userId.ToString(CultureInfo.InvariantCulture),
             ConversationId: conversationId,
-            Text: text.Trim(),
+            Text: text?.Trim() ?? string.Empty,
             MessageThreadId: message.MessageThreadId,
             LanguageCode: message.From?.LanguageCode,
             CallbackData: null,
             CallbackQueryId: null,
+            DocumentFileId: documentFileId,
+            DocumentFileName: message.Document?.FileName,
+            DocumentMimeType: message.Document?.MimeType,
+            PhotoFileId: photoFileId,
             IsCallback: false);
         return true;
     }
@@ -80,8 +88,26 @@ internal static class ApiTelegramUpdateMapper
             LanguageCode: callback.From?.LanguageCode,
             CallbackData: callback.Data.Trim(),
             CallbackQueryId: callback.Id,
+            DocumentFileId: null,
+            DocumentFileName: null,
+            DocumentMimeType: null,
+            PhotoFileId: null,
             IsCallback: true);
         return true;
+    }
+
+    private static string? ResolveLargestPhotoFileId(TelegramIncomingMessage message)
+    {
+        var photos = message.Photo;
+        if (photos is null || photos.Count == 0)
+        {
+            return null;
+        }
+
+        return photos
+            .OrderByDescending(photo => photo.FileSize ?? 0)
+            .Select(photo => photo.FileId?.Trim())
+            .FirstOrDefault(fileId => !string.IsNullOrWhiteSpace(fileId));
     }
 }
 
@@ -94,4 +120,8 @@ internal readonly record struct TelegramInboundMessage(
     string? LanguageCode,
     string? CallbackData,
     string? CallbackQueryId,
+    string? DocumentFileId,
+    string? DocumentFileName,
+    string? DocumentMimeType,
+    string? PhotoFileId,
     bool IsCallback);

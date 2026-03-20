@@ -233,6 +233,17 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             ]);
     }
 
+    public TelegramInlineKeyboardMarkup BuildVocabularyImportSourceKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("vocab.import.source.photo", locale, CallbackDataConstants.Vocab.ImportSourcePhoto), Button("vocab.import.source.file", locale, CallbackDataConstants.Vocab.ImportSourceFile)],
+                [Button("vocab.import.source.url", locale, CallbackDataConstants.Vocab.ImportSourceUrl), Button("vocab.import.source.text", locale, CallbackDataConstants.Vocab.ImportSourceText)],
+                [Button("menu.vocabulary.back", locale, CallbackDataConstants.Nav.Main)]
+            ]);
+    }
+
     public TelegramInlineKeyboardMarkup BuildVocabularyUrlSelectionKeyboard(string locale)
     {
         return new TelegramInlineKeyboardMarkup(

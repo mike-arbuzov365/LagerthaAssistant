@@ -316,6 +316,61 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldShowImportSourceMenu_WhenImportCallbackClicked()
+    {
+        var sender = new FakeTelegramBotSender();
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.Url, null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.import", payload.Intent);
+        Assert.Contains("Choose import source", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldWarnAboutExpectedFile_WhenFileSourceSelectedButTextSent()
+    {
+        const long chatId = 701001;
+        const long userId = 702002;
+        var sender = new FakeTelegramBotSender();
+        var importSourceReader = new FakeTelegramImportSourceReader
+        {
+            NextResult = new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.WrongInputType)
+        };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            importSourceReader: importSourceReader);
+
+        await sut.Webhook(BuildCallbackUpdate(chatId, userId, CallbackDataConstants.Vocab.Url, null), CancellationToken.None);
+        await sut.Webhook(BuildCallbackUpdate(chatId, userId, CallbackDataConstants.Vocab.ImportSourceFile, null, updateId: 61), CancellationToken.None);
+        var response = await sut.Webhook(BuildTextUpdate(chatId, userId, "plain text", null, updateId: 62), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.import.invalid", payload.Intent);
+        Assert.Contains("Waiting for file", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldAcceptNumericSelection_ForUrlSuggestions()
     {
         var orchestrator = new FakeConversationOrchestrator
@@ -356,6 +411,8 @@ public sealed class TelegramControllerTests
     [Fact]
     public async Task Webhook_ShouldAutoStartUrlFlow_WhenUserSendsUrlInVocabularySection()
     {
+        const long chatId = 801001;
+        const long userId = 802002;
         var orchestrator = new FakeConversationOrchestrator();
         var discovery = new FakeVocabularyDiscoveryService();
         var sender = new FakeTelegramBotSender();
@@ -375,7 +432,7 @@ public sealed class TelegramControllerTests
             new TelegramOptions { Enabled = true },
             vocabularyDiscoveryService: discovery);
 
-        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "https://example.com/page", null, updateId: 41), CancellationToken.None);
+        var response = await sut.Webhook(BuildTextUpdate(chatId, userId, "https://example.com/page", null, updateId: 41), CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(response.Result);
         var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
@@ -1880,7 +1937,8 @@ public sealed class TelegramControllerTests
         FakeVocabularySyncProcessor? vocabularySyncProcessor = null,
         FakeVocabularyIndexService? vocabularyIndexService = null,
         FakeVocabularyDeckService? vocabularyDeckService = null,
-        FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null)
+        FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null,
+        FakeTelegramImportSourceReader? importSourceReader = null)
     {
         return CreateSut(
             orchestrator,
@@ -1896,7 +1954,8 @@ public sealed class TelegramControllerTests
             vocabularySyncProcessor: vocabularySyncProcessor,
             vocabularyIndexService: vocabularyIndexService,
             vocabularyDeckService: vocabularyDeckService,
-            vocabularyDiscoveryService: vocabularyDiscoveryService);
+            vocabularyDiscoveryService: vocabularyDiscoveryService,
+            importSourceReader: importSourceReader);
     }
 
     private static TelegramController CreateSut(
@@ -1914,7 +1973,8 @@ public sealed class TelegramControllerTests
         FakeVocabularySyncProcessor? vocabularySyncProcessor = null,
         FakeVocabularyIndexService? vocabularyIndexService = null,
         FakeVocabularyDeckService? vocabularyDeckService = null,
-        FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null)
+        FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null,
+        FakeTelegramImportSourceReader? importSourceReader = null)
     {
         return CreateSut(
             orchestrator,
@@ -1935,7 +1995,8 @@ public sealed class TelegramControllerTests
             vocabularySyncProcessor: vocabularySyncProcessor,
             vocabularyIndexService: vocabularyIndexService,
             vocabularyDeckService: vocabularyDeckService,
-            vocabularyDiscoveryService: vocabularyDiscoveryService);
+            vocabularyDiscoveryService: vocabularyDiscoveryService,
+            importSourceReader: importSourceReader);
     }
 
     private static TelegramController CreateSut(
@@ -1957,7 +2018,8 @@ public sealed class TelegramControllerTests
         FakeVocabularySyncProcessor? vocabularySyncProcessor = null,
         FakeVocabularyIndexService? vocabularyIndexService = null,
         FakeVocabularyDeckService? vocabularyDeckService = null,
-        FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null)
+        FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null,
+        FakeTelegramImportSourceReader? importSourceReader = null)
     {
         return new TelegramController(
             orchestrator,
@@ -1976,6 +2038,7 @@ public sealed class TelegramControllerTests
             vocabularyDeckService ?? new FakeVocabularyDeckService(),
             new VocabularyReplyParser(),
             vocabularyDiscoveryService ?? new FakeVocabularyDiscoveryService(),
+            importSourceReader ?? new FakeTelegramImportSourceReader(),
             new VocabularyDeckOptions(),
             graphAuthService ?? new FakeGraphAuthService(),
             navigationPresenter ?? new FakeTelegramNavigationPresenter(),
@@ -2569,6 +2632,37 @@ public sealed class TelegramControllerTests
         }
     }
 
+    private sealed class FakeTelegramImportSourceReader : ITelegramImportSourceReader
+    {
+        public int Calls { get; private set; }
+
+        public TelegramImportSourceType? LastSourceType { get; private set; }
+
+        public TelegramImportInbound LastInbound { get; private set; } = new(string.Empty, null, null, null, null);
+
+        public TelegramImportSourceReadResult NextResult { get; set; }
+            = new(TelegramImportSourceReadStatus.Success);
+
+        public Task<TelegramImportSourceReadResult> ReadTextAsync(
+            TelegramImportInbound inbound,
+            TelegramImportSourceType sourceType,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            LastInbound = inbound;
+            LastSourceType = sourceType;
+            if (NextResult.Status == TelegramImportSourceReadStatus.Success)
+            {
+                var text = string.IsNullOrWhiteSpace(NextResult.Text)
+                    ? inbound.Text
+                    : NextResult.Text;
+                return Task.FromResult(new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.Success, text));
+            }
+
+            return Task.FromResult(NextResult);
+        }
+    }
+
     private sealed class FakeAssistantSessionService : IAssistantSessionService
     {
         public IReadOnlyCollection<LagerthaAssistant.Domain.AI.ConversationMessage> Messages => [];
@@ -2772,6 +2866,23 @@ public sealed class TelegramControllerTests
                 "stub.wip" => "WIP",
                 "menu.vocabulary.title" => "Vocabulary {0}",
                 "vocab.add.prompt" => "Add word",
+                "vocab.import.choose_source" => "Choose import source:",
+                "vocab.import.source.photo" => "Photo",
+                "vocab.import.source.file" => "File",
+                "vocab.import.source.url" => "URL",
+                "vocab.import.source.text" => "Text",
+                "vocab.import.prompt.photo" => "Send photo",
+                "vocab.import.prompt.file" => "Send file",
+                "vocab.import.prompt.url" => "Send URL",
+                "vocab.import.prompt.text" => "Send text",
+                "vocab.import.invalid_expected_photo" => "Waiting for photo",
+                "vocab.import.invalid_expected_file" => "Waiting for file",
+                "vocab.import.invalid_expected_url" => "Waiting for URL",
+                "vocab.import.invalid_expected_text" => "Waiting for text",
+                "vocab.import.file_unsupported" => "Unsupported file type",
+                "vocab.import.photo_no_text" => "No text on photo",
+                "vocab.import.file_no_text" => "No text in file",
+                "vocab.import.read_failed" => "Import failed: {0}",
                 "vocab.url.prompt" => "Send URL",
                 "vocab.url.invalid" => "Invalid source",
                 "vocab.url.empty" => "No candidates",
@@ -2923,6 +3034,13 @@ public sealed class TelegramControllerTests
             [
                 [new TelegramInlineKeyboardButton("Save all", CallbackDataConstants.Vocab.SaveBatchYes)],
                 [new TelegramInlineKeyboardButton("Skip all", CallbackDataConstants.Vocab.SaveBatchNo)]
+            ]);
+
+        public TelegramInlineKeyboardMarkup BuildVocabularyImportSourceKeyboard(string locale)
+            => new(
+            [
+                [new TelegramInlineKeyboardButton("Photo", CallbackDataConstants.Vocab.ImportSourcePhoto), new TelegramInlineKeyboardButton("File", CallbackDataConstants.Vocab.ImportSourceFile)],
+                [new TelegramInlineKeyboardButton("URL", CallbackDataConstants.Vocab.ImportSourceUrl), new TelegramInlineKeyboardButton("Text", CallbackDataConstants.Vocab.ImportSourceText)]
             ]);
 
         public TelegramInlineKeyboardMarkup BuildVocabularyUrlSelectionKeyboard(string locale)

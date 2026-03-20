@@ -14,7 +14,9 @@ public sealed record TelegramIncomingMessage(
     [property: JsonPropertyName("chat")] TelegramChatInfo Chat,
     [property: JsonPropertyName("text")] string? Text,
     [property: JsonPropertyName("caption")] string? Caption,
-    [property: JsonPropertyName("message_thread_id")] int? MessageThreadId);
+    [property: JsonPropertyName("message_thread_id")] int? MessageThreadId,
+    [property: JsonPropertyName("document")] TelegramIncomingDocument? Document = null,
+    [property: JsonPropertyName("photo")] IReadOnlyList<TelegramIncomingPhotoSize>? Photo = null);
 
 public sealed record TelegramUserInfo(
     [property: JsonPropertyName("id")] long Id,
@@ -35,6 +37,20 @@ public sealed record TelegramCallbackQuery(
     [property: JsonPropertyName("from")] TelegramUserInfo? From,
     [property: JsonPropertyName("message")] TelegramIncomingMessage? Message,
     [property: JsonPropertyName("data")] string? Data);
+
+public sealed record TelegramIncomingDocument(
+    [property: JsonPropertyName("file_id")] string FileId,
+    [property: JsonPropertyName("file_unique_id")] string? FileUniqueId,
+    [property: JsonPropertyName("file_name")] string? FileName,
+    [property: JsonPropertyName("mime_type")] string? MimeType,
+    [property: JsonPropertyName("file_size")] int? FileSize);
+
+public sealed record TelegramIncomingPhotoSize(
+    [property: JsonPropertyName("file_id")] string FileId,
+    [property: JsonPropertyName("file_unique_id")] string? FileUniqueId,
+    [property: JsonPropertyName("width")] int Width,
+    [property: JsonPropertyName("height")] int Height,
+    [property: JsonPropertyName("file_size")] int? FileSize);
 
 public sealed record TelegramWebhookResponse(
     bool Processed,

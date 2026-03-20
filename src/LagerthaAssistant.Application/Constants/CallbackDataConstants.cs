@@ -67,6 +67,10 @@ public static class CallbackDataConstants
         public const string Stats = "vocab:stats";
         public const string ListLegacy = "vocab:list";
         public const string Url = "vocab:url";
+        public const string ImportSourcePhoto = "vocab:url:source:photo";
+        public const string ImportSourceFile = "vocab:url:source:file";
+        public const string ImportSourceUrl = "vocab:url:source:url";
+        public const string ImportSourceText = "vocab:url:source:text";
         public const string UrlSelectAll = "vocab:url:select_all";
         public const string UrlCancel = "vocab:url:cancel";
         public const string Batch = "vocab:batch";

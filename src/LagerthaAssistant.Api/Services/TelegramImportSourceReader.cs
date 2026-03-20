@@ -1,0 +1,577 @@
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using ExcelDataReader;
+using LagerthaAssistant.Api.Interfaces;
+using LagerthaAssistant.Api.Options;
+using LagerthaAssistant.Infrastructure.Constants;
+using LagerthaAssistant.Infrastructure.Options;
+using Microsoft.Extensions.Options;
+using UglyToad.PdfPig;
+
+namespace LagerthaAssistant.Api.Services;
+
+internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
+{
+    private const int MaxImportBytes = 4_000_000;
+    private const int MaxPhotoBytes = 4_000_000;
+    private const string MimeTypePdf = "application/pdf";
+    private static int _codePageProviderRegistered;
+
+    private static readonly HashSet<string> SupportedFileExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".txt",
+        ".md",
+        ".csv",
+        ".log",
+        ".json",
+        ".pdf",
+        ".xlsx",
+        ".xls",
+        ".xlsm"
+    };
+
+    private static readonly HashSet<string> ExcelExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".xlsx",
+        ".xls",
+        ".xlsm"
+    };
+
+    private static readonly HashSet<string> ExcelMimeTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel.sheet.macroEnabled.12"
+    };
+
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly TelegramOptions _telegramOptions;
+    private readonly OpenAiOptions _openAiOptions;
+    private readonly ILogger<TelegramImportSourceReader> _logger;
+
+    public TelegramImportSourceReader(
+        IHttpClientFactory httpClientFactory,
+        IOptions<TelegramOptions> telegramOptions,
+        OpenAiOptions openAiOptions,
+        ILogger<TelegramImportSourceReader> logger)
+    {
+        _httpClientFactory = httpClientFactory;
+        _telegramOptions = telegramOptions.Value;
+        _openAiOptions = openAiOptions;
+        _logger = logger;
+    }
+
+    public async Task<TelegramImportSourceReadResult> ReadTextAsync(
+        TelegramImportInbound inbound,
+        TelegramImportSourceType sourceType,
+        CancellationToken cancellationToken = default)
+    {
+        return sourceType switch
+        {
+            TelegramImportSourceType.Url => ReadUrl(inbound),
+            TelegramImportSourceType.Text => ReadText(inbound),
+            TelegramImportSourceType.File => await ReadDocumentAsync(inbound, cancellationToken),
+            TelegramImportSourceType.Photo => await ReadPhotoAsync(inbound, cancellationToken),
+            _ => new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.Failed, Error: "Unsupported source type.")
+        };
+    }
+
+    private static TelegramImportSourceReadResult ReadUrl(TelegramImportInbound inbound)
+    {
+        if (!string.IsNullOrWhiteSpace(inbound.PhotoFileId) || !string.IsNullOrWhiteSpace(inbound.DocumentFileId))
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.WrongInputType);
+        }
+
+        var text = inbound.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.InvalidSource);
+        }
+
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri)
+            && (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.Success, text);
+        }
+
+        return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.InvalidSource);
+    }
+
+    private static TelegramImportSourceReadResult ReadText(TelegramImportInbound inbound)
+    {
+        if (!string.IsNullOrWhiteSpace(inbound.PhotoFileId) || !string.IsNullOrWhiteSpace(inbound.DocumentFileId))
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.WrongInputType);
+        }
+
+        var text = inbound.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.InvalidSource);
+        }
+
+        return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.Success, text);
+    }
+
+    private async Task<TelegramImportSourceReadResult> ReadDocumentAsync(
+        TelegramImportInbound inbound,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(inbound.DocumentFileId))
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.WrongInputType);
+        }
+
+        if (!IsSupportedDocumentType(inbound.DocumentFileName, inbound.DocumentMimeType))
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.UnsupportedFileType);
+        }
+
+        var download = await DownloadTelegramFileAsync(inbound.DocumentFileId, MaxImportBytes, cancellationToken);
+        if (!download.Success)
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.Failed, Error: download.Error);
+        }
+
+        var parse = ParseDocumentContent(download.Content!, inbound.DocumentFileName, inbound.DocumentMimeType);
+        if (!parse.Success)
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.Failed, Error: parse.Error);
+        }
+
+        var content = parse.Content ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.NoTextExtracted);
+        }
+
+        return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.Success, content.Trim());
+    }
+
+    private async Task<TelegramImportSourceReadResult> ReadPhotoAsync(
+        TelegramImportInbound inbound,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(inbound.PhotoFileId))
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.WrongInputType);
+        }
+
+        var download = await DownloadTelegramFileAsync(inbound.PhotoFileId, MaxPhotoBytes, cancellationToken);
+        if (!download.Success)
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.Failed, Error: download.Error);
+        }
+
+        var ocr = await ExtractTextFromImageAsync(download.Content!, "image/jpeg", cancellationToken);
+        if (!ocr.Success)
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.Failed, Error: ocr.Error);
+        }
+
+        if (string.IsNullOrWhiteSpace(ocr.Text))
+        {
+            return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.NoTextExtracted);
+        }
+
+        return new TelegramImportSourceReadResult(TelegramImportSourceReadStatus.Success, ocr.Text.Trim());
+    }
+
+    private static bool IsSupportedDocumentType(string? fileName, string? mimeType)
+    {
+        var extension = Path.GetExtension(fileName ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(extension) && SupportedFileExtensions.Contains(extension))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(mimeType))
+        {
+            return false;
+        }
+
+        return mimeType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(mimeType, "application/json", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(mimeType, "text/csv", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(mimeType, MimeTypePdf, StringComparison.OrdinalIgnoreCase)
+               || ExcelMimeTypes.Contains(mimeType);
+    }
+
+    private ParsedDocumentContent ParseDocumentContent(byte[] bytes, string? fileName, string? mimeType)
+    {
+        var documentKind = ResolveDocumentKind(fileName, mimeType);
+
+        try
+        {
+            var content = documentKind switch
+            {
+                DocumentKind.Pdf => ExtractTextFromPdf(bytes),
+                DocumentKind.Excel => ExtractTextFromExcel(bytes),
+                _ => DecodeText(bytes)
+            };
+
+            return ParsedDocumentContent.Ok(content);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to parse imported document. FileName={FileName}; MimeType={MimeType}; Kind={Kind}",
+                fileName ?? string.Empty,
+                mimeType ?? string.Empty,
+                documentKind);
+
+            return ParsedDocumentContent.Fail("Document parsing failed.");
+        }
+    }
+
+    private static DocumentKind ResolveDocumentKind(string? fileName, string? mimeType)
+    {
+        var extension = Path.GetExtension(fileName ?? string.Empty);
+        if (string.Equals(extension, ".pdf", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mimeType, MimeTypePdf, StringComparison.OrdinalIgnoreCase))
+        {
+            return DocumentKind.Pdf;
+        }
+
+        if (ExcelExtensions.Contains(extension) || (!string.IsNullOrWhiteSpace(mimeType) && ExcelMimeTypes.Contains(mimeType)))
+        {
+            return DocumentKind.Excel;
+        }
+
+        return DocumentKind.Text;
+    }
+
+    private static string ExtractTextFromPdf(byte[] bytes)
+    {
+        using var stream = new MemoryStream(bytes, writable: false);
+        using var document = PdfDocument.Open(stream);
+
+        var builder = new StringBuilder();
+        foreach (var page in document.GetPages())
+        {
+            if (string.IsNullOrWhiteSpace(page.Text))
+            {
+                continue;
+            }
+
+            if (builder.Length > 0)
+            {
+                builder.AppendLine();
+            }
+
+            builder.Append(page.Text.Trim());
+        }
+
+        return builder.ToString();
+    }
+
+    private static string ExtractTextFromExcel(byte[] bytes)
+    {
+        EnsureCodePageProviderRegistered();
+
+        using var stream = new MemoryStream(bytes, writable: false);
+        using var reader = ExcelReaderFactory.CreateReader(stream);
+
+        var values = new List<string>();
+        do
+        {
+            while (reader.Read())
+            {
+                for (var column = 0; column < reader.FieldCount; column++)
+                {
+                    var cellValue = reader.GetValue(column);
+                    if (cellValue is null)
+                    {
+                        continue;
+                    }
+
+                    var text = Convert.ToString(cellValue);
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        continue;
+                    }
+
+                    values.Add(text.Trim());
+                }
+            }
+        } while (reader.NextResult());
+
+        return string.Join(Environment.NewLine, values);
+    }
+
+    private async Task<TelegramDownloadResult> DownloadTelegramFileAsync(
+        string fileId,
+        int maxBytes,
+        CancellationToken cancellationToken)
+    {
+        if (!_telegramOptions.Enabled)
+        {
+            return TelegramDownloadResult.Fail("Telegram integration is disabled.");
+        }
+
+        if (string.IsNullOrWhiteSpace(_telegramOptions.BotToken))
+        {
+            return TelegramDownloadResult.Fail("Telegram bot token is missing.");
+        }
+
+        var filePathResult = await ResolveFilePathAsync(fileId, cancellationToken);
+        if (!filePathResult.Success || string.IsNullOrWhiteSpace(filePathResult.FilePath))
+        {
+            return TelegramDownloadResult.Fail(filePathResult.Error ?? "Telegram file path not found.");
+        }
+
+        var baseUrl = NormalizeApiBaseUrl(_telegramOptions.ApiBaseUrl);
+        var fileUri = new Uri($"{baseUrl}/file/bot{_telegramOptions.BotToken}/{filePathResult.FilePath}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, fileUri);
+        using var client = _httpClientFactory.CreateClient("telegram");
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(cancellationToken);
+            return TelegramDownloadResult.Fail($"Telegram file download failed ({(int)response.StatusCode}): {error}");
+        }
+
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        if (bytes.Length == 0)
+        {
+            return TelegramDownloadResult.Fail("Telegram file is empty.");
+        }
+
+        if (bytes.Length > maxBytes)
+        {
+            return TelegramDownloadResult.Fail($"Telegram file is too large ({bytes.Length} bytes).");
+        }
+
+        return TelegramDownloadResult.Ok(bytes);
+    }
+
+    private async Task<TelegramFilePathResult> ResolveFilePathAsync(string fileId, CancellationToken cancellationToken)
+    {
+        var baseUrl = NormalizeApiBaseUrl(_telegramOptions.ApiBaseUrl);
+        var uri = new Uri($"{baseUrl}/bot{_telegramOptions.BotToken}/getFile?file_id={Uri.EscapeDataString(fileId)}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var client = _httpClientFactory.CreateClient("telegram");
+        using var response = await client.SendAsync(request, cancellationToken);
+        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return TelegramFilePathResult.Fail($"Telegram getFile failed ({(int)response.StatusCode}): {raw}");
+        }
+
+        try
+        {
+            using var json = JsonDocument.Parse(raw);
+            var root = json.RootElement;
+            var ok = root.TryGetProperty("ok", out var okValue) && okValue.ValueKind == JsonValueKind.True;
+            if (!ok)
+            {
+                return TelegramFilePathResult.Fail("Telegram getFile returned ok=false.");
+            }
+
+            if (!root.TryGetProperty("result", out var result))
+            {
+                return TelegramFilePathResult.Fail("Telegram getFile response has no result.");
+            }
+
+            if (!result.TryGetProperty("file_path", out var pathElement)
+                || pathElement.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(pathElement.GetString()))
+            {
+                return TelegramFilePathResult.Fail("Telegram getFile response has no file_path.");
+            }
+
+            return TelegramFilePathResult.Ok(pathElement.GetString()!);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse Telegram getFile response.");
+            return TelegramFilePathResult.Fail("Failed to parse Telegram getFile response.");
+        }
+    }
+
+    private async Task<OcrResult> ExtractTextFromImageAsync(
+        byte[] imageBytes,
+        string mimeType,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_openAiOptions.ApiKey))
+        {
+            return OcrResult.Fail("OpenAI API key is not configured.");
+        }
+
+        var baseUrl = string.IsNullOrWhiteSpace(_openAiOptions.BaseUrl)
+            ? OpenAiConstants.DefaultBaseUrl
+            : _openAiOptions.BaseUrl.Trim();
+        if (!baseUrl.EndsWith("/", StringComparison.Ordinal))
+        {
+            baseUrl += "/";
+        }
+
+        var endpoint = new Uri(new Uri(baseUrl), OpenAiConstants.ChatCompletionsEndpoint);
+        var dataUrl = $"data:{mimeType};base64,{Convert.ToBase64String(imageBytes)}";
+
+        var requestBody = new
+        {
+            model = _openAiOptions.Model,
+            temperature = 0.0,
+            messages = new object[]
+            {
+                new
+                {
+                    role = "system",
+                    content = "You extract text from images. Return only extracted plain text. No explanations."
+                },
+                new
+                {
+                    role = "user",
+                    content = new object[]
+                    {
+                        new
+                        {
+                            type = "text",
+                            text = "Extract all readable text from this image."
+                        },
+                        new
+                        {
+                            type = "image_url",
+                            image_url = new
+                            {
+                                url = dataUrl
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var payload = JsonSerializer.Serialize(requestBody);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _openAiOptions.ApiKey);
+
+        using var client = _httpClientFactory.CreateClient("vocab-discovery");
+        using var response = await client.SendAsync(request, cancellationToken);
+        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Image OCR request failed with status {StatusCode}: {Body}", (int)response.StatusCode, raw);
+            return OcrResult.Fail($"OCR request failed ({(int)response.StatusCode}).");
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var text = ExtractAssistantText(doc.RootElement);
+            return OcrResult.Ok(text);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse OCR response.");
+            return OcrResult.Fail("Failed to parse OCR response.");
+        }
+    }
+
+    private static string ExtractAssistantText(JsonElement root)
+    {
+        if (!root.TryGetProperty("choices", out var choices)
+            || choices.ValueKind != JsonValueKind.Array
+            || choices.GetArrayLength() == 0)
+        {
+            return string.Empty;
+        }
+
+        var firstChoice = choices[0];
+        if (!firstChoice.TryGetProperty("message", out var message)
+            || !message.TryGetProperty("content", out var content))
+        {
+            return string.Empty;
+        }
+
+        return content.ValueKind switch
+        {
+            JsonValueKind.String => content.GetString() ?? string.Empty,
+            JsonValueKind.Array => string.Join(string.Empty, content.EnumerateArray()
+                .Where(x => x.TryGetProperty("type", out var type) && type.GetString() == "text")
+                .Select(x => x.TryGetProperty("text", out var text) ? text.GetString() : string.Empty)
+                .Where(x => !string.IsNullOrWhiteSpace(x))),
+            _ => string.Empty
+        };
+    }
+
+    private static string DecodeText(byte[] bytes)
+    {
+        if (bytes.Length >= 3
+            && bytes[0] == 0xEF
+            && bytes[1] == 0xBB
+            && bytes[2] == 0xBF)
+        {
+            return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+        }
+
+        return Encoding.UTF8.GetString(bytes);
+    }
+
+    private static string NormalizeApiBaseUrl(string? value)
+    {
+        var baseUrl = string.IsNullOrWhiteSpace(value)
+            ? "https://api.telegram.org"
+            : value.Trim();
+
+        return baseUrl.TrimEnd('/');
+    }
+
+    private static void EnsureCodePageProviderRegistered()
+    {
+        if (Interlocked.Exchange(ref _codePageProviderRegistered, 1) == 0)
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        }
+    }
+
+    private enum DocumentKind
+    {
+        Text = 0,
+        Pdf = 1,
+        Excel = 2
+    }
+
+    private sealed record TelegramDownloadResult(bool Success, byte[]? Content = null, string? Error = null)
+    {
+        public static TelegramDownloadResult Ok(byte[] content) => new(true, content);
+
+        public static TelegramDownloadResult Fail(string error) => new(false, null, error);
+    }
+
+    private sealed record TelegramFilePathResult(bool Success, string? FilePath = null, string? Error = null)
+    {
+        public static TelegramFilePathResult Ok(string filePath) => new(true, filePath);
+
+        public static TelegramFilePathResult Fail(string error) => new(false, null, error);
+    }
+
+    private sealed record OcrResult(bool Success, string? Text = null, string? Error = null)
+    {
+        public static OcrResult Ok(string? text) => new(true, text);
+
+        public static OcrResult Fail(string error) => new(false, null, error);
+    }
+
+    private sealed record ParsedDocumentContent(bool Success, string? Content = null, string? Error = null)
+    {
+        public static ParsedDocumentContent Ok(string? content) => new(true, content);
+
+        public static ParsedDocumentContent Fail(string error) => new(false, null, error);
+    }
+}
