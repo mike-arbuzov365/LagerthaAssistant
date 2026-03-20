@@ -1374,7 +1374,8 @@ public sealed class TelegramControllerTests
 
         Assert.True(payload.Replied);
         Assert.Equal("vocabulary.single", payload.Intent);
-        Assert.Contains("❓ Word", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("❓ Did you mean:", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("❓ Word", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("Did you mean:", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("not recognized", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Did you mean", sender.LastText, StringComparison.OrdinalIgnoreCase);

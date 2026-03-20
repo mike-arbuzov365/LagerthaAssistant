@@ -36,6 +36,7 @@ public sealed class TelegramController : ControllerBase
     private const int ManualSyncBatchSize = 25;
     private const int ManualSyncMaxPasses = 5;
     private static readonly Regex LeadingDecorationRegex = new("^[^\\p{L}\\p{N}]+", RegexOptions.Compiled);
+    private static readonly Regex SentenceSplitRegex = new("(?<=[\\.!\\?])\\s+", RegexOptions.Compiled);
     private static readonly string[] PrimaryPartOfSpeechMarkers = ["n", "v", "pv", "iv", "adv", "prep"];
 
     private static readonly ConcurrentDictionary<string, GraphDeviceLoginChallenge> PendingGraphChallenges = new(StringComparer.Ordinal);
@@ -1162,11 +1163,12 @@ public sealed class TelegramController : ControllerBase
 
             if (suggestions.Count > 0)
             {
-                warnings.Add(EnsureQuestionMarker(_navigationPresenter.GetText(
+                var localizedMessage = _navigationPresenter.GetText(
                     "vocab.word_unrecognized_with_suggestions",
                     locale,
                     item.Input,
-                    string.Join(", ", suggestions))));
+                    string.Join(", ", suggestions));
+                warnings.Add(FormatWordSuggestionWarning(localizedMessage));
                 continue;
             }
 
@@ -1177,6 +1179,32 @@ public sealed class TelegramController : ControllerBase
         }
 
         return string.Join(Environment.NewLine, warnings.Distinct(StringComparer.Ordinal));
+    }
+
+    private string FormatWordSuggestionWarning(string localizedMessage)
+    {
+        var sentences = SentenceSplitRegex.Split(localizedMessage)
+            .Select(static sentence => sentence.Trim())
+            .Where(static sentence => !string.IsNullOrWhiteSpace(sentence))
+            .ToList();
+
+        if (sentences.Count < 2)
+        {
+            return localizedMessage;
+        }
+
+        var lines = new List<string>(sentences.Count)
+        {
+            sentences[0],
+            EnsureQuestionMarker(sentences[1])
+        };
+
+        if (sentences.Count > 2)
+        {
+            lines.AddRange(sentences.Skip(2));
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private string BuildFoundInDeckInfo(IReadOnlyList<ConversationAgentItemResult> items, string locale)
