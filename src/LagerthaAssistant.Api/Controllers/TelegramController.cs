@@ -66,6 +66,7 @@ public sealed class TelegramController : ControllerBase
     private static readonly ConcurrentDictionary<string, PendingVocabularySaveRequest> PendingVocabularySaves = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, PendingVocabularyBatchSaveRequest> PendingVocabularyBatchSaves = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, PendingVocabularyUrlSession> PendingVocabularyUrlSessions = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, PendingChatActionKind> PendingChatActions = new(StringComparer.Ordinal);
 
     private readonly IConversationOrchestrator _orchestrator;
     private readonly IAssistantSessionService _assistantSessionService;
@@ -335,6 +336,7 @@ public sealed class TelegramController : ControllerBase
 
             case NavigationRouteKind.MainChatButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Chat, cancellationToken);
+                PendingChatActions.TryRemove(BuildPendingChatActionKey(scope), out _);
                 return new TelegramRouteResponse(
                     "nav.main.chat",
                     _navigationPresenter.GetText("menu.chat.title", locale),
@@ -342,6 +344,21 @@ public sealed class TelegramController : ControllerBase
 
             case NavigationRouteKind.ChatText:
                 {
+                    var pendingChatKey = BuildPendingChatActionKey(scope);
+                    if (PendingChatActions.TryGetValue(pendingChatKey, out var pendingAction))
+                    {
+                        var pendingResponse = await TryHandlePendingChatActionAsync(
+                            pendingAction,
+                            inbound,
+                            scope,
+                            locale,
+                            cancellationToken);
+                        if (pendingResponse is not null)
+                        {
+                            return pendingResponse;
+                        }
+                    }
+
                     var chatInput = inbound.Text;
                     if (!chatInput.StartsWith("/", StringComparison.Ordinal))
                     {
@@ -354,6 +371,17 @@ public sealed class TelegramController : ControllerBase
                         scope.UserId,
                         scope.ConversationId,
                         cancellationToken);
+
+                    var actionResponse = await TryHandleAssistantChatActionIntentAsync(
+                        result.Intent,
+                        inbound,
+                        scope,
+                        locale,
+                        cancellationToken);
+                    if (actionResponse is not null)
+                    {
+                        return actionResponse;
+                    }
 
                     return new TelegramRouteResponse(
                         result.Intent,
@@ -436,6 +464,251 @@ public sealed class TelegramController : ControllerBase
         }
     }
 
+    private async Task<TelegramRouteResponse?> TryHandlePendingChatActionAsync(
+        PendingChatActionKind action,
+        TelegramInboundMessage inbound,
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var pendingKey = BuildPendingChatActionKey(scope);
+        switch (action)
+        {
+            case PendingChatActionKind.VocabularyImport:
+                {
+                    var importResponse = await TryHandleVocabularyImportFlowAsync(
+                        inbound,
+                        scope,
+                        locale,
+                        cancellationToken);
+
+                    if (importResponse is null)
+                    {
+                        PendingChatActions.TryRemove(pendingKey, out _);
+                        return null;
+                    }
+
+                    var keepPending = PendingVocabularyUrlSessions.ContainsKey(BuildPendingUrlSessionKey(scope));
+                    if (!keepPending)
+                    {
+                        PendingChatActions.TryRemove(pendingKey, out _);
+                    }
+
+                    return await FinalizeChatActionResponseAsync(scope, importResponse, cancellationToken);
+                }
+
+            case PendingChatActionKind.VocabularyAdd:
+            case PendingChatActionKind.VocabularyBatch:
+                {
+                    var text = inbound.Text?.Trim() ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        return null;
+                    }
+
+                    if (string.Equals(text, "/cancel", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(text, "cancel", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(text, "скасувати", StringComparison.OrdinalIgnoreCase))
+                    {
+                        PendingChatActions.TryRemove(pendingKey, out _);
+                        return await FinalizeChatActionResponseAsync(
+                            scope,
+                            new TelegramRouteResponse(
+                                "assistant.chat.action.cancelled",
+                                _navigationPresenter.GetText("vocab.url.selection_cancelled", locale),
+                                ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale))),
+                            cancellationToken);
+                    }
+
+                    var result = await _orchestrator.ProcessAsync(
+                        text,
+                        scope.Channel,
+                        scope.UserId,
+                        scope.ConversationId,
+                        cancellationToken);
+
+                    var response = await BuildVocabularyTextResponseAsync(result, scope, locale, text, cancellationToken);
+                    PendingChatActions.TryRemove(pendingKey, out _);
+                    return await FinalizeChatActionResponseAsync(scope, response, cancellationToken);
+                }
+
+            default:
+                PendingChatActions.TryRemove(pendingKey, out _);
+                return null;
+        }
+    }
+
+    private async Task<TelegramRouteResponse?> TryHandleAssistantChatActionIntentAsync(
+        string intent,
+        TelegramInboundMessage inbound,
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var pendingKey = BuildPendingChatActionKey(scope);
+
+        switch (intent)
+        {
+            case "assistant.vocabulary.add.start":
+                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyAdd;
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    HandleVocabularyAddCallback(scope, locale),
+                    cancellationToken);
+
+            case "assistant.vocabulary.batch.start":
+                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyBatch;
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    BuildBatchModeResponse(scope, locale),
+                    cancellationToken);
+
+            case "assistant.vocabulary.import.start":
+                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    HandleVocabularyImportStartCallback(scope, locale),
+                    cancellationToken);
+
+            case "assistant.vocabulary.import.source.photo":
+                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.Photo),
+                    cancellationToken);
+
+            case "assistant.vocabulary.import.source.file":
+                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.File),
+                    cancellationToken);
+
+            case "assistant.vocabulary.import.source.url":
+                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.Url),
+                    cancellationToken);
+
+            case "assistant.vocabulary.import.source.text":
+                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.Text),
+                    cancellationToken);
+
+            case "assistant.vocabulary.stats":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await HandleVocabularyStatsCallbackAsync(locale, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.vocabulary.open":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await BuildVocabularySectionResponseAsync(locale, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.settings.open":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.settings.save_mode.open":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await BuildSaveModeResponseAsync(scope, locale, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.settings.language.open":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await HandleSettingsCallbackAsync(CallbackDataConstants.Settings.Language, scope, locale, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.settings.notion.open":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await HandleSettingsCallbackAsync(CallbackDataConstants.Settings.Notion, scope, locale, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.onedrive.open":
+            case "assistant.onedrive.status":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.onedrive.login":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await HandleOneDriveCallbackAsync(CallbackDataConstants.OneDrive.Login, inbound, scope, locale, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.onedrive.logout":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await HandleOneDriveCallbackAsync(CallbackDataConstants.OneDrive.Logout, inbound, scope, locale, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.onedrive.sync":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await HandleOneDriveCallbackAsync(CallbackDataConstants.OneDrive.SyncNow, inbound, scope, locale, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.onedrive.index.rebuild":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await HandleOneDriveCallbackAsync(CallbackDataConstants.OneDrive.RebuildIndex, inbound, scope, locale, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.onedrive.cache.clear":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    await HandleOneDriveCallbackAsync(CallbackDataConstants.OneDrive.ClearCache, inbound, scope, locale, cancellationToken),
+                    cancellationToken);
+
+            case "assistant.shopping.open":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    new TelegramRouteResponse(
+                        "nav.shopping",
+                        _navigationPresenter.GetText("menu.shopping.title", locale),
+                        InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale))),
+                    cancellationToken);
+
+            case "assistant.weekly.open":
+                return await FinalizeChatActionResponseAsync(
+                    scope,
+                    new TelegramRouteResponse(
+                        "nav.weekly",
+                        _navigationPresenter.GetText("menu.weekly.title", locale),
+                        InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale))),
+                    cancellationToken);
+
+            default:
+                return null;
+        }
+    }
+
+    private async Task<TelegramRouteResponse> FinalizeChatActionResponseAsync(
+        ConversationScope scope,
+        TelegramRouteResponse response,
+        CancellationToken cancellationToken)
+    {
+        await _navigationStateService.SetCurrentSectionAsync(
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
+            NavigationSections.Chat,
+            cancellationToken);
+
+        return response;
+    }
+
     private async Task<TelegramRouteResponse> HandleCallbackAsync(
         string callbackData,
         TelegramInboundMessage inbound,
@@ -448,6 +721,7 @@ public sealed class TelegramController : ControllerBase
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Main, cancellationToken);
             PendingVocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
+            PendingChatActions.TryRemove(BuildPendingChatActionKey(scope), out _);
             return new TelegramRouteResponse(
                 "nav.main",
                 _navigationPresenter.GetText("menu.main.title", locale),
@@ -1242,6 +1516,16 @@ public sealed class TelegramController : ControllerBase
         }
 
         var orderedCandidates = OrderUrlCandidates(discovery.Candidates);
+        if (orderedCandidates.Count == 1)
+        {
+            PendingVocabularyUrlSessions.TryRemove(pendingKey, out _);
+            return await ProcessVocabularyUrlSelectionAsync(
+                [orderedCandidates[0].Word],
+                scope,
+                locale,
+                cancellationToken);
+        }
+
         PendingVocabularyUrlSessions[pendingKey] = PendingVocabularyUrlSession.AwaitingSelection(orderedCandidates);
 
         return new TelegramRouteResponse(
@@ -2902,6 +3186,9 @@ public sealed class TelegramController : ControllerBase
     private static string BuildPendingSaveKey(ConversationScope scope)
         => string.Concat(scope.Channel, ":", scope.UserId, ":", scope.ConversationId);
 
+    private static string BuildPendingChatActionKey(ConversationScope scope)
+        => string.Concat(scope.Channel, ":", scope.UserId, ":", scope.ConversationId);
+
     private static string BuildPendingUrlSessionKey(ConversationScope scope)
         => string.Concat(scope.Channel, ":", scope.UserId, ":", scope.ConversationId);
 
@@ -2938,6 +3225,13 @@ public sealed class TelegramController : ControllerBase
         AwaitingSourceType = 0,
         AwaitingSourceInput = 1,
         AwaitingSelection = 2
+    }
+
+    private enum PendingChatActionKind
+    {
+        VocabularyAdd = 0,
+        VocabularyBatch = 1,
+        VocabularyImport = 2
     }
 
     private sealed record PendingVocabularyUrlCandidate(
