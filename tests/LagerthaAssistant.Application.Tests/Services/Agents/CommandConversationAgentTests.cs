@@ -339,6 +339,22 @@ public sealed class CommandConversationAgentTests
         Assert.Contains("Unsupported command", result.Message);
     }
 
+    [Fact]
+    public void CanHandle_ShouldReturnFalse_ForChatMarkerInput()
+    {
+        var session = new FakeAssistantSessionService();
+        var sync = new FakeVocabularySyncProcessor();
+        var sut = CreateSut(session, sync);
+
+        var context = new ConversationAgentContext(
+            $"{ConversationInputMarkers.Chat} Що ти вмієш?",
+            [$"{ConversationInputMarkers.Chat} Що ти вмієш?"]);
+
+        var canHandle = sut.CanHandle(context);
+
+        Assert.False(canHandle);
+    }
+
     private static CommandConversationAgent CreateSut(
         FakeAssistantSessionService session,
         FakeVocabularySyncProcessor sync)

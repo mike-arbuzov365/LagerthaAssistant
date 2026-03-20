@@ -111,16 +111,20 @@ public sealed class TelegramControllerTests
             {
                 Enabled = true,
                 Version = "2026.03.20",
+                ReleaseDate = "2026-03-20",
                 NotesEn = "Improved chat and import flows."
             });
 
         _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 501), CancellationToken.None);
-        Assert.Contains("Bot update: 2026.03.20", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Bot update", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Version: <b>2026.03.20</b>", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Date: 2026-03-20", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("What's new: Improved chat and import flows.", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("assistant reply", sender.LastText, StringComparison.Ordinal);
         Assert.Equal(1, unitOfWork.SaveChangesCalls);
 
         _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 502), CancellationToken.None);
-        Assert.DoesNotContain("Bot update: 2026.03.20", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Bot update", sender.LastText, StringComparison.Ordinal);
         Assert.Equal("assistant reply", sender.LastText);
         Assert.Equal(1, unitOfWork.SaveChangesCalls);
 
@@ -132,6 +136,53 @@ public sealed class TelegramControllerTests
 
         Assert.NotNull(stored);
         Assert.Equal("2026.03.20", stored!.Value);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldNormalizeGuidReleaseVersionInAnnouncement()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sender = new FakeTelegramBotSender();
+        var memoryRepository = new FakeUserMemoryRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        const string guidVersion = "20df36d2-5eb5-42cc-85b0-d0015d1044f7";
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService
+            {
+                CurrentMode = VocabularyStorageMode.Graph
+            },
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("assistant reply"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            userMemoryRepository: memoryRepository,
+            unitOfWork: unitOfWork,
+            releaseAnnouncementOptions: new ReleaseAnnouncementOptions
+            {
+                Enabled = true,
+                Version = guidVersion,
+                ReleaseDate = "2026-03-20"
+            });
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 511), CancellationToken.None);
+
+        Assert.Contains("Version: <b>build-20df36d2</b>", sender.LastText, StringComparison.Ordinal);
+
+        var stored = await memoryRepository.GetByKeyAsync(
+            UserPreferenceMemoryKeys.ReleaseLastNotifiedVersion,
+            "telegram",
+            "2002",
+            CancellationToken.None);
+        Assert.NotNull(stored);
+        Assert.Equal("build-20df36d2", stored!.Value);
     }
 
     [Fact]

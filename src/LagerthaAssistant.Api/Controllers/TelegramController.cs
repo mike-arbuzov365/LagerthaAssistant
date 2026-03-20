@@ -50,8 +50,14 @@ public sealed class TelegramController : ControllerBase
     [
         "RELEASE_ANNOUNCEMENT_VERSION",
         "RELEASE_VERSION",
-        "RAILWAY_DEPLOYMENT_ID",
-        "RAILWAY_GIT_COMMIT_SHA"
+        "RAILWAY_GIT_COMMIT_SHA",
+        "RAILWAY_DEPLOYMENT_ID"
+    ];
+    private static readonly string[] ReleaseDateEnvironmentKeys =
+    [
+        "RELEASE_DATE",
+        "RAILWAY_DEPLOYMENT_CREATED_AT",
+        "RAILWAY_DEPLOYED_AT"
     ];
     private static readonly HashSet<string> UrlSelectAllTokens = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -2983,7 +2989,7 @@ public sealed class TelegramController : ControllerBase
         if (!string.IsNullOrWhiteSpace(configured)
             && !string.Equals(configured, AutomaticReleaseVersionToken, StringComparison.OrdinalIgnoreCase))
         {
-            return configured;
+            return NormalizeReleaseVersion(configured);
         }
 
         foreach (var key in ReleaseVersionEnvironmentKeys)
@@ -2991,7 +2997,7 @@ public sealed class TelegramController : ControllerBase
             var value = Environment.GetEnvironmentVariable(key)?.Trim();
             if (!string.IsNullOrWhiteSpace(value))
             {
-                return value;
+                return NormalizeReleaseVersion(value);
             }
         }
 
@@ -3003,10 +3009,60 @@ public sealed class TelegramController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(informational))
         {
-            return informational;
+            return NormalizeReleaseVersion(informational);
         }
 
-        return typeof(TelegramController).Assembly.GetName().Version?.ToString();
+        return NormalizeReleaseVersion(typeof(TelegramController).Assembly.GetName().Version?.ToString());
+    }
+
+    private DateTimeOffset ResolveReleaseAnnouncementDate()
+    {
+        var configured = _releaseAnnouncementOptions.ReleaseDate?.Trim();
+        if (!string.IsNullOrWhiteSpace(configured)
+            && DateTimeOffset.TryParse(configured, out var configuredDate))
+        {
+            return configuredDate;
+        }
+
+        foreach (var key in ReleaseDateEnvironmentKeys)
+        {
+            var value = Environment.GetEnvironmentVariable(key)?.Trim();
+            if (!string.IsNullOrWhiteSpace(value)
+                && DateTimeOffset.TryParse(value, out var environmentDate))
+            {
+                return environmentDate;
+            }
+        }
+
+        return DateTimeOffset.UtcNow;
+    }
+
+    private static string? NormalizeReleaseVersion(string? rawVersion)
+    {
+        if (string.IsNullOrWhiteSpace(rawVersion))
+        {
+            return null;
+        }
+
+        var value = rawVersion.Trim();
+        var plusIndex = value.IndexOf('+', StringComparison.Ordinal);
+        if (plusIndex > 0)
+        {
+            value = value[..plusIndex];
+        }
+
+        if (Guid.TryParse(value, out _))
+        {
+            return $"build-{value[..8]}";
+        }
+
+        if (value.Length >= 12
+            && value.All(static c => char.IsAsciiHexDigit(c)))
+        {
+            return value[..8].ToLowerInvariant();
+        }
+
+        return value;
     }
 
     private string BuildReleaseAnnouncementBlock(string locale, string version)
@@ -3014,17 +3070,20 @@ public sealed class TelegramController : ControllerBase
         var normalized = LocalizationConstants.NormalizeLocaleCode(locale);
         var notes = _releaseAnnouncementOptions.ResolveNotes(normalized)?.Trim();
         var encodedVersion = WebUtility.HtmlEncode(version);
+        var releaseDate = ResolveReleaseAnnouncementDate();
+        var dateText = releaseDate.ToString("yyyy-MM-dd");
+        var encodedDate = WebUtility.HtmlEncode(dateText);
 
         if (string.IsNullOrWhiteSpace(notes))
         {
             notes = normalized switch
             {
-                LocalizationConstants.UkrainianLocale => "Невеликі покращення стабільності та якості роботи.",
+                LocalizationConstants.UkrainianLocale => "Покращено chat-режим і потоки виконання дій з природної мови.",
                 LocalizationConstants.SpanishLocale => "Pequeñas mejoras de estabilidad y calidad.",
                 LocalizationConstants.FrenchLocale => "Petites améliorations de stabilité et de qualité.",
                 LocalizationConstants.GermanLocale => "Kleine Verbesserungen bei Stabilität und Qualität.",
                 LocalizationConstants.PolishLocale => "Drobne usprawnienia stabilności i jakości.",
-                _ => "Minor stability and quality improvements."
+                _ => "Improved chat mode action handling and response quality."
             };
         }
 
@@ -3033,16 +3092,16 @@ public sealed class TelegramController : ControllerBase
         return normalized switch
         {
             LocalizationConstants.UkrainianLocale
-                => $"📣 <b>Оновлення бота: {encodedVersion}</b>{Environment.NewLine}Що нового: {encodedNotes}",
+                => $"📣 <b>Оновлення бота</b>{Environment.NewLine}Версія: <b>{encodedVersion}</b>{Environment.NewLine}Дата: {encodedDate}{Environment.NewLine}Що нового: {encodedNotes}",
             LocalizationConstants.SpanishLocale
-                => $"📣 <b>Actualización del bot: {encodedVersion}</b>{Environment.NewLine}Novedades: {encodedNotes}",
+                => $"📣 <b>Actualización del bot</b>{Environment.NewLine}Versión: <b>{encodedVersion}</b>{Environment.NewLine}Fecha: {encodedDate}{Environment.NewLine}Novedades: {encodedNotes}",
             LocalizationConstants.FrenchLocale
-                => $"📣 <b>Mise à jour du bot : {encodedVersion}</b>{Environment.NewLine}Nouveautés : {encodedNotes}",
+                => $"📣 <b>Mise à jour du bot</b>{Environment.NewLine}Version : <b>{encodedVersion}</b>{Environment.NewLine}Date : {encodedDate}{Environment.NewLine}Nouveautés : {encodedNotes}",
             LocalizationConstants.GermanLocale
-                => $"📣 <b>Bot-Update: {encodedVersion}</b>{Environment.NewLine}Neu: {encodedNotes}",
+                => $"📣 <b>Bot-Update</b>{Environment.NewLine}Version: <b>{encodedVersion}</b>{Environment.NewLine}Datum: {encodedDate}{Environment.NewLine}Neu: {encodedNotes}",
             LocalizationConstants.PolishLocale
-                => $"📣 <b>Aktualizacja bota: {encodedVersion}</b>{Environment.NewLine}Nowości: {encodedNotes}",
-            _ => $"📣 <b>Bot update: {encodedVersion}</b>{Environment.NewLine}What's new: {encodedNotes}"
+                => $"📣 <b>Aktualizacja bota</b>{Environment.NewLine}Wersja: <b>{encodedVersion}</b>{Environment.NewLine}Data: {encodedDate}{Environment.NewLine}Nowości: {encodedNotes}",
+            _ => $"📣 <b>Bot update</b>{Environment.NewLine}Version: <b>{encodedVersion}</b>{Environment.NewLine}Date: {encodedDate}{Environment.NewLine}What's new: {encodedNotes}"
         };
     }
 
