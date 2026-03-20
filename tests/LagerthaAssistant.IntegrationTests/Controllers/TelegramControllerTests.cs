@@ -455,6 +455,44 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldProcessInlineAddWordRequestInChat_WhenWordIsProvided()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        orchestrator.NextResults.Enqueue(ConversationAgentResult.Empty(
+            agentName: "assistant-agent",
+            intent: "assistant.vocabulary.add.start",
+            message: "Please send the word you want to add."));
+        orchestrator.NextResults.Enqueue(BuildVocabularySingleResult("goal"));
+
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Main };
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("formatted"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "Chat", null, updateId: 221), CancellationToken.None);
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "Додай слово goal", null, updateId: 222), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("vocabulary.single", payload.Intent);
+        Assert.Equal("goal", orchestrator.LastInput);
+        Assert.Equal(NavigationSections.Chat, navigationState.CurrentSection);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldExecuteSettingsActionInChat_AndStayInChatSection()
     {
         var orchestrator = new FakeConversationOrchestrator
@@ -2412,18 +2450,18 @@ public sealed class TelegramControllerTests
             CallbackQuery: null);
     }
 
-    private static ConversationAgentResult BuildVocabularySingleResult()
+    private static ConversationAgentResult BuildVocabularySingleResult(string inputWord = "smile")
     {
         var item = new ConversationAgentItemResult(
-            Input: "smile",
-            Lookup: new VocabularyLookupResult("smile", []),
+            Input: inputWord,
+            Lookup: new VocabularyLookupResult(inputWord, []),
             AssistantCompletion: new AssistantCompletionResult(
-                "smile\n\n(v) усміхатися\n\nShe smiled after fixing the bug.",
+                $"{inputWord}\n\n(v) усміхатися\n\nShe smiled after fixing the bug.",
                 "test-model",
                 Usage: null),
             AppendPreview: new VocabularyAppendPreviewResult(
                 Status: VocabularyAppendPreviewStatus.ReadyToAppend,
-                Word: "smile",
+                Word: inputWord,
                 TargetDeckFileName: "wm-verbs-us-en.xlsx",
                 TargetDeckPath: "/tmp/wm-verbs-us-en.xlsx",
                 DuplicateMatches: null,
@@ -2473,6 +2511,8 @@ public sealed class TelegramControllerTests
 
         public string? LastConversationId { get; private set; }
 
+        public Queue<ConversationAgentResult> NextResults { get; } = new();
+
         public ConversationAgentResult NextResult { get; set; } = new(
             AgentName: "vocabulary-agent",
             Intent: "vocabulary.single",
@@ -2500,6 +2540,11 @@ public sealed class TelegramControllerTests
             LastChannel = channel;
             LastUserId = userId;
             LastConversationId = conversationId;
+            if (NextResults.Count > 0)
+            {
+                return Task.FromResult(NextResults.Dequeue());
+            }
+
             return Task.FromResult(NextResult);
         }
     }

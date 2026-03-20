@@ -43,6 +43,7 @@ public sealed class TelegramController : ControllerBase
     private static readonly Regex SelectionNumberRegex = new(@"\d+", RegexOptions.Compiled);
     private static readonly Regex LeadingDecorationRegex = new("^[^\\p{L}\\p{N}]+", RegexOptions.Compiled);
     private static readonly Regex SentenceSplitRegex = new("(?<=[\\.!\\?])\\s+", RegexOptions.Compiled);
+    private static readonly Regex LeadingWordSeparatorRegex = new("^[\\s:;,.!\\-–—]+", RegexOptions.Compiled);
     private static readonly string[] PrimaryPartOfSpeechMarkers = ["n", "v", "pv", "iv", "adv", "prep"];
     private static readonly string[] UrlSelectionPosOrder = ["n", "v", "adj"];
     private static readonly string AutomaticReleaseVersionToken = "auto";
@@ -556,6 +557,26 @@ public sealed class TelegramController : ControllerBase
         switch (intent)
         {
             case "assistant.vocabulary.add.start":
+                if (TryExtractInlineVocabularyWord(inbound.Text, out var inlineWord))
+                {
+                    var inlineResult = await _orchestrator.ProcessAsync(
+                        inlineWord,
+                        scope.Channel,
+                        scope.UserId,
+                        scope.ConversationId,
+                        cancellationToken);
+
+                    var inlineResponse = await BuildVocabularyTextResponseAsync(
+                        inlineResult,
+                        scope,
+                        locale,
+                        inlineWord,
+                        cancellationToken);
+
+                    PendingChatActions.TryRemove(pendingKey, out _);
+                    return await FinalizeChatActionResponseAsync(scope, inlineResponse, cancellationToken);
+                }
+
                 PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyAdd;
                 return await FinalizeChatActionResponseAsync(
                     scope,
@@ -698,6 +719,76 @@ public sealed class TelegramController : ControllerBase
             default:
                 return null;
         }
+    }
+
+    private static bool TryExtractInlineVocabularyWord(string? rawInput, out string word)
+    {
+        word = string.Empty;
+        if (string.IsNullOrWhiteSpace(rawInput))
+        {
+            return false;
+        }
+
+        var input = rawInput.Trim();
+        var prefixes = new[]
+        {
+            "додай слово",
+            "додати слово",
+            "add word",
+            "add new word"
+        };
+
+        var matchedPrefix = prefixes.FirstOrDefault(prefix =>
+            input.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        if (matchedPrefix is null)
+        {
+            return false;
+        }
+
+        var remainder = input[matchedPrefix.Length..].Trim();
+        if (string.IsNullOrWhiteSpace(remainder))
+        {
+            return false;
+        }
+
+        remainder = TrimLeadingWordSeparators(remainder);
+
+        var dictionarySuffixes = new[]
+        {
+            "у словник",
+            "в словник",
+            "to dictionary"
+        };
+
+        foreach (var suffix in dictionarySuffixes)
+        {
+            if (!remainder.StartsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            remainder = remainder[suffix.Length..].Trim();
+            remainder = TrimLeadingWordSeparators(remainder);
+            break;
+        }
+
+        if (string.IsNullOrWhiteSpace(remainder))
+        {
+            return false;
+        }
+
+        word = remainder;
+        return true;
+    }
+
+    private static string TrimLeadingWordSeparators(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return LeadingWordSeparatorRegex.Replace(value.Trim(), string.Empty).Trim();
     }
 
     private async Task<TelegramRouteResponse> FinalizeChatActionResponseAsync(
