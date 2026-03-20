@@ -32,6 +32,8 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
         "show features",
         "що ти вмієш",
         "що ти можеш",
+        "які дії ти можеш",
+        "повний перелік",
         "чим ти корисна",
         "які твої можливості",
         "які твої функції"
@@ -54,6 +56,177 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
         "send you a photo",
         "check if there are new words",
         "check new words from photo"
+    ];
+
+    private static readonly string[] VocabularyAddFlowMarkers =
+    [
+        "додай слово",
+        "додати слово",
+        "додай нове слово",
+        "додай у словник",
+        "додай в словник",
+        "add word",
+        "add new word",
+        "add to dictionary",
+        "add word to dictionary"
+    ];
+
+    private static readonly string[] SettingsOpenMarkers =
+    [
+        "налаштування",
+        "settings",
+        "show settings",
+        "open settings"
+    ];
+
+    private static readonly string[] VocabularyOpenMarkers =
+    [
+        "словник",
+        "vocabulary",
+        "dictionary menu",
+        "open dictionary",
+        "open vocabulary"
+    ];
+
+    private static readonly string[] BatchModeMarkers =
+    [
+        "batch mode",
+        "batch",
+        "пакетний режим",
+        "батч режим"
+    ];
+
+    private static readonly string[] ImportStartMarkers =
+    [
+        "імпорт",
+        "import",
+        "import words",
+        "імпортуй",
+        "з посилання",
+        "from url"
+    ];
+
+    private static readonly string[] ImportFileMarkers =
+    [
+        "import from file",
+        "імпорт з файлу",
+        "з файлу",
+        "upload file"
+    ];
+
+    private static readonly string[] ImportUrlMarkers =
+    [
+        "import from url",
+        "імпорт з посилання",
+        "з url",
+        "за посиланням",
+        "from link"
+    ];
+
+    private static readonly string[] ImportTextMarkers =
+    [
+        "import from text",
+        "імпорт з тексту",
+        "з тексту",
+        "paste text to import"
+    ];
+
+    private static readonly string[] SaveModePanelMarkers =
+    [
+        "show save mode",
+        "open save mode",
+        "покажи режим збереження",
+        "відкрий режим збереження"
+    ];
+
+    private static readonly string[] LanguagePanelMarkers =
+    [
+        "show language options",
+        "open language settings",
+        "change language",
+        "обери мову",
+        "покажи мови"
+    ];
+
+    private static readonly string[] OneDriveMarkers =
+    [
+        "onedrive",
+        "graph"
+    ];
+
+    private static readonly string[] OneDriveStatusMarkers =
+    [
+        "статус onedrive",
+        "статус graph",
+        "onedrive status",
+        "graph status",
+        "перевір onedrive",
+        "перевір graph"
+    ];
+
+    private static readonly string[] OneDriveLoginMarkers =
+    [
+        "увійди в onedrive",
+        "увійти в onedrive",
+        "підключи onedrive",
+        "login onedrive",
+        "log in onedrive",
+        "connect onedrive",
+        "graph login"
+    ];
+
+    private static readonly string[] OneDriveLogoutMarkers =
+    [
+        "вийди з onedrive",
+        "вийти з onedrive",
+        "logout onedrive",
+        "log out onedrive",
+        "disconnect onedrive",
+        "graph logout"
+    ];
+
+    private static readonly string[] OneDriveSyncMarkers =
+    [
+        "синхронізуй",
+        "синхронізація",
+        "sync onedrive",
+        "sync queue",
+        "run sync"
+    ];
+
+    private static readonly string[] OneDriveRebuildMarkers =
+    [
+        "перезбери кеш",
+        "перезібрати кеш",
+        "rebuild cache",
+        "rebuild index"
+    ];
+
+    private static readonly string[] OneDriveClearCacheMarkers =
+    [
+        "очистити кеш",
+        "clear cache",
+        "clear vocabulary cache"
+    ];
+
+    private static readonly string[] ShoppingOpenMarkers =
+    [
+        "покупки",
+        "shopping",
+        "shopping list"
+    ];
+
+    private static readonly string[] WeeklyOpenMarkers =
+    [
+        "тижневе меню",
+        "weekly menu",
+        "meal plan"
+    ];
+
+    private static readonly string[] NotionOpenMarkers =
+    [
+        "notion",
+        "відкрий notion"
     ];
 
     private readonly IAiChatClient _aiChatClient;
@@ -133,6 +306,14 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
             return ConversationAgentResult.Empty(Name, "assistant.settings.save_mode.updated", saveModeReply);
         }
 
+        if (IsVocabularyAddFlowRequest(input))
+        {
+            return ConversationAgentResult.Empty(
+                Name,
+                "assistant.vocabulary.add.start",
+                BuildVocabularyAddFlowPrompt(locale));
+        }
+
         if (TryParsePartOfSpeechCountRequest(input, out var marker))
         {
             var posCount = await BuildPartOfSpeechCountMessageAsync(marker, locale, cancellationToken);
@@ -150,9 +331,9 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
             return ConversationAgentResult.Empty(Name, "assistant.capabilities", BuildCapabilitiesMessage(locale));
         }
 
-        if (ContainsAny(input, ImportPhotoMarkers))
+        if (TryResolveChatActionIntent(input, locale, out var actionIntent, out var actionMessage))
         {
-            return ConversationAgentResult.Empty(Name, "assistant.import.photo.ready", BuildPhotoReadyMessage(locale));
+            return ConversationAgentResult.Empty(Name, actionIntent, actionMessage);
         }
 
         var fallback = await BuildChatReplyAsync(input, context.Scope, locale, cancellationToken);
@@ -423,6 +604,158 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
             : "Got it. I saved this preference.";
     }
 
+    private static bool TryResolveChatActionIntent(
+        string input,
+        string locale,
+        out string intent,
+        out string message)
+    {
+        intent = string.Empty;
+        message = string.Empty;
+
+        if (ContainsAny(input, OneDriveLoginMarkers))
+        {
+            intent = "assistant.onedrive.login";
+            message = BuildActionMessage(locale, "Починаю вхід в OneDrive.", "Starting OneDrive sign-in.");
+            return true;
+        }
+
+        if (ContainsAny(input, OneDriveLogoutMarkers))
+        {
+            intent = "assistant.onedrive.logout";
+            message = BuildActionMessage(locale, "Виконую вихід з OneDrive.", "Signing out from OneDrive.");
+            return true;
+        }
+
+        if (ContainsAny(input, OneDriveSyncMarkers))
+        {
+            intent = "assistant.onedrive.sync";
+            message = BuildActionMessage(locale, "Запускаю синхронізацію черги.", "Running sync queue now.");
+            return true;
+        }
+
+        if (ContainsAny(input, OneDriveRebuildMarkers))
+        {
+            intent = "assistant.onedrive.index.rebuild";
+            message = BuildActionMessage(locale, "Готую перезбір кешу/індексу.", "Preparing cache/index rebuild.");
+            return true;
+        }
+
+        if (ContainsAny(input, OneDriveClearCacheMarkers))
+        {
+            intent = "assistant.onedrive.cache.clear";
+            message = BuildActionMessage(locale, "Готую очищення кешу.", "Preparing cache clear.");
+            return true;
+        }
+
+        if (ContainsAny(input, OneDriveStatusMarkers))
+        {
+            intent = "assistant.onedrive.status";
+            message = BuildActionMessage(locale, "Перевіряю статус OneDrive / Graph.", "Checking OneDrive / Graph status.");
+            return true;
+        }
+
+        if (ContainsAny(input, ImportPhotoMarkers))
+        {
+            intent = "assistant.vocabulary.import.source.photo";
+            message = BuildActionMessage(locale, "Готово, чекаю фото для імпорту.", "Ready. Send a photo for import.");
+            return true;
+        }
+
+        if (ContainsAny(input, ImportFileMarkers))
+        {
+            intent = "assistant.vocabulary.import.source.file";
+            message = BuildActionMessage(locale, "Готово, чекаю файл для імпорту.", "Ready. Send a file for import.");
+            return true;
+        }
+
+        if (ContainsAny(input, ImportUrlMarkers))
+        {
+            intent = "assistant.vocabulary.import.source.url";
+            message = BuildActionMessage(locale, "Готово, чекаю посилання для імпорту.", "Ready. Send a URL for import.");
+            return true;
+        }
+
+        if (ContainsAny(input, ImportTextMarkers))
+        {
+            intent = "assistant.vocabulary.import.source.text";
+            message = BuildActionMessage(locale, "Готово, чекаю текст для імпорту.", "Ready. Send text for import.");
+            return true;
+        }
+
+        if (ContainsAny(input, BatchModeMarkers))
+        {
+            intent = "assistant.vocabulary.batch.start";
+            message = BuildActionMessage(locale, "Відкриваю batch-режим.", "Opening batch mode.");
+            return true;
+        }
+
+        if (ContainsAny(input, ImportStartMarkers))
+        {
+            intent = "assistant.vocabulary.import.start";
+            message = BuildActionMessage(locale, "Відкриваю імпорт слів.", "Opening vocabulary import.");
+            return true;
+        }
+
+        if (ContainsAny(input, SaveModePanelMarkers))
+        {
+            intent = "assistant.settings.save_mode.open";
+            message = BuildActionMessage(locale, "Відкриваю налаштування режиму збереження.", "Opening save mode settings.");
+            return true;
+        }
+
+        if (ContainsAny(input, LanguagePanelMarkers))
+        {
+            intent = "assistant.settings.language.open";
+            message = BuildActionMessage(locale, "Відкриваю вибір мови.", "Opening language options.");
+            return true;
+        }
+
+        if (ContainsAny(input, SettingsOpenMarkers))
+        {
+            intent = "assistant.settings.open";
+            message = BuildActionMessage(locale, "Відкриваю налаштування.", "Opening settings.");
+            return true;
+        }
+
+        if (ContainsAny(input, VocabularyOpenMarkers))
+        {
+            intent = "assistant.vocabulary.open";
+            message = BuildActionMessage(locale, "Відкриваю розділ словника.", "Opening vocabulary section.");
+            return true;
+        }
+
+        if (ContainsAny(input, OneDriveMarkers))
+        {
+            intent = "assistant.onedrive.open";
+            message = BuildActionMessage(locale, "Відкриваю OneDrive / Graph.", "Opening OneDrive / Graph.");
+            return true;
+        }
+
+        if (ContainsAny(input, ShoppingOpenMarkers))
+        {
+            intent = "assistant.shopping.open";
+            message = BuildActionMessage(locale, "Відкриваю покупки.", "Opening shopping section.");
+            return true;
+        }
+
+        if (ContainsAny(input, WeeklyOpenMarkers))
+        {
+            intent = "assistant.weekly.open";
+            message = BuildActionMessage(locale, "Відкриваю меню.", "Opening weekly menu section.");
+            return true;
+        }
+
+        if (ContainsAny(input, NotionOpenMarkers))
+        {
+            intent = "assistant.settings.notion.open";
+            message = BuildActionMessage(locale, "Відкриваю Notion (скоро).", "Opening Notion (coming soon).");
+            return true;
+        }
+
+        return false;
+    }
+
     private static bool TryParseSaveModeCommand(string input, out VocabularySaveMode? mode)
     {
         mode = null;
@@ -641,13 +974,6 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
             ]);
     }
 
-    private static string BuildPhotoReadyMessage(string locale)
-    {
-        return locale == LocalizationConstants.UkrainianLocale
-            ? "Звісно. У мене є агент і потрібний функціонал. Скидай фото, і я перевірю нові слова для тебе."
-            : "Sure. I have the required agent flow and can help with that. Send the photo and I'll check for new words.";
-    }
-
     private static string BuildSaveModePrompt(string locale)
     {
         return locale == LocalizationConstants.UkrainianLocale
@@ -661,6 +987,18 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
             ? "Уточни, будь ласка, мову: українська, english, español, français, deutsch або polski."
             : "Please specify the target language: Ukrainian, English, Español, Français, Deutsch, or Polski.";
     }
+
+    private static string BuildVocabularyAddFlowPrompt(string locale)
+    {
+        return locale == LocalizationConstants.UkrainianLocale
+            ? "Будь ласка, надішліть слово, яке потрібно додати у словник."
+            : "Please send the word you want to add to the dictionary.";
+    }
+
+    private static string BuildActionMessage(string locale, string ukrainianText, string englishText)
+        => locale == LocalizationConstants.UkrainianLocale
+            ? ukrainianText
+            : englishText;
 
     private static string BuildSaveModeUpdatedShortMessage(string locale, string modeText)
     {
@@ -708,6 +1046,28 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
                || normalized.Contains("статистик", StringComparison.Ordinal)
                || normalized.Contains("statistics", StringComparison.Ordinal)
                || normalized.Contains("stats", StringComparison.Ordinal);
+    }
+
+    private static bool IsVocabularyAddFlowRequest(string input)
+    {
+        var normalized = Normalize(input);
+        if (ContainsAny(normalized, VocabularyAddFlowMarkers))
+        {
+            return true;
+        }
+
+        var mentionsAddAction = normalized.Contains("add", StringComparison.Ordinal)
+                                || normalized.Contains("додай", StringComparison.Ordinal)
+                                || normalized.Contains("додати", StringComparison.Ordinal);
+        if (!mentionsAddAction)
+        {
+            return false;
+        }
+
+        return normalized.Contains("word", StringComparison.Ordinal)
+               || normalized.Contains("слово", StringComparison.Ordinal)
+               || normalized.Contains("dictionary", StringComparison.Ordinal)
+               || normalized.Contains("словник", StringComparison.Ordinal);
     }
 
     private static string Normalize(string value)

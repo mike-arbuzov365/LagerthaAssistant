@@ -138,6 +138,127 @@ public sealed class AssistantConversationAgentTests
         Assert.Contains("Language changed", result.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task HandleAsync_ShouldStartVocabularyAddFlow_WhenUserAsksToAddWord()
+    {
+        var fx = new Fixture();
+        fx.Memory.Seed(fx.Scope.Channel, fx.Scope.UserId, LocalizationConstants.LocaleMemoryKey, "uk");
+        var sut = fx.CreateSut();
+
+        var result = await sut.HandleAsync(
+            new ConversationAgentContext(
+                $"{ConversationInputMarkers.Chat} Додай слово у словник",
+                [$"{ConversationInputMarkers.Chat} Додай слово у словник"],
+                fx.Scope),
+            CancellationToken.None);
+
+        Assert.Equal("assistant.vocabulary.add.start", result.Intent);
+        Assert.Contains("надішліть слово", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldReturnCapabilities_ForFullActionsQuestion()
+    {
+        var fx = new Fixture();
+        fx.Memory.Seed(fx.Scope.Channel, fx.Scope.UserId, LocalizationConstants.LocaleMemoryKey, "uk");
+        var sut = fx.CreateSut();
+
+        var result = await sut.HandleAsync(
+            new ConversationAgentContext(
+                $"{ConversationInputMarkers.Chat} Які дії ти можеш робити? Повний перелік",
+                [$"{ConversationInputMarkers.Chat} Які дії ти можеш робити? Повний перелік"],
+                fx.Scope),
+            CancellationToken.None);
+
+        Assert.Equal("assistant.capabilities", result.Intent);
+        Assert.Contains("Я можу допомогти", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldOpenSettings_WhenUserAsksNaturally()
+    {
+        var fx = new Fixture();
+        fx.Memory.Seed(fx.Scope.Channel, fx.Scope.UserId, LocalizationConstants.LocaleMemoryKey, "uk");
+        var sut = fx.CreateSut();
+
+        var result = await sut.HandleAsync(
+            new ConversationAgentContext(
+                $"{ConversationInputMarkers.Chat} Відкрий налаштування",
+                [$"{ConversationInputMarkers.Chat} Відкрий налаштування"],
+                fx.Scope),
+            CancellationToken.None);
+
+        Assert.Equal("assistant.settings.open", result.Intent);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldStartImportPhotoFlow_WhenUserAsksNaturally()
+    {
+        var fx = new Fixture();
+        fx.Memory.Seed(fx.Scope.Channel, fx.Scope.UserId, LocalizationConstants.LocaleMemoryKey, "uk");
+        var sut = fx.CreateSut();
+
+        var result = await sut.HandleAsync(
+            new ConversationAgentContext(
+                $"{ConversationInputMarkers.Chat} Скину тобі фото, перевір нові слова",
+                [$"{ConversationInputMarkers.Chat} Скину тобі фото, перевір нові слова"],
+                fx.Scope),
+            CancellationToken.None);
+
+        Assert.Equal("assistant.vocabulary.import.source.photo", result.Intent);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldStartOneDriveLogin_WhenUserAsksNaturally()
+    {
+        var fx = new Fixture();
+        fx.Memory.Seed(fx.Scope.Channel, fx.Scope.UserId, LocalizationConstants.LocaleMemoryKey, "uk");
+        var sut = fx.CreateSut();
+
+        var result = await sut.HandleAsync(
+            new ConversationAgentContext(
+                $"{ConversationInputMarkers.Chat} Увійди в OneDrive",
+                [$"{ConversationInputMarkers.Chat} Увійди в OneDrive"],
+                fx.Scope),
+            CancellationToken.None);
+
+        Assert.Equal("assistant.onedrive.login", result.Intent);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldOpenLanguagePanel_WhenUserAsksNaturally()
+    {
+        var fx = new Fixture();
+        fx.Memory.Seed(fx.Scope.Channel, fx.Scope.UserId, LocalizationConstants.LocaleMemoryKey, "uk");
+        var sut = fx.CreateSut();
+
+        var result = await sut.HandleAsync(
+            new ConversationAgentContext(
+                $"{ConversationInputMarkers.Chat} Покажи мови",
+                [$"{ConversationInputMarkers.Chat} Покажи мови"],
+                fx.Scope),
+            CancellationToken.None);
+
+        Assert.Equal("assistant.settings.language.open", result.Intent);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldOpenNotionPanel_WhenUserAsksNaturally()
+    {
+        var fx = new Fixture();
+        fx.Memory.Seed(fx.Scope.Channel, fx.Scope.UserId, LocalizationConstants.LocaleMemoryKey, "uk");
+        var sut = fx.CreateSut();
+
+        var result = await sut.HandleAsync(
+            new ConversationAgentContext(
+                $"{ConversationInputMarkers.Chat} Відкрий Notion",
+                [$"{ConversationInputMarkers.Chat} Відкрий Notion"],
+                fx.Scope),
+            CancellationToken.None);
+
+        Assert.Equal("assistant.settings.notion.open", result.Intent);
+    }
+
     private sealed class Fixture
     {
         public Fixture()
