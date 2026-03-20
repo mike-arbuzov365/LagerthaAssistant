@@ -905,6 +905,91 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldAskBatchSaveWithSeparatorQuestionAndButtons_WhenSaveModeAsk()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = BuildVocabularyBatchSavableResult()
+        };
+        var persistence = new FakeVocabularyPersistenceService();
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("batch body"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            processedUpdates: null,
+            vocabularyPersistenceService: persistence);
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "awkward exact", null),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Replied);
+        Assert.Equal("vocabulary.batch", payload.Intent);
+        Assert.Equal(0, persistence.Calls);
+
+        var normalized = sender.LastText.Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.Contains("--------------------\nℹ️ Batch ask hint", normalized, StringComparison.Ordinal);
+        Assert.Contains("❓ Save all 2 new items from this batch?", normalized, StringComparison.Ordinal);
+
+        var keyboard = Assert.IsType<TelegramInlineKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+        var callbackData = keyboard.InlineKeyboard.SelectMany(row => row).Select(button => button.CallbackData).ToList();
+        Assert.Contains(CallbackDataConstants.Vocab.SaveBatchYes, callbackData);
+        Assert.Contains(CallbackDataConstants.Vocab.SaveBatchNo, callbackData);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldSaveAllPendingBatchCards_WhenBatchSaveConfirmationCallbackReceived()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = BuildVocabularyBatchSavableResult()
+        };
+        var persistence = new FakeVocabularyPersistenceService();
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("batch body"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            processedUpdates: null,
+            vocabularyPersistenceService: persistence);
+
+        await sut.Webhook(BuildTextUpdate(1001, 2002, "awkward exact", null), CancellationToken.None);
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.SaveBatchYes, null, updateId: 77),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.save.batch.done", payload.Intent);
+        Assert.Equal(2, persistence.Calls);
+        Assert.Contains("saved=2", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldSwitchStorageModeToGraph_WhenOneDriveLoginCompleted()
     {
         var storagePreference = new FakeVocabularyStoragePreferenceService
@@ -1157,7 +1242,7 @@ public sealed class TelegramControllerTests
         Assert.True(confirmPayload.Replied);
         Assert.Equal("settings.onedrive.index.confirm", confirmPayload.Intent);
         Assert.Equal(0, indexService.RebuildCalls);
-        Assert.Contains("❓ Rebuilding cache can take some time. Start now?", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains($"❓{Environment.NewLine}⚠️ Rebuilding cache can take some time. Start now?", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("take some time", sender.LastText, StringComparison.OrdinalIgnoreCase);
 
         var response = await sut.Webhook(
@@ -1171,6 +1256,8 @@ public sealed class TelegramControllerTests
         Assert.Equal("settings.onedrive.index.done", payload.Intent);
         Assert.Equal(1, indexService.RebuildCalls);
         Assert.Equal(VocabularyStorageMode.Graph, indexService.LastMode);
+        Assert.True(sender.SentMessages.Count >= 3);
+        Assert.Contains("Rebuilding cache started", sender.SentMessages[^2].Text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Cache rebuilt", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -1211,6 +1298,7 @@ public sealed class TelegramControllerTests
 
         Assert.True(confirmPayload.Replied);
         Assert.Equal("settings.onedrive.cache.confirm", confirmPayload.Intent);
+        Assert.Contains($"❓{Environment.NewLine}⚠️ Clear cache?", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("records=57", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, indexService.ClearCalls);
 
@@ -2276,6 +2364,47 @@ public sealed class TelegramControllerTests
             Items: items);
     }
 
+    private static ConversationAgentResult BuildVocabularyBatchSavableResult()
+    {
+        var items = new List<ConversationAgentItemResult>
+        {
+            new(
+                Input: "awkward",
+                Lookup: new VocabularyLookupResult("awkward", []),
+                AssistantCompletion: new AssistantCompletionResult(
+                    "awkward\n\n(adj) незручний\n\nThe awkward error message confused users",
+                    "test-model",
+                    null),
+                AppendPreview: new VocabularyAppendPreviewResult(
+                    Status: VocabularyAppendPreviewStatus.ReadyToAppend,
+                    Word: "awkward",
+                    TargetDeckFileName: "wm-adjectives-ua-en.xlsx",
+                    TargetDeckPath: "/apps/Flashcards Deluxe/wm-adjectives-ua-en.xlsx",
+                    DuplicateMatches: null,
+                    Message: string.Empty)),
+            new(
+                Input: "exact",
+                Lookup: new VocabularyLookupResult("exact", []),
+                AssistantCompletion: new AssistantCompletionResult(
+                    "exact\n\n(adj) точний\n\nPlease provide the exact specifications for the software",
+                    "test-model",
+                    null),
+                AppendPreview: new VocabularyAppendPreviewResult(
+                    Status: VocabularyAppendPreviewStatus.ReadyToAppend,
+                    Word: "exact",
+                    TargetDeckFileName: "wm-adjectives-ua-en.xlsx",
+                    TargetDeckPath: "/apps/Flashcards Deluxe/wm-adjectives-ua-en.xlsx",
+                    DuplicateMatches: null,
+                    Message: string.Empty))
+        };
+
+        return new ConversationAgentResult(
+            AgentName: "vocabulary-agent",
+            Intent: "vocabulary.batch",
+            IsBatch: true,
+            Items: items);
+    }
+
     private static ConversationAgentResult BuildVocabularyPreviewWarningResult()
     {
         var item = new ConversationAgentItemResult(
@@ -2684,10 +2813,15 @@ public sealed class TelegramControllerTests
                 "vocab.save_failed" => "Save failed: {0}",
                 "vocab.save_queued_waiting_auth" => "Queued until OneDrive sign-in",
                 "vocab.graph_save_setup_required" => "To save words, open Settings -> OneDrive / Graph, sign in, and try again.",
-                "vocab.save_batch_ask_hint" => "Batch ask hint",
+                "vocab.save_batch_ask_hint" => "ℹ️ Batch ask hint",
+                "vocab.save_batch_ask_question" => "Save all {0} new items from this batch?",
+                "vocab.save_batch_done" => "Batch save finished: saved={0}, duplicates={1}, failed={2}.",
+                "vocab.save_batch_skip" => "Batch save skipped",
                 "vocab.save_mode_off_hint" => "Save mode off hint",
                 "vocab.save_yes" => "Save",
                 "vocab.save_no" => "Skip",
+                "vocab.save_batch_yes" => "Save all",
+                "vocab.save_batch_no" => "Skip all",
                 "vocab.no_pending_save" => "No pending save",
                 "vocab.word_unrecognized" => "Word \"{0}\" is not recognized.",
                 "vocab.word_unrecognized_with_suggestions" => "Word \"{0}\" is not recognized. Did you mean: {1}?",
@@ -2708,7 +2842,7 @@ public sealed class TelegramControllerTests
                 "onedrive.still_not_signed_in" => "Still not signed in",
                 "onedrive.sync_now" => "Sync pending saves",
                 "onedrive.rebuild_index" => "Rebuild cache",
-                "onedrive.rebuild_index_warning" => "Rebuilding cache can take some time. Start now?",
+                "onedrive.rebuild_index_warning" => "⚠️ Rebuilding cache can take some time. Start now?",
                 "onedrive.rebuild_index_start" => "Start rebuild",
                 "onedrive.rebuild_index_started" => "Rebuilding cache started...",
                 "onedrive.rebuild_index_suggest" => "Tip: cache appears empty. Rebuild it.",
@@ -2716,7 +2850,7 @@ public sealed class TelegramControllerTests
                 "onedrive.sync_now_done" => "Sync complete: completed={0}, requeued={1}, failed={2}, pending={3}.",
                 "onedrive.rebuild_index_done" => "Cache rebuilt from writable decks: scanned={0}, indexed={1}.",
                 "onedrive.clear_cache" => "Clear cache",
-                "onedrive.clear_cache_warning" => "Clear cache? records={0}",
+                "onedrive.clear_cache_warning" => "⚠️ Clear cache? records={0}",
                 "onedrive.clear_cache_start" => "Clear now",
                 "onedrive.clear_cache_done" => "Cache cleared: {0}",
                 "onedrive.clear_cache_hint" => "Run rebuild cache if needed.",
@@ -2783,6 +2917,13 @@ public sealed class TelegramControllerTests
 
         public TelegramInlineKeyboardMarkup BuildVocabularySaveConfirmationKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Save", "vocab:save:yes"), new TelegramInlineKeyboardButton("Skip", "vocab:save:no")]]);
+
+        public TelegramInlineKeyboardMarkup BuildVocabularyBatchSaveConfirmationKeyboard(string locale)
+            => new(
+            [
+                [new TelegramInlineKeyboardButton("Save all", CallbackDataConstants.Vocab.SaveBatchYes)],
+                [new TelegramInlineKeyboardButton("Skip all", CallbackDataConstants.Vocab.SaveBatchNo)]
+            ]);
 
         public TelegramInlineKeyboardMarkup BuildVocabularyUrlSelectionKeyboard(string locale)
             => new(

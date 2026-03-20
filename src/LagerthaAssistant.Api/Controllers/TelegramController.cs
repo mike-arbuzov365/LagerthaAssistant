@@ -34,6 +34,7 @@ public sealed class TelegramController : ControllerBase
     private const string SectionSeparator = "--------------------";
     private const string BatchItemMarker = "🔹";
     private const string QuestionMarker = "❓";
+    private static readonly string[] WarningMarkers = ["⚠️", "⚠"];
     private const int ManualSyncBatchSize = 25;
     private const int ManualSyncMaxPasses = 5;
     private static readonly Regex UrlLikeRegex = new("^https?://", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -53,6 +54,7 @@ public sealed class TelegramController : ControllerBase
 
     private static readonly ConcurrentDictionary<string, GraphDeviceLoginChallenge> PendingGraphChallenges = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, PendingVocabularySaveRequest> PendingVocabularySaves = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, PendingVocabularyBatchSaveRequest> PendingVocabularyBatchSaves = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, PendingVocabularyUrlSession> PendingVocabularyUrlSessions = new(StringComparer.Ordinal);
 
     private readonly IConversationOrchestrator _orchestrator;
@@ -333,7 +335,7 @@ public sealed class TelegramController : ControllerBase
                 return await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken);
 
             case NavigationRouteKind.Callback:
-                return await HandleCallbackAsync(route.CallbackData!, scope, locale, currentSection, cancellationToken);
+                return await HandleCallbackAsync(route.CallbackData!, inbound, scope, locale, currentSection, cancellationToken);
 
             case NavigationRouteKind.VocabularyText:
                 {
@@ -387,6 +389,7 @@ public sealed class TelegramController : ControllerBase
 
     private async Task<TelegramRouteResponse> HandleCallbackAsync(
         string callbackData,
+        TelegramInboundMessage inbound,
         ConversationScope scope,
         string locale,
         string currentSection,
@@ -419,7 +422,7 @@ public sealed class TelegramController : ControllerBase
 
         if (callbackData.StartsWith(CallbackDataConstants.OneDrive.Prefix, StringComparison.Ordinal))
         {
-            return await HandleOneDriveCallbackAsync(callbackData, scope, locale, cancellationToken);
+            return await HandleOneDriveCallbackAsync(callbackData, inbound, scope, locale, cancellationToken);
         }
 
         if (callbackData.StartsWith(CallbackDataConstants.Vocab.Prefix, StringComparison.Ordinal))
@@ -437,6 +440,8 @@ public sealed class TelegramController : ControllerBase
                 CallbackDataConstants.Vocab.Batch => BuildBatchModeResponse(scope, locale),
                 CallbackDataConstants.Vocab.SaveYes => await HandleVocabularySaveConfirmationAsync(scope, locale, saveRequested: true, cancellationToken),
                 CallbackDataConstants.Vocab.SaveNo => await HandleVocabularySaveConfirmationAsync(scope, locale, saveRequested: false, cancellationToken),
+                CallbackDataConstants.Vocab.SaveBatchYes => await HandleVocabularyBatchSaveConfirmationAsync(scope, locale, saveRequested: true, cancellationToken),
+                CallbackDataConstants.Vocab.SaveBatchNo => await HandleVocabularyBatchSaveConfirmationAsync(scope, locale, saveRequested: false, cancellationToken),
                 _ => new TelegramRouteResponse(
                     "vocab.unknown",
                     _navigationPresenter.GetText("stub.wip", locale),
@@ -591,6 +596,7 @@ public sealed class TelegramController : ControllerBase
 
     private async Task<TelegramRouteResponse> HandleOneDriveCallbackAsync(
         string callbackData,
+        TelegramInboundMessage inbound,
         ConversationScope scope,
         string locale,
         CancellationToken cancellationToken)
@@ -848,6 +854,12 @@ public sealed class TelegramController : ControllerBase
 
             try
             {
+                await TrySendProgressMessageAsync(
+                    inbound.ChatId,
+                    inbound.MessageThreadId,
+                    _navigationPresenter.GetText("onedrive.rebuild_index_started", locale),
+                    cancellationToken);
+
                 _storageModeProvider.SetMode(VocabularyStorageMode.Graph);
                 var entries = await _vocabularyDeckService.GetAllEntriesAsync(cancellationToken);
                 var indexed = await _vocabularyIndexService.RebuildAsync(entries, VocabularyStorageMode.Graph, cancellationToken);
@@ -857,9 +869,6 @@ public sealed class TelegramController : ControllerBase
                 {
                     Intent = "settings.onedrive.index.done",
                     Text = string.Concat(
-                        _navigationPresenter.GetText("onedrive.rebuild_index_started", locale),
-                        Environment.NewLine,
-                        Environment.NewLine,
                         _navigationPresenter.GetText("onedrive.rebuild_index_done", locale, entries.Count, indexed),
                         Environment.NewLine,
                         Environment.NewLine,
@@ -1297,6 +1306,7 @@ public sealed class TelegramController : ControllerBase
         var formatted = _responseFormatter.Format(result);
         var pendingKey = BuildPendingSaveKey(scope);
         PendingVocabularySaves.TryRemove(pendingKey, out _);
+        PendingVocabularyBatchSaves.TryRemove(pendingKey, out _);
 
         if (string.Equals(result.Intent, "command.unsupported", StringComparison.OrdinalIgnoreCase))
         {
@@ -1374,7 +1384,23 @@ public sealed class TelegramController : ControllerBase
 
             if (result.IsBatch && saveCandidates.Count > 0)
             {
-                formatted = AppendTextBlock(formatted, _navigationPresenter.GetText("vocab.save_batch_ask_hint", locale));
+                PendingVocabularyBatchSaves[pendingKey] = new PendingVocabularyBatchSaveRequest(saveCandidates);
+
+                var askHint = _navigationPresenter.GetText("vocab.save_batch_ask_hint", locale);
+                var askQuestion = EnsureQuestionMarker(
+                    _navigationPresenter.GetText(
+                        "vocab.save_batch_ask_question",
+                        locale,
+                        saveCandidates.Count));
+
+                formatted = AppendFoundInDeckInfo(
+                    formatted,
+                    string.Concat(
+                        SectionSeparator,
+                        Environment.NewLine,
+                        askHint,
+                        Environment.NewLine,
+                        askQuestion));
             }
 
             if (!string.IsNullOrWhiteSpace(previewWarnings))
@@ -1382,7 +1408,12 @@ public sealed class TelegramController : ControllerBase
                 formatted = AppendTextBlock(formatted, previewWarnings);
             }
 
-            return new TelegramRouteResponse(result.Intent, formatted);
+            return result.IsBatch && saveCandidates.Count > 0
+                ? new TelegramRouteResponse(
+                    result.Intent,
+                    formatted,
+                    InlineKeyboard(_navigationPresenter.BuildVocabularyBatchSaveConfirmationKeyboard(locale)))
+                : new TelegramRouteResponse(result.Intent, formatted);
         }
 
         var saveMessages = new List<string>();
@@ -1993,6 +2024,77 @@ public sealed class TelegramController : ControllerBase
             InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
     }
 
+    private async Task<TelegramRouteResponse> HandleVocabularyBatchSaveConfirmationAsync(
+        ConversationScope scope,
+        string locale,
+        bool saveRequested,
+        CancellationToken cancellationToken)
+    {
+        var pendingKey = BuildPendingSaveKey(scope);
+        if (!PendingVocabularyBatchSaves.TryGetValue(pendingKey, out var pendingBatch)
+            || pendingBatch.Items.Count == 0)
+        {
+            return new TelegramRouteResponse(
+                "vocab.save.none",
+                _navigationPresenter.GetText("vocab.no_pending_save", locale),
+                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+        }
+
+        if (!saveRequested)
+        {
+            PendingVocabularyBatchSaves.TryRemove(pendingKey, out _);
+            return new TelegramRouteResponse(
+                "vocab.save.batch.skip",
+                _navigationPresenter.GetText("vocab.save_batch_skip", locale),
+                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+        }
+
+        PendingVocabularyBatchSaves.TryRemove(pendingKey, out _);
+
+        var saveMessages = new List<string>();
+        var saved = 0;
+        var duplicate = 0;
+        var failed = 0;
+
+        foreach (var pending in pendingBatch.Items)
+        {
+            var appendResult = await _vocabularyPersistenceService.AppendFromAssistantReplyAsync(
+                pending.RequestedWord,
+                pending.AssistantReply,
+                pending.TargetDeckFileName,
+                pending.OverridePartOfSpeech,
+                cancellationToken);
+
+            switch (appendResult.Status)
+            {
+                case VocabularyAppendStatus.Added:
+                    saved++;
+                    break;
+                case VocabularyAppendStatus.DuplicateFound:
+                    duplicate++;
+                    break;
+                case VocabularyAppendStatus.Error:
+                    failed++;
+                    break;
+            }
+
+            saveMessages.Add(BuildAppendStatusMessage(appendResult, locale));
+        }
+
+        var summary = _navigationPresenter.GetText(
+            "vocab.save_batch_done",
+            locale,
+            saved,
+            duplicate,
+            failed);
+
+        var details = string.Join(Environment.NewLine, saveMessages);
+        return new TelegramRouteResponse(
+            "vocab.save.batch.done",
+            string.Concat(summary, Environment.NewLine, Environment.NewLine, details),
+            InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+    }
+
     private static string GetPartOfSpeechLabel(string locale, string marker)
     {
         var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(locale);
@@ -2187,7 +2289,39 @@ public sealed class TelegramController : ControllerBase
             return value;
         }
 
+        if (WarningMarkers.Any(marker => trimmedStart.StartsWith(marker, StringComparison.Ordinal)))
+        {
+            return $"{QuestionMarker}{Environment.NewLine}{value}";
+        }
+
         return $"{QuestionMarker} {value}";
+    }
+
+    private async Task TrySendProgressMessageAsync(
+        long chatId,
+        int? messageThreadId,
+        string text,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var sendResult = await _telegramBotSender.SendTextAsync(
+            chatId,
+            WebUtility.HtmlEncode(text),
+            EnsureHtmlParseMode(options: null),
+            messageThreadId,
+            cancellationToken);
+
+        if (!sendResult.Succeeded)
+        {
+            _logger.LogWarning(
+                "Telegram progress message send failed. ChatId={ChatId}; Error={Error}",
+                chatId,
+                sendResult.ErrorMessage);
+        }
     }
 
     private async Task<TelegramRouteResponse> BuildSaveModeResponseAsync(
@@ -2467,6 +2601,9 @@ public sealed class TelegramController : ControllerBase
         string AssistantReply,
         string TargetDeckFileName,
         string? OverridePartOfSpeech);
+
+    private sealed record PendingVocabularyBatchSaveRequest(
+        IReadOnlyList<PendingVocabularySaveRequest> Items);
 
     private sealed record PendingVocabularyUrlSession(
         PendingVocabularyUrlStage Stage,

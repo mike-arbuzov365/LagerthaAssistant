@@ -19,6 +19,21 @@ public sealed class VocabularyDiscoveryService : IVocabularyDiscoveryService
     private static readonly Regex HtmlStyleRegex = new("<style\\b[^<]*(?:(?!<\\/style>)<[^<]*)*<\\/style>", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex TokenRegex = new("\\b[a-zA-Z][a-zA-Z'-]{2,}\\b", RegexOptions.Compiled);
     private static readonly Regex CodeFenceJsonRegex = new("```(?:json)?\\s*(?<json>[\\s\\S]+?)\\s*```", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly HashSet<string> SingularNounExceptions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "news",
+        "series",
+        "species",
+        "business",
+        "analysis",
+        "basis",
+        "thesis",
+        "crisis",
+        "physics",
+        "mathematics",
+        "economics",
+        "politics"
+    };
 
     private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -116,7 +131,9 @@ public sealed class VocabularyDiscoveryService : IVocabularyDiscoveryService
             classified = HeuristicClassify(unresolvedTokens, tokenFrequencies);
         }
 
-        var filtered = classified
+        var normalizedCandidates = NormalizeCandidates(classified);
+
+        var filtered = normalizedCandidates
             .Where(candidate => candidate.PartOfSpeech is "n" or "v" or "adj")
             .GroupBy(candidate => candidate.Word, StringComparer.OrdinalIgnoreCase)
             .Select(group => group
@@ -142,6 +159,98 @@ public sealed class VocabularyDiscoveryService : IVocabularyDiscoveryService
             filtered,
             "ok",
             SourceWasUrl: sourceWasUrl);
+    }
+
+    private IReadOnlyList<VocabularyDiscoveryCandidate> NormalizeCandidates(
+        IReadOnlyList<VocabularyDiscoveryCandidate> candidates)
+    {
+        if (candidates.Count == 0)
+        {
+            return candidates;
+        }
+
+        var normalized = new List<VocabularyDiscoveryCandidate>(candidates.Count);
+        foreach (var candidate in candidates)
+        {
+            var word = candidate.Word.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(word))
+            {
+                continue;
+            }
+
+            if (candidate.PartOfSpeech == "n")
+            {
+                word = NormalizeNounToSingular(word);
+            }
+
+            normalized.Add(new VocabularyDiscoveryCandidate(
+                word,
+                candidate.PartOfSpeech,
+                candidate.Frequency));
+        }
+
+        return normalized
+            .GroupBy(candidate => (candidate.Word, candidate.PartOfSpeech))
+            .Select(group => new VocabularyDiscoveryCandidate(
+                group.Key.Word,
+                group.Key.PartOfSpeech,
+                group.Sum(candidate => candidate.Frequency)))
+            .ToList();
+    }
+
+    private string NormalizeNounToSingular(string word)
+    {
+        if (string.IsNullOrWhiteSpace(word)
+            || word.Length < 4
+            || SingularNounExceptions.Contains(word))
+        {
+            return word;
+        }
+
+        var suggestions = new List<string>(4);
+        if (word.EndsWith("ies", StringComparison.Ordinal) && word.Length > 4)
+        {
+            suggestions.Add(string.Concat(word.AsSpan(0, word.Length - 3), "y"));
+        }
+
+        if (word.EndsWith("ves", StringComparison.Ordinal) && word.Length > 4)
+        {
+            suggestions.Add(string.Concat(word.AsSpan(0, word.Length - 3), "f"));
+            suggestions.Add(string.Concat(word.AsSpan(0, word.Length - 3), "fe"));
+        }
+
+        if (word.EndsWith("ses", StringComparison.Ordinal)
+            || word.EndsWith("xes", StringComparison.Ordinal)
+            || word.EndsWith("zes", StringComparison.Ordinal)
+            || word.EndsWith("ches", StringComparison.Ordinal)
+            || word.EndsWith("shes", StringComparison.Ordinal)
+            || word.EndsWith("oes", StringComparison.Ordinal))
+        {
+            suggestions.Add(word[..^2]);
+        }
+
+        if (word.EndsWith("s", StringComparison.Ordinal)
+            && !word.EndsWith("ss", StringComparison.Ordinal)
+            && !word.EndsWith("us", StringComparison.Ordinal)
+            && !word.EndsWith("is", StringComparison.Ordinal))
+        {
+            suggestions.Add(word[..^1]);
+        }
+
+        foreach (var candidate in suggestions.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (candidate.Length < 3)
+            {
+                continue;
+            }
+
+            if (_wordValidationService.IsValidWord(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return word;
     }
 
     private async Task<string> ReadSourceTextFromUrlAsync(Uri sourceUri, CancellationToken cancellationToken)

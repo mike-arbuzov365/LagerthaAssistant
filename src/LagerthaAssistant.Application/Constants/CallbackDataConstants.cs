@@ -72,6 +72,8 @@ public static class CallbackDataConstants
         public const string Batch = "vocab:batch";
         public const string SaveYes = "vocab:save:yes";
         public const string SaveNo = "vocab:save:no";
+        public const string SaveBatchYes = "vocab:save_batch:yes";
+        public const string SaveBatchNo = "vocab:save_batch:no";
     }
 
     public static class Shop

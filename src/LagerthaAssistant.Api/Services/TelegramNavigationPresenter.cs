@@ -223,6 +223,16 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             ]);
     }
 
+    public TelegramInlineKeyboardMarkup BuildVocabularyBatchSaveConfirmationKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("vocab.save_batch_yes", locale, CallbackDataConstants.Vocab.SaveBatchYes)],
+                [Button("vocab.save_batch_no", locale, CallbackDataConstants.Vocab.SaveBatchNo)]
+            ]);
+    }
+
     public TelegramInlineKeyboardMarkup BuildVocabularyUrlSelectionKeyboard(string locale)
     {
         return new TelegramInlineKeyboardMarkup(
