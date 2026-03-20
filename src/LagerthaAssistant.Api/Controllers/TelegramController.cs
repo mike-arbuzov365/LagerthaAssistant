@@ -366,6 +366,20 @@ public sealed class TelegramController : ControllerBase
                         }
                     }
 
+                    if (TryResolveDeterministicChatActionIntent(inbound.Text, out var deterministicIntent))
+                    {
+                        var deterministicResponse = await TryHandleAssistantChatActionIntentAsync(
+                            deterministicIntent,
+                            inbound,
+                            scope,
+                            locale,
+                            cancellationToken);
+                        if (deterministicResponse is not null)
+                        {
+                            return deterministicResponse;
+                        }
+                    }
+
                     var chatInput = inbound.Text;
                     if (!chatInput.StartsWith("/", StringComparison.Ordinal))
                     {
@@ -390,10 +404,16 @@ public sealed class TelegramController : ControllerBase
                         return actionResponse;
                     }
 
+                    var mainKeyboardLocale = await ResolveChatMainKeyboardLocaleAsync(
+                        scope,
+                        locale,
+                        result.Intent,
+                        cancellationToken);
+
                     return new TelegramRouteResponse(
                         result.Intent,
                         _responseFormatter.Format(result),
-                        ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
+                        ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(mainKeyboardLocale)));
                 }
 
             case NavigationRouteKind.MainVocabularyButton:
@@ -781,6 +801,87 @@ public sealed class TelegramController : ControllerBase
         return true;
     }
 
+    private static bool TryResolveDeterministicChatActionIntent(string? rawInput, out string intent)
+    {
+        intent = string.Empty;
+        if (string.IsNullOrWhiteSpace(rawInput))
+        {
+            return false;
+        }
+
+        var input = rawInput.Trim();
+        if (input.StartsWith("/", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var lowered = input.ToLowerInvariant();
+        var mentionsImport = lowered.Contains("імпорт", StringComparison.Ordinal)
+            || lowered.Contains("імпорту", StringComparison.Ordinal)
+            || lowered.Contains("import", StringComparison.Ordinal);
+        var mentionsSend = lowered.Contains("скину", StringComparison.Ordinal)
+            || lowered.Contains("надішлю", StringComparison.Ordinal)
+            || lowered.Contains("send", StringComparison.Ordinal)
+            || lowered.Contains("upload", StringComparison.Ordinal)
+            || lowered.Contains("share", StringComparison.Ordinal);
+        var mentionsLink = lowered.Contains("посилан", StringComparison.Ordinal)
+            || lowered.Contains("лінк", StringComparison.Ordinal)
+            || lowered.Contains("link", StringComparison.Ordinal)
+            || lowered.Contains("url", StringComparison.Ordinal)
+            || UrlLikeRegex.IsMatch(input);
+        var mentionsPhoto = lowered.Contains("фото", StringComparison.Ordinal)
+            || lowered.Contains("photo", StringComparison.Ordinal)
+            || lowered.Contains("image", StringComparison.Ordinal)
+            || lowered.Contains("picture", StringComparison.Ordinal);
+        var mentionsFile = lowered.Contains("файл", StringComparison.Ordinal)
+            || lowered.Contains("file", StringComparison.Ordinal)
+            || lowered.Contains("pdf", StringComparison.Ordinal)
+            || lowered.Contains("excel", StringComparison.Ordinal)
+            || lowered.Contains("xlsx", StringComparison.Ordinal)
+            || lowered.Contains("doc", StringComparison.Ordinal);
+        var mentionsText = lowered.Contains("текст", StringComparison.Ordinal)
+            || lowered.Contains("text", StringComparison.Ordinal)
+            || lowered.Contains("статт", StringComparison.Ordinal)
+            || lowered.Contains("article", StringComparison.Ordinal);
+
+        if (!mentionsImport && !mentionsSend)
+        {
+            return false;
+        }
+
+        if (mentionsLink)
+        {
+            intent = "assistant.vocabulary.import.source.url";
+            return true;
+        }
+
+        if (mentionsPhoto)
+        {
+            intent = "assistant.vocabulary.import.source.photo";
+            return true;
+        }
+
+        if (mentionsFile)
+        {
+            intent = "assistant.vocabulary.import.source.file";
+            return true;
+        }
+
+        if (mentionsText)
+        {
+            intent = "assistant.vocabulary.import.source.text";
+            return true;
+        }
+
+        if (mentionsImport)
+        {
+            intent = "assistant.vocabulary.import.start";
+            return true;
+        }
+
+        return false;
+    }
+
     private static string TrimLeadingWordSeparators(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -804,6 +905,26 @@ public sealed class TelegramController : ControllerBase
             cancellationToken);
 
         return response;
+    }
+
+    private async Task<string> ResolveChatMainKeyboardLocaleAsync(
+        ConversationScope scope,
+        string locale,
+        string intent,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(intent, "assistant.settings.language.updated", StringComparison.Ordinal))
+        {
+            return locale;
+        }
+
+        var storedLocale = await _userLocaleStateService.GetStoredLocaleAsync(
+            scope.Channel,
+            scope.UserId,
+            cancellationToken);
+        return string.IsNullOrWhiteSpace(storedLocale)
+            ? locale
+            : LocalizationConstants.NormalizeLocaleCode(storedLocale);
     }
 
     private async Task<TelegramRouteResponse> HandleCallbackAsync(

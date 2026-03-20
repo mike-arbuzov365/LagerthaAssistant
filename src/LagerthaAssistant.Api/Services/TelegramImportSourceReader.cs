@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using ExcelDataReader;
 using LagerthaAssistant.Api.Interfaces;
 using LagerthaAssistant.Api.Options;
@@ -26,6 +28,7 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         ".log",
         ".json",
         ".pdf",
+        ".docx",
         ".xlsx",
         ".xls",
         ".xlsm"
@@ -43,6 +46,16 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         "application/vnd.ms-excel",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "application/vnd.ms-excel.sheet.macroEnabled.12"
+    };
+
+    private static readonly HashSet<string> WordExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".docx"
+    };
+
+    private static readonly HashSet<string> WordMimeTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     };
 
     private readonly IHttpClientFactory _httpClientFactory;
@@ -197,7 +210,8 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
                || string.Equals(mimeType, "application/json", StringComparison.OrdinalIgnoreCase)
                || string.Equals(mimeType, "text/csv", StringComparison.OrdinalIgnoreCase)
                || string.Equals(mimeType, MimeTypePdf, StringComparison.OrdinalIgnoreCase)
-               || ExcelMimeTypes.Contains(mimeType);
+               || ExcelMimeTypes.Contains(mimeType)
+               || WordMimeTypes.Contains(mimeType);
     }
 
     private ParsedDocumentContent ParseDocumentContent(byte[] bytes, string? fileName, string? mimeType)
@@ -210,6 +224,7 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
             {
                 DocumentKind.Pdf => ExtractTextFromPdf(bytes),
                 DocumentKind.Excel => ExtractTextFromExcel(bytes),
+                DocumentKind.Word => ExtractTextFromWord(bytes),
                 _ => DecodeText(bytes)
             };
 
@@ -240,6 +255,11 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         if (ExcelExtensions.Contains(extension) || (!string.IsNullOrWhiteSpace(mimeType) && ExcelMimeTypes.Contains(mimeType)))
         {
             return DocumentKind.Excel;
+        }
+
+        if (WordExtensions.Contains(extension) || (!string.IsNullOrWhiteSpace(mimeType) && WordMimeTypes.Contains(mimeType)))
+        {
+            return DocumentKind.Word;
         }
 
         return DocumentKind.Text;
@@ -301,6 +321,33 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         } while (reader.NextResult());
 
         return string.Join(Environment.NewLine, values);
+    }
+
+    private static string ExtractTextFromWord(byte[] bytes)
+    {
+        using var stream = new MemoryStream(bytes, writable: false);
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
+        var documentEntry = archive.GetEntry("word/document.xml");
+        if (documentEntry is null)
+        {
+            return string.Empty;
+        }
+
+        using var docStream = documentEntry.Open();
+        var document = XDocument.Load(docStream, LoadOptions.None);
+        XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+
+        var paragraphs = document
+            .Descendants(w + "p")
+            .Select(paragraph => string.Concat(
+                paragraph
+                    .Descendants(w + "t")
+                    .Select(textNode => textNode.Value)))
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .Select(text => text.Trim())
+            .ToList();
+
+        return string.Join(Environment.NewLine, paragraphs);
     }
 
     private async Task<TelegramDownloadResult> DownloadTelegramFileAsync(
@@ -544,7 +591,8 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
     {
         Text = 0,
         Pdf = 1,
-        Excel = 2
+        Excel = 2,
+        Word = 3
     }
 
     private sealed record TelegramDownloadResult(bool Success, byte[]? Content = null, string? Error = null)

@@ -401,6 +401,56 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldRefreshMainKeyboardLocaleInChat_WhenAssistantUpdatesLanguage()
+    {
+        var localeState = new FakeUserLocaleStateService
+        {
+            StoredLocale = LocalizationConstants.UkrainianLocale,
+            NextLocale = LocalizationConstants.UkrainianLocale
+        };
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = ConversationAgentResult.Empty(
+                agentName: "assistant-agent",
+                intent: "assistant.settings.language.updated",
+                message: "Language changed")
+        };
+        orchestrator.OnProcess = (_, _, _, _) =>
+        {
+            localeState.StoredLocale = LocalizationConstants.EnglishLocale;
+        };
+
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Main };
+        var presenter = new FakeTelegramNavigationPresenter();
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: localeState,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: presenter,
+            new FakeTelegramFormatter("formatted"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "Chat", null, updateId: 901), CancellationToken.None);
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "Зміни мову на англійську", null, updateId: 902),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Replied);
+        Assert.Equal("assistant.settings.language.updated", payload.Intent);
+        Assert.Equal(LocalizationConstants.EnglishLocale, presenter.LastMainReplyKeyboardLocale);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldHandleAddWordFlowInsideChat_WhenAssistantStartsAddWordFlow()
     {
         var orchestrator = new FakeConversationOrchestrator
@@ -618,6 +668,258 @@ public sealed class TelegramControllerTests
         Assert.Equal("guilty", orchestrator.LastInput);
         Assert.DoesNotContain("Reply with numbers", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(NavigationSections.Chat, navigationState.CurrentSection);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldStartUrlImportFlowFromNaturalChatPhrase_WhenAssistantIntentIsOff()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = ConversationAgentResult.Empty(
+                agentName: "assistant-agent",
+                intent: "assistant.settings.open",
+                message: "Opening settings.")
+        };
+        var sender = new FakeTelegramBotSender();
+        var discovery = new FakeVocabularyDiscoveryService();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Main };
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("formatted"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularyDiscoveryService: discovery);
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "Chat", null, updateId: 231), CancellationToken.None);
+
+        var startImportResponse = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "Зараз скину тобі посилання. Зробиш імпорт?", null, updateId: 232),
+            CancellationToken.None);
+
+        var startImportOk = Assert.IsType<OkObjectResult>(startImportResponse.Result);
+        var startImportPayload = Assert.IsType<TelegramWebhookResponse>(startImportOk.Value);
+        Assert.True(startImportPayload.Replied);
+        Assert.Equal("vocab.import.source", startImportPayload.Intent);
+        Assert.Contains("Send URL", sender.LastText, StringComparison.OrdinalIgnoreCase);
+
+        var urlResponse = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "https://example.com/article", null, updateId: 233),
+            CancellationToken.None);
+
+        var urlOk = Assert.IsType<OkObjectResult>(urlResponse.Result);
+        var urlPayload = Assert.IsType<TelegramWebhookResponse>(urlOk.Value);
+        Assert.True(urlPayload.Replied);
+        Assert.Equal("vocab.url.suggestions", urlPayload.Intent);
+        Assert.Equal(1, discovery.Calls);
+        Assert.Equal("https://example.com/article", discovery.LastSourceInput);
+        Assert.Equal(0, orchestrator.Calls);
+        Assert.Equal(NavigationSections.Chat, navigationState.CurrentSection);
+    }
+
+    [Theory]
+    [InlineData("Зараз скину фото для імпорту", "Send photo")]
+    [InlineData("Я надішлю файл для імпорту", "Send file")]
+    [InlineData("Скину текст для імпорту", "Send text")]
+    [InlineData("Скину тобі посилання. Зробиш імпорт?", "Send URL")]
+    public async Task Webhook_ShouldSelectCorrectImportSourceFromNaturalChatPhrase(
+        string chatPhrase,
+        string expectedPrompt)
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = ConversationAgentResult.Empty(
+                agentName: "assistant-agent",
+                intent: "assistant.settings.open",
+                message: "Opening settings.")
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Main };
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("formatted"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "Chat", null, updateId: 241), CancellationToken.None);
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, chatPhrase, null, updateId: 242),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.import.source", payload.Intent);
+        Assert.Contains(expectedPrompt, sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, orchestrator.Calls);
+        Assert.Equal(NavigationSections.Chat, navigationState.CurrentSection);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldProcessTextImportAfterNaturalChatPhrase()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = ConversationAgentResult.Empty(
+                agentName: "assistant-agent",
+                intent: "assistant.settings.open",
+                message: "Opening settings.")
+        };
+        var sender = new FakeTelegramBotSender();
+        var discovery = new FakeVocabularyDiscoveryService();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Main };
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("formatted"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularyDiscoveryService: discovery);
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "Chat", null, updateId: 251), CancellationToken.None);
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "Скину текст для імпорту", null, updateId: 252), CancellationToken.None);
+
+        var response = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "The architecture helps deploy scalable services.", null, updateId: 253),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.url.suggestions", payload.Intent);
+        Assert.Equal(1, discovery.Calls);
+        Assert.Equal("The architecture helps deploy scalable services.", discovery.LastSourceInput);
+        Assert.Equal(0, orchestrator.Calls);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldProcessFileImportAfterNaturalChatPhrase()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = ConversationAgentResult.Empty(
+                agentName: "assistant-agent",
+                intent: "assistant.settings.open",
+                message: "Opening settings.")
+        };
+        var sender = new FakeTelegramBotSender();
+        var discovery = new FakeVocabularyDiscoveryService();
+        var importReader = new FakeTelegramImportSourceReader
+        {
+            NextResult = new TelegramImportSourceReadResult(
+                TelegramImportSourceReadStatus.Success,
+                "The architecture helps deploy scalable services.")
+        };
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Main };
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("formatted"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularyDiscoveryService: discovery,
+            importSourceReader: importReader);
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "Chat", null, updateId: 261), CancellationToken.None);
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "Надішлю файл для імпорту", null, updateId: 262), CancellationToken.None);
+
+        var response = await sut.Webhook(
+            BuildDocumentUpdate(1001, 2002, "file-123", "words.pdf", "application/pdf", null, updateId: 263),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.url.suggestions", payload.Intent);
+        Assert.Equal(1, discovery.Calls);
+        Assert.Equal(TelegramImportSourceType.File, importReader.LastSourceType);
+        Assert.Equal(0, orchestrator.Calls);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldProcessPhotoImportAfterNaturalChatPhrase()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = ConversationAgentResult.Empty(
+                agentName: "assistant-agent",
+                intent: "assistant.settings.open",
+                message: "Opening settings.")
+        };
+        var sender = new FakeTelegramBotSender();
+        var discovery = new FakeVocabularyDiscoveryService();
+        var importReader = new FakeTelegramImportSourceReader
+        {
+            NextResult = new TelegramImportSourceReadResult(
+                TelegramImportSourceReadStatus.Success,
+                "The architecture helps deploy scalable services.")
+        };
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Main };
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("formatted"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            vocabularyDiscoveryService: discovery,
+            importSourceReader: importReader);
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "Chat", null, updateId: 271), CancellationToken.None);
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "Скину фото для імпорту", null, updateId: 272), CancellationToken.None);
+
+        var response = await sut.Webhook(
+            BuildPhotoUpdate(1001, 2002, "photo-abc", null, updateId: 273),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Replied);
+        Assert.Equal("vocab.url.suggestions", payload.Intent);
+        Assert.Equal(1, discovery.Calls);
+        Assert.Equal(TelegramImportSourceType.Photo, importReader.LastSourceType);
+        Assert.Equal(0, orchestrator.Calls);
     }
 
     [Fact]
@@ -2450,6 +2752,53 @@ public sealed class TelegramControllerTests
             CallbackQuery: null);
     }
 
+    private static TelegramWebhookUpdateRequest BuildDocumentUpdate(
+        long chatId,
+        long userId,
+        string documentFileId,
+        string? documentFileName,
+        string? documentMimeType,
+        int? messageThreadId,
+        string? languageCode = "en",
+        long updateId = 1)
+    {
+        return new TelegramWebhookUpdateRequest(
+            UpdateId: updateId,
+            Message: new TelegramIncomingMessage(
+                MessageId: 10,
+                From: new TelegramUserInfo(userId, false, languageCode, "mike", "Mike", null),
+                Chat: new TelegramChatInfo(chatId, "private", "mike", null),
+                Text: null,
+                Caption: null,
+                MessageThreadId: messageThreadId,
+                Document: new TelegramIncomingDocument(documentFileId, "uniq", documentFileName, documentMimeType, 2048)),
+            EditedMessage: null,
+            CallbackQuery: null);
+    }
+
+    private static TelegramWebhookUpdateRequest BuildPhotoUpdate(
+        long chatId,
+        long userId,
+        string photoFileId,
+        int? messageThreadId,
+        string? languageCode = "en",
+        long updateId = 1)
+    {
+        return new TelegramWebhookUpdateRequest(
+            UpdateId: updateId,
+            Message: new TelegramIncomingMessage(
+                MessageId: 10,
+                From: new TelegramUserInfo(userId, false, languageCode, "mike", "Mike", null),
+                Chat: new TelegramChatInfo(chatId, "private", "mike", null),
+                Text: null,
+                Caption: null,
+                MessageThreadId: messageThreadId,
+                Document: null,
+                Photo: [new TelegramIncomingPhotoSize(photoFileId, "uniq-photo", 800, 600, 1024)]),
+            EditedMessage: null,
+            CallbackQuery: null);
+    }
+
     private static ConversationAgentResult BuildVocabularySingleResult(string inputWord = "smile")
     {
         var item = new ConversationAgentItemResult(
@@ -2519,6 +2868,8 @@ public sealed class TelegramControllerTests
             IsBatch: false,
             Items: []);
 
+        public Action<string, string, string?, string?>? OnProcess { get; set; }
+
         public Task<ConversationAgentResult> ProcessAsync(string input, CancellationToken cancellationToken = default)
             => ProcessAsync(input, "unknown", null, null, cancellationToken);
 
@@ -2540,6 +2891,7 @@ public sealed class TelegramControllerTests
             LastChannel = channel;
             LastUserId = userId;
             LastConversationId = conversationId;
+            OnProcess?.Invoke(input, channel, userId, conversationId);
             if (NextResults.Count > 0)
             {
                 return Task.FromResult(NextResults.Dequeue());
@@ -3309,6 +3661,8 @@ public sealed class TelegramControllerTests
 
     private sealed class FakeTelegramNavigationPresenter : ITelegramNavigationPresenter
     {
+        public string LastMainReplyKeyboardLocale { get; private set; } = LocalizationConstants.EnglishLocale;
+
         public MainMenuLabels GetMainMenuLabels(string locale)
             => new("Chat", "Vocabulary", "Shopping", "Menu", "Settings");
 
@@ -3436,11 +3790,14 @@ public sealed class TelegramControllerTests
         public string GetLanguageDisplayName(string locale) => locale;
 
         public TelegramReplyKeyboardMarkup BuildMainReplyKeyboard(string locale)
-            => new([
+        {
+            LastMainReplyKeyboardLocale = locale;
+            return new([
                 [new TelegramKeyboardButton("Chat"), new TelegramKeyboardButton("Vocabulary")],
                 [new TelegramKeyboardButton("Shopping"), new TelegramKeyboardButton("Menu")],
                 [new TelegramKeyboardButton("Settings")]
             ]);
+        }
 
         public TelegramInlineKeyboardMarkup BuildVocabularyKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Add", "vocab:add")]]);

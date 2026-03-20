@@ -59,6 +59,28 @@ public sealed class TelegramImportSourceReaderTests
             $"Unexpected status: {result.Status}");
     }
 
+    [Fact]
+    public async Task ReadTextAsync_ShouldExtractText_FromWordDocxFile()
+    {
+        var docxBytes = CreateSimpleDocxBytes("First paragraph", "Second paragraph");
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("docx-id", "docs/import.docx", docxBytes);
+
+        var sut = CreateSut(handler);
+        var inbound = new TelegramImportInbound(
+            Text: string.Empty,
+            DocumentFileId: "docx-id",
+            DocumentFileName: "import.docx",
+            DocumentMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            PhotoFileId: null);
+
+        var result = await sut.ReadTextAsync(inbound, TelegramImportSourceType.File, CancellationToken.None);
+
+        Assert.Equal(TelegramImportSourceReadStatus.Success, result.Status);
+        Assert.Contains("First paragraph", result.Text ?? string.Empty, StringComparison.Ordinal);
+        Assert.Contains("Second paragraph", result.Text ?? string.Empty, StringComparison.Ordinal);
+    }
+
     private static ITelegramImportSourceReader CreateSut(HttpMessageHandler handler)
     {
         var readerType = typeof(TelegramController).Assembly.GetType(
@@ -157,6 +179,48 @@ public sealed class TelegramImportSourceReaderTests
 
             sheetData.AppendLine("</sheetData></worksheet>");
             AddEntry(archive, "xl/worksheets/sheet1.xml", sheetData.ToString());
+        }
+
+        return stream.ToArray();
+    }
+
+    private static byte[] CreateSimpleDocxBytes(params string[] paragraphs)
+    {
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            AddEntry(
+                archive,
+                "[Content_Types].xml",
+                """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                  <Default Extension="xml" ContentType="application/xml"/>
+                  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+                </Types>
+                """);
+
+            AddEntry(
+                archive,
+                "_rels/.rels",
+                """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+                </Relationships>
+                """);
+
+            var documentXml = new StringBuilder();
+            documentXml.AppendLine("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""");
+            documentXml.AppendLine("""<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>""");
+            foreach (var paragraph in paragraphs)
+            {
+                documentXml.AppendLine($"<w:p><w:r><w:t>{System.Security.SecurityElement.Escape(paragraph)}</w:t></w:r></w:p>");
+            }
+
+            documentXml.AppendLine("</w:body></w:document>");
+            AddEntry(archive, "word/document.xml", documentXml.ToString());
         }
 
         return stream.ToArray();
