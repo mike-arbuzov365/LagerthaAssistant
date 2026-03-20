@@ -17,6 +17,7 @@ using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Navigation;
 using LagerthaAssistant.Application.Services.Vocabulary;
+using LagerthaAssistant.Domain.Entities;
 using LagerthaAssistant.Infrastructure.Options;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -80,6 +81,9 @@ public sealed class TelegramController : ControllerBase
     private readonly ITelegramConversationResponseFormatter _responseFormatter;
     private readonly ITelegramBotSender _telegramBotSender;
     private readonly ITelegramProcessedUpdateRepository _processedUpdates;
+    private readonly IUserMemoryRepository? _userMemoryRepository;
+    private readonly IUnitOfWork? _unitOfWork;
+    private readonly ReleaseAnnouncementOptions _releaseAnnouncementOptions;
     private readonly TelegramOptions _options;
     private readonly ILogger<TelegramController> _logger;
 
@@ -108,7 +112,10 @@ public sealed class TelegramController : ControllerBase
         ITelegramBotSender telegramBotSender,
         ITelegramProcessedUpdateRepository processedUpdates,
         IOptions<TelegramOptions> options,
-        ILogger<TelegramController> logger)
+        ILogger<TelegramController> logger,
+        IUserMemoryRepository? userMemoryRepository = null,
+        IUnitOfWork? unitOfWork = null,
+        IOptions<ReleaseAnnouncementOptions>? releaseAnnouncementOptions = null)
     {
         _orchestrator = orchestrator;
         _assistantSessionService = assistantSessionService;
@@ -133,6 +140,9 @@ public sealed class TelegramController : ControllerBase
         _responseFormatter = responseFormatter;
         _telegramBotSender = telegramBotSender;
         _processedUpdates = processedUpdates;
+        _userMemoryRepository = userMemoryRepository;
+        _unitOfWork = unitOfWork;
+        _releaseAnnouncementOptions = releaseAnnouncementOptions?.Value ?? new ReleaseAnnouncementOptions();
         _options = options.Value;
         _logger = logger;
 
@@ -235,6 +245,12 @@ public sealed class TelegramController : ControllerBase
                 var switchedText = WebUtility.HtmlEncode(_navigationPresenter.GetText("locale.switched", localeState.Locale));
                 outboundText = string.Concat(switchedText, Environment.NewLine, Environment.NewLine, outboundText);
             }
+
+            outboundText = await PrependReleaseAnnouncementIfNeededAsync(
+                scope,
+                localeState.Locale,
+                outboundText,
+                cancellationToken);
 
             var sendResult = await _telegramBotSender.SendTextAsync(
                 inbound.ChatId,
@@ -2593,6 +2609,110 @@ public sealed class TelegramController : ControllerBase
         .Where(target => !string.IsNullOrWhiteSpace(target.DeckFileName))
         .Select(target => target with { DeckFileName = target.DeckFileName.Trim() })
         .ToList();
+    }
+
+    private async Task<string> PrependReleaseAnnouncementIfNeededAsync(
+        ConversationScope scope,
+        string locale,
+        string outboundText,
+        CancellationToken cancellationToken)
+    {
+        if (!_releaseAnnouncementOptions.Enabled)
+        {
+            return outboundText;
+        }
+
+        var version = _releaseAnnouncementOptions.Version?.Trim();
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return outboundText;
+        }
+
+        if (_userMemoryRepository is null || _unitOfWork is null)
+        {
+            return outboundText;
+        }
+
+        try
+        {
+            var entry = await _userMemoryRepository.GetByKeyAsync(
+                UserPreferenceMemoryKeys.ReleaseLastNotifiedVersion,
+                scope.Channel,
+                scope.UserId,
+                cancellationToken);
+
+            if (entry is not null && string.Equals(entry.Value?.Trim(), version, StringComparison.Ordinal))
+            {
+                return outboundText;
+            }
+
+            if (entry is null)
+            {
+                await _userMemoryRepository.AddAsync(new UserMemoryEntry
+                {
+                    Key = UserPreferenceMemoryKeys.ReleaseLastNotifiedVersion,
+                    Value = version,
+                    Confidence = 1.0,
+                    IsActive = false,
+                    LastSeenAtUtc = DateTimeOffset.UtcNow,
+                    Channel = scope.Channel,
+                    UserId = scope.UserId
+                }, cancellationToken);
+            }
+            else
+            {
+                entry.Value = version;
+                entry.Confidence = 1.0;
+                entry.IsActive = false;
+                entry.LastSeenAtUtc = DateTimeOffset.UtcNow;
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var releaseBlock = BuildReleaseAnnouncementBlock(locale, version);
+            return string.Concat(releaseBlock, Environment.NewLine, Environment.NewLine, outboundText);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to append release announcement. Channel={Channel}; UserId={UserId}", scope.Channel, scope.UserId);
+            return outboundText;
+        }
+    }
+
+    private string BuildReleaseAnnouncementBlock(string locale, string version)
+    {
+        var normalized = LocalizationConstants.NormalizeLocaleCode(locale);
+        var notes = _releaseAnnouncementOptions.ResolveNotes(normalized)?.Trim();
+        var encodedVersion = WebUtility.HtmlEncode(version);
+
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            notes = normalized switch
+            {
+                LocalizationConstants.UkrainianLocale => "Невеликі покращення стабільності та якості роботи.",
+                LocalizationConstants.SpanishLocale => "Pequeñas mejoras de estabilidad y calidad.",
+                LocalizationConstants.FrenchLocale => "Petites améliorations de stabilité et de qualité.",
+                LocalizationConstants.GermanLocale => "Kleine Verbesserungen bei Stabilität und Qualität.",
+                LocalizationConstants.PolishLocale => "Drobne usprawnienia stabilności i jakości.",
+                _ => "Minor stability and quality improvements."
+            };
+        }
+
+        var encodedNotes = WebUtility.HtmlEncode(notes);
+
+        return normalized switch
+        {
+            LocalizationConstants.UkrainianLocale
+                => $"📣 <b>Оновлення бота: {encodedVersion}</b>{Environment.NewLine}Що нового: {encodedNotes}",
+            LocalizationConstants.SpanishLocale
+                => $"📣 <b>Actualización del bot: {encodedVersion}</b>{Environment.NewLine}Novedades: {encodedNotes}",
+            LocalizationConstants.FrenchLocale
+                => $"📣 <b>Mise à jour du bot : {encodedVersion}</b>{Environment.NewLine}Nouveautés : {encodedNotes}",
+            LocalizationConstants.GermanLocale
+                => $"📣 <b>Bot-Update: {encodedVersion}</b>{Environment.NewLine}Neu: {encodedNotes}",
+            LocalizationConstants.PolishLocale
+                => $"📣 <b>Aktualizacja bota: {encodedVersion}</b>{Environment.NewLine}Nowości: {encodedNotes}",
+            _ => $"📣 <b>Bot update: {encodedVersion}</b>{Environment.NewLine}What's new: {encodedNotes}"
+        };
     }
 
     private TelegramRouteResponse BuildOnboardingLanguagePickerResponse(string locale)

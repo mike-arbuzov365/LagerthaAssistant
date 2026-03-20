@@ -82,6 +82,59 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldShowReleaseAnnouncementOnlyOncePerVersionPerUser()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sender = new FakeTelegramBotSender();
+        var memoryRepository = new FakeUserMemoryRepository();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService
+            {
+                CurrentMode = VocabularyStorageMode.Graph
+            },
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("assistant reply"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            userMemoryRepository: memoryRepository,
+            unitOfWork: unitOfWork,
+            releaseAnnouncementOptions: new ReleaseAnnouncementOptions
+            {
+                Enabled = true,
+                Version = "2026.03.20",
+                NotesEn = "Improved chat and import flows."
+            });
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 501), CancellationToken.None);
+        Assert.Contains("Bot update: 2026.03.20", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("assistant reply", sender.LastText, StringComparison.Ordinal);
+        Assert.Equal(1, unitOfWork.SaveChangesCalls);
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 502), CancellationToken.None);
+        Assert.DoesNotContain("Bot update: 2026.03.20", sender.LastText, StringComparison.Ordinal);
+        Assert.Equal("assistant reply", sender.LastText);
+        Assert.Equal(1, unitOfWork.SaveChangesCalls);
+
+        var stored = await memoryRepository.GetByKeyAsync(
+            UserPreferenceMemoryKeys.ReleaseLastNotifiedVersion,
+            "telegram",
+            "2002",
+            CancellationToken.None);
+
+        Assert.NotNull(stored);
+        Assert.Equal("2026.03.20", stored!.Value);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldForceGraphStorageMode_ForTelegramEvenWhenPreferenceIsLocal()
     {
         var orchestrator = new FakeConversationOrchestrator();
@@ -1976,7 +2029,10 @@ public sealed class TelegramControllerTests
         FakeVocabularyIndexService? vocabularyIndexService = null,
         FakeVocabularyDeckService? vocabularyDeckService = null,
         FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null,
-        FakeTelegramImportSourceReader? importSourceReader = null)
+        FakeTelegramImportSourceReader? importSourceReader = null,
+        FakeUserMemoryRepository? userMemoryRepository = null,
+        FakeUnitOfWork? unitOfWork = null,
+        ReleaseAnnouncementOptions? releaseAnnouncementOptions = null)
     {
         return CreateSut(
             orchestrator,
@@ -1993,7 +2049,10 @@ public sealed class TelegramControllerTests
             vocabularyIndexService: vocabularyIndexService,
             vocabularyDeckService: vocabularyDeckService,
             vocabularyDiscoveryService: vocabularyDiscoveryService,
-            importSourceReader: importSourceReader);
+            importSourceReader: importSourceReader,
+            userMemoryRepository: userMemoryRepository,
+            unitOfWork: unitOfWork,
+            releaseAnnouncementOptions: releaseAnnouncementOptions);
     }
 
     private static TelegramController CreateSut(
@@ -2012,7 +2071,10 @@ public sealed class TelegramControllerTests
         FakeVocabularyIndexService? vocabularyIndexService = null,
         FakeVocabularyDeckService? vocabularyDeckService = null,
         FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null,
-        FakeTelegramImportSourceReader? importSourceReader = null)
+        FakeTelegramImportSourceReader? importSourceReader = null,
+        FakeUserMemoryRepository? userMemoryRepository = null,
+        FakeUnitOfWork? unitOfWork = null,
+        ReleaseAnnouncementOptions? releaseAnnouncementOptions = null)
     {
         return CreateSut(
             orchestrator,
@@ -2034,7 +2096,10 @@ public sealed class TelegramControllerTests
             vocabularyIndexService: vocabularyIndexService,
             vocabularyDeckService: vocabularyDeckService,
             vocabularyDiscoveryService: vocabularyDiscoveryService,
-            importSourceReader: importSourceReader);
+            importSourceReader: importSourceReader,
+            userMemoryRepository: userMemoryRepository,
+            unitOfWork: unitOfWork,
+            releaseAnnouncementOptions: releaseAnnouncementOptions);
     }
 
     private static TelegramController CreateSut(
@@ -2057,7 +2122,10 @@ public sealed class TelegramControllerTests
         FakeVocabularyIndexService? vocabularyIndexService = null,
         FakeVocabularyDeckService? vocabularyDeckService = null,
         FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null,
-        FakeTelegramImportSourceReader? importSourceReader = null)
+        FakeTelegramImportSourceReader? importSourceReader = null,
+        FakeUserMemoryRepository? userMemoryRepository = null,
+        FakeUnitOfWork? unitOfWork = null,
+        ReleaseAnnouncementOptions? releaseAnnouncementOptions = null)
     {
         return new TelegramController(
             orchestrator,
@@ -2084,7 +2152,10 @@ public sealed class TelegramControllerTests
             sender,
             processedUpdates ?? new FakeTelegramProcessedUpdateRepository(),
             Options.Create(options),
-            NullLogger<TelegramController>.Instance);
+            NullLogger<TelegramController>.Instance,
+            userMemoryRepository,
+            unitOfWork,
+            Options.Create(releaseAnnouncementOptions ?? new ReleaseAnnouncementOptions()));
     }
 
     private static TelegramWebhookUpdateRequest BuildTextUpdate(
@@ -2888,6 +2959,74 @@ public sealed class TelegramControllerTests
 
         public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(0);
+    }
+
+    private sealed class FakeUserMemoryRepository : IUserMemoryRepository
+    {
+        private readonly Dictionary<(string Key, string Channel, string UserId), UserMemoryEntry> _entries = new();
+
+        public Task<UserMemoryEntry?> GetByKeyAsync(string key, CancellationToken cancellationToken = default)
+        {
+            var result = _entries.Values.FirstOrDefault(x => x.Key.Equals(key, StringComparison.Ordinal));
+            return Task.FromResult(result);
+        }
+
+        public Task<UserMemoryEntry?> GetByKeyAsync(
+            string key,
+            string channel,
+            string userId,
+            CancellationToken cancellationToken = default)
+        {
+            _entries.TryGetValue((key, channel, userId), out var entry);
+            return Task.FromResult(entry);
+        }
+
+        public Task<IReadOnlyList<UserMemoryEntry>> GetActiveAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<UserMemoryEntry>>(
+                _entries.Values
+                    .Where(x => x.IsActive)
+                    .OrderByDescending(x => x.LastSeenAtUtc)
+                    .Take(take)
+                    .ToList());
+
+        public Task<IReadOnlyList<UserMemoryEntry>> GetActiveAsync(
+            int take,
+            string channel,
+            string userId,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<UserMemoryEntry>>(
+                _entries.Values
+                    .Where(x => x.IsActive && x.Channel.Equals(channel, StringComparison.Ordinal) && x.UserId.Equals(userId, StringComparison.Ordinal))
+                    .OrderByDescending(x => x.LastSeenAtUtc)
+                    .Take(take)
+                    .ToList());
+
+        public Task AddAsync(UserMemoryEntry entry, CancellationToken cancellationToken = default)
+        {
+            _entries[(entry.Key, entry.Channel, entry.UserId)] = entry;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeUnitOfWork : IUnitOfWork
+    {
+        public int SaveChangesCalls { get; private set; }
+
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            SaveChangesCalls++;
+            return Task.FromResult(1);
+        }
+
+        public Task BeginTransactionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task CommitTransactionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task RollbackTransactionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public void Dispose()
+        {
+        }
     }
 
     private sealed class FakeTelegramNavigationPresenter : ITelegramNavigationPresenter
