@@ -2,11 +2,13 @@ namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.AI;
+using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Models.Agents;
+using LagerthaAssistant.Application.Models.Localization;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Agents;
 using LagerthaAssistant.Domain.AI;
@@ -81,6 +83,61 @@ public sealed class AssistantConversationAgentTests
         Assert.True(fx.Ai.Calls > 0);
     }
 
+    [Fact]
+    public async Task HandleAsync_ShouldReturnPartOfSpeechCount_ForDirectQuestion()
+    {
+        var fx = new Fixture();
+        fx.Memory.Seed(fx.Scope.Channel, fx.Scope.UserId, LocalizationConstants.LocaleMemoryKey, "uk");
+        var sut = fx.CreateSut();
+
+        var result = await sut.HandleAsync(
+            new ConversationAgentContext(
+                $"{ConversationInputMarkers.Chat} Скажи, скільки дієслів у нашому словнику?",
+                [$"{ConversationInputMarkers.Chat} Скажи, скільки дієслів у нашому словнику?"],
+                fx.Scope),
+            CancellationToken.None);
+
+        Assert.Equal("assistant.vocabulary.stats.part_of_speech", result.Intent);
+        Assert.Contains("53", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldRecognizeStatsIntent_ByNaturalUkrainianPhrase()
+    {
+        var fx = new Fixture();
+        fx.Memory.Seed(fx.Scope.Channel, fx.Scope.UserId, LocalizationConstants.LocaleMemoryKey, "uk");
+        var sut = fx.CreateSut();
+
+        var result = await sut.HandleAsync(
+            new ConversationAgentContext(
+                $"{ConversationInputMarkers.Chat} А якщо подивитись у статистику?",
+                [$"{ConversationInputMarkers.Chat} А якщо подивитись у статистику?"],
+                fx.Scope),
+            CancellationToken.None);
+
+        Assert.Equal("assistant.vocabulary.stats", result.Intent);
+        Assert.Contains("Статистика словника", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ShouldChangeLocale_WhenUserAsksToSwitchLanguage()
+    {
+        var fx = new Fixture();
+        fx.Memory.Seed(fx.Scope.Channel, fx.Scope.UserId, LocalizationConstants.LocaleMemoryKey, "uk");
+        var sut = fx.CreateSut();
+
+        var result = await sut.HandleAsync(
+            new ConversationAgentContext(
+                $"{ConversationInputMarkers.Chat} Переключи мову на англійську",
+                [$"{ConversationInputMarkers.Chat} Переключи мову на англійську"],
+                fx.Scope),
+            CancellationToken.None);
+
+        Assert.Equal("assistant.settings.language.updated", result.Intent);
+        Assert.Equal(LocalizationConstants.EnglishLocale, fx.LocaleState.LastSetLocale);
+        Assert.Contains("Language changed", result.Message, StringComparison.Ordinal);
+    }
+
     private sealed class Fixture
     {
         public Fixture()
@@ -102,6 +159,8 @@ public sealed class AssistantConversationAgentTests
 
         public FakeVocabularyCardRepository Cards { get; } = new();
 
+        public FakeUserLocaleStateService LocaleState { get; } = new();
+
         public AssistantConversationAgent CreateSut()
         {
             return new AssistantConversationAgent(
@@ -110,7 +169,8 @@ public sealed class AssistantConversationAgentTests
                 UnitOfWork,
                 SaveModes,
                 StorageModes,
-                Cards);
+                Cards,
+                LocaleState);
         }
     }
 
@@ -278,6 +338,33 @@ public sealed class AssistantConversationAgentTests
             VocabularyStorageMode mode,
             CancellationToken cancellationToken = default)
             => Task.FromResult(mode);
+    }
+
+    private sealed class FakeUserLocaleStateService : IUserLocaleStateService
+    {
+        public string? LastSetLocale { get; private set; }
+
+        public Task<string?> GetStoredLocaleAsync(string channel, string userId, CancellationToken cancellationToken = default)
+            => Task.FromResult<string?>(null);
+
+        public Task<string> SetLocaleAsync(
+            string channel,
+            string userId,
+            string locale,
+            bool selectedManually,
+            CancellationToken cancellationToken = default)
+        {
+            LastSetLocale = LocalizationConstants.NormalizeLocaleCode(locale);
+            return Task.FromResult(LastSetLocale);
+        }
+
+        public Task<UserLocaleStateResult> EnsureLocaleAsync(
+            string channel,
+            string userId,
+            string? telegramLanguageCode,
+            string? incomingText,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new UserLocaleStateResult(LocalizationConstants.NormalizeLocaleCode(telegramLanguageCode), false, false));
     }
 
     private sealed class FakeVocabularyCardRepository : IVocabularyCardRepository

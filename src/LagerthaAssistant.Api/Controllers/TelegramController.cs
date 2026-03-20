@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -44,6 +45,14 @@ public sealed class TelegramController : ControllerBase
     private static readonly Regex SentenceSplitRegex = new("(?<=[\\.!\\?])\\s+", RegexOptions.Compiled);
     private static readonly string[] PrimaryPartOfSpeechMarkers = ["n", "v", "pv", "iv", "adv", "prep"];
     private static readonly string[] UrlSelectionPosOrder = ["n", "v", "adj"];
+    private static readonly string AutomaticReleaseVersionToken = "auto";
+    private static readonly string[] ReleaseVersionEnvironmentKeys =
+    [
+        "RELEASE_ANNOUNCEMENT_VERSION",
+        "RELEASE_VERSION",
+        "RAILWAY_DEPLOYMENT_ID",
+        "RAILWAY_GIT_COMMIT_SHA"
+    ];
     private static readonly HashSet<string> UrlSelectAllTokens = new(StringComparer.OrdinalIgnoreCase)
     {
         "all", "всі", "усі", "todo", "todos", "tous", "alle", "wszystkie"
@@ -2622,9 +2631,10 @@ public sealed class TelegramController : ControllerBase
             return outboundText;
         }
 
-        var version = _releaseAnnouncementOptions.Version?.Trim();
+        var version = ResolveReleaseAnnouncementVersion();
         if (string.IsNullOrWhiteSpace(version))
         {
+            _logger.LogDebug("Release announcement skipped: no resolved version.");
             return outboundText;
         }
 
@@ -2669,6 +2679,11 @@ public sealed class TelegramController : ControllerBase
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             var releaseBlock = BuildReleaseAnnouncementBlock(locale, version);
+            _logger.LogInformation(
+                "Release announcement queued for user. Channel={Channel}; UserId={UserId}; Version={Version}",
+                scope.Channel,
+                scope.UserId,
+                version);
             return string.Concat(releaseBlock, Environment.NewLine, Environment.NewLine, outboundText);
         }
         catch (Exception ex)
@@ -2676,6 +2691,38 @@ public sealed class TelegramController : ControllerBase
             _logger.LogWarning(ex, "Failed to append release announcement. Channel={Channel}; UserId={UserId}", scope.Channel, scope.UserId);
             return outboundText;
         }
+    }
+
+    private string? ResolveReleaseAnnouncementVersion()
+    {
+        var configured = _releaseAnnouncementOptions.Version?.Trim();
+        if (!string.IsNullOrWhiteSpace(configured)
+            && !string.Equals(configured, AutomaticReleaseVersionToken, StringComparison.OrdinalIgnoreCase))
+        {
+            return configured;
+        }
+
+        foreach (var key in ReleaseVersionEnvironmentKeys)
+        {
+            var value = Environment.GetEnvironmentVariable(key)?.Trim();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        var informational = typeof(TelegramController)
+            .Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+            ?.Trim();
+
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            return informational;
+        }
+
+        return typeof(TelegramController).Assembly.GetName().Version?.ToString();
     }
 
     private string BuildReleaseAnnouncementBlock(string locale, string version)

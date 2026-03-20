@@ -4,6 +4,7 @@ using System.Text;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
+using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
@@ -61,6 +62,7 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
     private readonly IVocabularySaveModePreferenceService _saveModePreferenceService;
     private readonly IVocabularyStoragePreferenceService _storagePreferenceService;
     private readonly IVocabularyCardRepository _vocabularyCardRepository;
+    private readonly IUserLocaleStateService? _userLocaleStateService;
 
     public AssistantConversationAgent(
         IAiChatClient aiChatClient,
@@ -68,7 +70,8 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
         IUnitOfWork unitOfWork,
         IVocabularySaveModePreferenceService saveModePreferenceService,
         IVocabularyStoragePreferenceService storagePreferenceService,
-        IVocabularyCardRepository vocabularyCardRepository)
+        IVocabularyCardRepository vocabularyCardRepository,
+        IUserLocaleStateService? userLocaleStateService = null)
     {
         _aiChatClient = aiChatClient;
         _userMemoryRepository = userMemoryRepository;
@@ -76,6 +79,7 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
         _saveModePreferenceService = saveModePreferenceService;
         _storagePreferenceService = storagePreferenceService;
         _vocabularyCardRepository = vocabularyCardRepository;
+        _userLocaleStateService = userLocaleStateService;
     }
 
     public string Name => "assistant-agent";
@@ -107,6 +111,17 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
             return ConversationAgentResult.Empty(Name, "assistant.memory.updated", memoryReply);
         }
 
+        if (TryParseLanguageSwitchCommand(input, out var targetLocale))
+        {
+            if (string.IsNullOrWhiteSpace(targetLocale))
+            {
+                return ConversationAgentResult.Empty(Name, "assistant.settings.language.invalid", BuildLanguagePrompt(locale));
+            }
+
+            var languageReply = await ApplyLanguageChangeAsync(context.Scope, targetLocale, locale, cancellationToken);
+            return ConversationAgentResult.Empty(Name, "assistant.settings.language.updated", languageReply);
+        }
+
         if (TryParseSaveModeCommand(input, out var requestedMode))
         {
             if (!requestedMode.HasValue)
@@ -118,7 +133,13 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
             return ConversationAgentResult.Empty(Name, "assistant.settings.save_mode.updated", saveModeReply);
         }
 
-        if (ContainsAny(input, StatsMarkers))
+        if (TryParsePartOfSpeechCountRequest(input, out var marker))
+        {
+            var posCount = await BuildPartOfSpeechCountMessageAsync(marker, locale, cancellationToken);
+            return ConversationAgentResult.Empty(Name, "assistant.vocabulary.stats.part_of_speech", posCount);
+        }
+
+        if (IsStatsRequest(input))
         {
             var stats = await BuildStatsMessageAsync(locale, cancellationToken);
             return ConversationAgentResult.Empty(Name, "assistant.vocabulary.stats", stats);
@@ -155,6 +176,57 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
 
         var storageMode = await _storagePreferenceService.GetModeAsync(scope, cancellationToken);
         return BuildSaveModeUpdatedProofMessage(locale, modeText, storageMode.ToString().ToLowerInvariant());
+    }
+
+    private async Task<string> ApplyLanguageChangeAsync(
+        ConversationScope scope,
+        string targetLocale,
+        string currentLocale,
+        CancellationToken cancellationToken)
+    {
+        if (_userLocaleStateService is null)
+        {
+            return currentLocale == LocalizationConstants.UkrainianLocale
+                ? "Не вдалося змінити мову в цьому режимі."
+                : "Language cannot be changed in this mode.";
+        }
+
+        var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(targetLocale);
+        var updatedLocale = await _userLocaleStateService.SetLocaleAsync(
+            scope.Channel,
+            scope.UserId,
+            normalizedLocale,
+            selectedManually: true,
+            cancellationToken);
+
+        var responseLocale = LocalizationConstants.NormalizeLocaleCode(updatedLocale);
+        var targetDisplay = GetLanguageDisplayName(responseLocale, responseLocale);
+        var proofMode = await GetSettingsProofModeAsync(scope, cancellationToken);
+
+        if (string.Equals(proofMode, ProofModeBrief, StringComparison.OrdinalIgnoreCase))
+        {
+            return responseLocale == LocalizationConstants.UkrainianLocale
+                ? $"Готово. Мову змінено на {targetDisplay}."
+                : $"Done. Language changed to {targetDisplay}.";
+        }
+
+        return responseLocale == LocalizationConstants.UkrainianLocale
+            ? string.Join(
+                Environment.NewLine,
+                [
+                    $"✅ Готово. Мову змінено на {targetDisplay}.",
+                    "",
+                    "Поточні налаштування:",
+                    $"• Мова: {targetDisplay}"
+                ])
+            : string.Join(
+                Environment.NewLine,
+                [
+                    $"✅ Done. Language changed to {targetDisplay}.",
+                    "",
+                    "Current settings:",
+                    $"• Language: {targetDisplay}"
+                ]);
     }
 
     private async Task<string> BuildStatsMessageAsync(string locale, CancellationToken cancellationToken)
@@ -225,6 +297,22 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
         }
 
         return builder.ToString().Trim();
+    }
+
+    private async Task<string> BuildPartOfSpeechCountMessageAsync(
+        string marker,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var stats = await _vocabularyCardRepository.GetPartOfSpeechStatsAsync(cancellationToken);
+        var count = stats
+            .FirstOrDefault(x => string.Equals((x.Marker ?? string.Empty).Trim(), marker, StringComparison.OrdinalIgnoreCase))
+            ?.Count ?? 0;
+
+        var label = NormalizePartOfSpeechLabel(marker, locale);
+        return locale == LocalizationConstants.UkrainianLocale
+            ? $"У словнику зараз {count} ({label})."
+            : $"Your dictionary currently has {count} {label}.";
     }
 
     private async Task<string> BuildChatReplyAsync(
@@ -371,6 +459,93 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
         return true;
     }
 
+    private static bool TryParseLanguageSwitchCommand(string input, out string? locale)
+    {
+        locale = null;
+        var normalized = Normalize(input);
+
+        var isLanguageTopic = normalized.Contains("мов", StringComparison.Ordinal)
+            || normalized.Contains("language", StringComparison.Ordinal);
+        var isSwitchAction = normalized.Contains("переключ", StringComparison.Ordinal)
+            || normalized.Contains("змін", StringComparison.Ordinal)
+            || normalized.Contains("switch", StringComparison.Ordinal)
+            || normalized.Contains("change", StringComparison.Ordinal)
+            || normalized.Contains("set ", StringComparison.Ordinal);
+
+        if (!isLanguageTopic || !isSwitchAction)
+        {
+            return false;
+        }
+
+        if (normalized.Contains("укра", StringComparison.Ordinal) || normalized.Contains("ukrain", StringComparison.Ordinal))
+        {
+            locale = LocalizationConstants.UkrainianLocale;
+            return true;
+        }
+
+        if (normalized.Contains("англ", StringComparison.Ordinal) || normalized.Contains("english", StringComparison.Ordinal))
+        {
+            locale = LocalizationConstants.EnglishLocale;
+            return true;
+        }
+
+        if (normalized.Contains("іспан", StringComparison.Ordinal) || normalized.Contains("spanish", StringComparison.Ordinal))
+        {
+            locale = LocalizationConstants.SpanishLocale;
+            return true;
+        }
+
+        if (normalized.Contains("франц", StringComparison.Ordinal) || normalized.Contains("french", StringComparison.Ordinal))
+        {
+            locale = LocalizationConstants.FrenchLocale;
+            return true;
+        }
+
+        if (normalized.Contains("нім", StringComparison.Ordinal) || normalized.Contains("german", StringComparison.Ordinal) || normalized.Contains("deutsch", StringComparison.Ordinal))
+        {
+            locale = LocalizationConstants.GermanLocale;
+            return true;
+        }
+
+        if (normalized.Contains("поль", StringComparison.Ordinal) || normalized.Contains("polish", StringComparison.Ordinal))
+        {
+            locale = LocalizationConstants.PolishLocale;
+            return true;
+        }
+
+        return true;
+    }
+
+    private static bool TryParsePartOfSpeechCountRequest(string input, out string marker)
+    {
+        marker = string.Empty;
+        var normalized = Normalize(input);
+
+        var asksCount = normalized.Contains("скільки", StringComparison.Ordinal)
+            || normalized.Contains("how many", StringComparison.Ordinal)
+            || normalized.Contains("count", StringComparison.Ordinal);
+
+        if (!asksCount)
+        {
+            return false;
+        }
+
+        marker = normalized switch
+        {
+            var s when s.Contains("дієслів", StringComparison.Ordinal) || s.Contains("дієсл", StringComparison.Ordinal) || s.Contains("verb", StringComparison.Ordinal) => "v",
+            var s when s.Contains("іменник", StringComparison.Ordinal) || s.Contains("noun", StringComparison.Ordinal) => "n",
+            var s when s.Contains("прикмет", StringComparison.Ordinal) || s.Contains("adjective", StringComparison.Ordinal) => "adj",
+            var s when s.Contains("прислів", StringComparison.Ordinal) || s.Contains("adverb", StringComparison.Ordinal) => "adv",
+            var s when s.Contains("приймен", StringComparison.Ordinal) || s.Contains("preposition", StringComparison.Ordinal) => "prep",
+            var s when s.Contains("фразов", StringComparison.Ordinal) || s.Contains("phrasal", StringComparison.Ordinal) => "pv",
+            var s when s.Contains("неправильн", StringComparison.Ordinal) || s.Contains("irregular", StringComparison.Ordinal) => "iv",
+            var s when s.Contains("стал", StringComparison.Ordinal) || s.Contains("вираз", StringComparison.Ordinal) || s.Contains("persistent expression", StringComparison.Ordinal) => "pe",
+            _ => string.Empty
+        };
+
+        return !string.IsNullOrWhiteSpace(marker);
+    }
+
     private static bool TryParseMemoryPreference(string input, out MemoryPreference preference)
     {
         preference = MemoryPreference.None;
@@ -480,6 +655,13 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
             : "Please specify the save mode: auto, ask, or off.";
     }
 
+    private static string BuildLanguagePrompt(string locale)
+    {
+        return locale == LocalizationConstants.UkrainianLocale
+            ? "Уточни, будь ласка, мову: українська, english, español, français, deutsch або polski."
+            : "Please specify the target language: Ukrainian, English, Español, Français, Deutsch, or Polski.";
+    }
+
     private static string BuildSaveModeUpdatedShortMessage(string locale, string modeText)
     {
         return locale == LocalizationConstants.UkrainianLocale
@@ -519,6 +701,15 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
         return markers.Any(marker => normalized.Contains(Normalize(marker), StringComparison.Ordinal));
     }
 
+    private static bool IsStatsRequest(string input)
+    {
+        var normalized = Normalize(input);
+        return ContainsAny(normalized, StatsMarkers)
+               || normalized.Contains("статистик", StringComparison.Ordinal)
+               || normalized.Contains("statistics", StringComparison.Ordinal)
+               || normalized.Contains("stats", StringComparison.Ordinal);
+    }
+
     private static string Normalize(string value)
     {
         return value.Trim().ToLowerInvariant();
@@ -552,6 +743,37 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
             "pv" => locale == LocalizationConstants.UkrainianLocale ? "фразові дієслова" : "phrasal verbs",
             "iv" => locale == LocalizationConstants.UkrainianLocale ? "неправильні дієслова" : "irregular verbs",
             "pe" => locale == LocalizationConstants.UkrainianLocale ? "сталі вирази" : "persistent expressions",
+            _ => normalized
+        };
+    }
+
+    private static string GetLanguageDisplayName(string locale, string responseLocale)
+    {
+        var normalized = LocalizationConstants.NormalizeLocaleCode(locale);
+        var displayInUkrainian = normalized switch
+        {
+            LocalizationConstants.UkrainianLocale => "українську",
+            LocalizationConstants.EnglishLocale => "english",
+            LocalizationConstants.SpanishLocale => "español",
+            LocalizationConstants.FrenchLocale => "français",
+            LocalizationConstants.GermanLocale => "deutsch",
+            LocalizationConstants.PolishLocale => "polski",
+            _ => normalized
+        };
+
+        if (responseLocale == LocalizationConstants.UkrainianLocale)
+        {
+            return displayInUkrainian;
+        }
+
+        return normalized switch
+        {
+            LocalizationConstants.UkrainianLocale => "Ukrainian",
+            LocalizationConstants.EnglishLocale => "English",
+            LocalizationConstants.SpanishLocale => "Español",
+            LocalizationConstants.FrenchLocale => "Français",
+            LocalizationConstants.GermanLocale => "Deutsch",
+            LocalizationConstants.PolishLocale => "Polski",
             _ => normalized
         };
     }
