@@ -167,6 +167,18 @@ public sealed class ConversationIntentRouterTests
     }
 
     [Fact]
+    public void TryResolve_ShouldIgnoreChatMarkedInput_ForCommandIntents()
+    {
+        var sut = new ConversationIntentRouter();
+        var input = $"{ConversationInputMarkers.Chat} Що ти вмієш?";
+
+        var handled = sut.TryResolve(input, out var intent);
+
+        Assert.False(handled);
+        Assert.Equal(ConversationCommandIntentType.Unsupported, intent.Type);
+    }
+
+    [Fact]
     public void TryResolve_ShouldParseNaturalSyncRunWithNumber()
     {
         var sut = new ConversationIntentRouter();

@@ -25,6 +25,12 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
             return false;
         }
 
+        if (raw.StartsWith(ConversationInputMarkers.Chat, StringComparison.Ordinal))
+        {
+            intent = new ConversationCommandIntent(ConversationCommandIntentType.Unsupported, Raw: raw);
+            return false;
+        }
+
         if (TryResolveSlash(normalized, raw, out intent))
         {
             return true;
