@@ -1171,6 +1171,8 @@ public sealed class TelegramControllerTests
         Assert.Equal("settings.onedrive.index.done", payload.Intent);
         Assert.Equal(1, indexService.RebuildCalls);
         Assert.Equal(VocabularyStorageMode.Graph, indexService.LastMode);
+        Assert.True(sender.SentMessages.Count >= 3);
+        Assert.Contains("Rebuilding cache started", sender.SentMessages[^2].Text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Cache rebuilt", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
 

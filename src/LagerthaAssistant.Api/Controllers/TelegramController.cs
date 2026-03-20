@@ -334,7 +334,7 @@ public sealed class TelegramController : ControllerBase
                 return await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken);
 
             case NavigationRouteKind.Callback:
-                return await HandleCallbackAsync(route.CallbackData!, scope, locale, currentSection, cancellationToken);
+                return await HandleCallbackAsync(route.CallbackData!, inbound, scope, locale, currentSection, cancellationToken);
 
             case NavigationRouteKind.VocabularyText:
                 {
@@ -388,6 +388,7 @@ public sealed class TelegramController : ControllerBase
 
     private async Task<TelegramRouteResponse> HandleCallbackAsync(
         string callbackData,
+        TelegramInboundMessage inbound,
         ConversationScope scope,
         string locale,
         string currentSection,
@@ -420,7 +421,7 @@ public sealed class TelegramController : ControllerBase
 
         if (callbackData.StartsWith(CallbackDataConstants.OneDrive.Prefix, StringComparison.Ordinal))
         {
-            return await HandleOneDriveCallbackAsync(callbackData, scope, locale, cancellationToken);
+            return await HandleOneDriveCallbackAsync(callbackData, inbound, scope, locale, cancellationToken);
         }
 
         if (callbackData.StartsWith(CallbackDataConstants.Vocab.Prefix, StringComparison.Ordinal))
@@ -592,6 +593,7 @@ public sealed class TelegramController : ControllerBase
 
     private async Task<TelegramRouteResponse> HandleOneDriveCallbackAsync(
         string callbackData,
+        TelegramInboundMessage inbound,
         ConversationScope scope,
         string locale,
         CancellationToken cancellationToken)
@@ -849,6 +851,12 @@ public sealed class TelegramController : ControllerBase
 
             try
             {
+                await TrySendProgressMessageAsync(
+                    inbound.ChatId,
+                    inbound.MessageThreadId,
+                    _navigationPresenter.GetText("onedrive.rebuild_index_started", locale),
+                    cancellationToken);
+
                 _storageModeProvider.SetMode(VocabularyStorageMode.Graph);
                 var entries = await _vocabularyDeckService.GetAllEntriesAsync(cancellationToken);
                 var indexed = await _vocabularyIndexService.RebuildAsync(entries, VocabularyStorageMode.Graph, cancellationToken);
@@ -858,9 +866,6 @@ public sealed class TelegramController : ControllerBase
                 {
                     Intent = "settings.onedrive.index.done",
                     Text = string.Concat(
-                        _navigationPresenter.GetText("onedrive.rebuild_index_started", locale),
-                        Environment.NewLine,
-                        Environment.NewLine,
                         _navigationPresenter.GetText("onedrive.rebuild_index_done", locale, entries.Count, indexed),
                         Environment.NewLine,
                         Environment.NewLine,
@@ -2194,6 +2199,33 @@ public sealed class TelegramController : ControllerBase
         }
 
         return $"{QuestionMarker} {value}";
+    }
+
+    private async Task TrySendProgressMessageAsync(
+        long chatId,
+        int? messageThreadId,
+        string text,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var sendResult = await _telegramBotSender.SendTextAsync(
+            chatId,
+            WebUtility.HtmlEncode(text),
+            EnsureHtmlParseMode(options: null),
+            messageThreadId,
+            cancellationToken);
+
+        if (!sendResult.Succeeded)
+        {
+            _logger.LogWarning(
+                "Telegram progress message send failed. ChatId={ChatId}; Error={Error}",
+                chatId,
+                sendResult.ErrorMessage);
+        }
     }
 
     private async Task<TelegramRouteResponse> BuildSaveModeResponseAsync(
