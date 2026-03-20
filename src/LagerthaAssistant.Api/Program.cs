@@ -37,9 +37,14 @@ builder.Services.AddHttpClient("telegram", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
 });
+builder.Services.AddHttpClient("vocab-discovery", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+});
 builder.Services.AddSingleton<ITelegramConversationResponseFormatter, TelegramConversationResponseFormatter>();
 builder.Services.AddSingleton<ITelegramBotSender, TelegramBotSender>();
 builder.Services.AddSingleton<ITelegramNavigationPresenter, TelegramNavigationPresenter>();
+builder.Services.AddScoped<IVocabularyDiscoveryService, VocabularyDiscoveryService>();
 builder.Services.AddRateLimiter(opts =>
 {
     opts.AddFixedWindowLimiter("telegram-webhook", o =>

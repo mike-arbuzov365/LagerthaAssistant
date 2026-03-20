@@ -32,15 +32,28 @@ public sealed class TelegramController : ControllerBase
     private const string TelegramSecretHeader = "X-Telegram-Bot-Api-Secret-Token";
     private const string HtmlParseMode = "HTML";
     private const string SectionSeparator = "--------------------";
+    private const string BatchItemMarker = "🔹";
     private const string QuestionMarker = "❓";
     private const int ManualSyncBatchSize = 25;
     private const int ManualSyncMaxPasses = 5;
+    private static readonly Regex UrlLikeRegex = new("^https?://", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex SelectionNumberRegex = new(@"\d+", RegexOptions.Compiled);
     private static readonly Regex LeadingDecorationRegex = new("^[^\\p{L}\\p{N}]+", RegexOptions.Compiled);
     private static readonly Regex SentenceSplitRegex = new("(?<=[\\.!\\?])\\s+", RegexOptions.Compiled);
     private static readonly string[] PrimaryPartOfSpeechMarkers = ["n", "v", "pv", "iv", "adv", "prep"];
+    private static readonly string[] UrlSelectionPosOrder = ["n", "v", "adj"];
+    private static readonly HashSet<string> UrlSelectAllTokens = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "all", "всі", "усі", "todo", "todos", "tous", "alle", "wszystkie"
+    };
+    private static readonly HashSet<string> UrlCancelTokens = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cancel", "stop", "no", "ні", "cancelar", "annuler", "abbrechen", "anuluj"
+    };
 
     private static readonly ConcurrentDictionary<string, GraphDeviceLoginChallenge> PendingGraphChallenges = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, PendingVocabularySaveRequest> PendingVocabularySaves = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, PendingVocabularyUrlSession> PendingVocabularyUrlSessions = new(StringComparer.Ordinal);
 
     private readonly IConversationOrchestrator _orchestrator;
     private readonly IAssistantSessionService _assistantSessionService;
@@ -57,6 +70,7 @@ public sealed class TelegramController : ControllerBase
     private readonly IVocabularyIndexService _vocabularyIndexService;
     private readonly IVocabularyDeckService _vocabularyDeckService;
     private readonly IVocabularyReplyParser _vocabularyReplyParser;
+    private readonly IVocabularyDiscoveryService _vocabularyDiscoveryService;
     private readonly VocabularyDeckOptions _vocabularyDeckOptions;
     private readonly IGraphAuthService _graphAuthService;
     private readonly ITelegramNavigationPresenter _navigationPresenter;
@@ -82,6 +96,7 @@ public sealed class TelegramController : ControllerBase
         IVocabularyIndexService vocabularyIndexService,
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyReplyParser vocabularyReplyParser,
+        IVocabularyDiscoveryService vocabularyDiscoveryService,
         VocabularyDeckOptions vocabularyDeckOptions,
         IGraphAuthService graphAuthService,
         ITelegramNavigationPresenter navigationPresenter,
@@ -106,6 +121,7 @@ public sealed class TelegramController : ControllerBase
         _vocabularyIndexService = vocabularyIndexService;
         _vocabularyDeckService = vocabularyDeckService;
         _vocabularyReplyParser = vocabularyReplyParser;
+        _vocabularyDiscoveryService = vocabularyDiscoveryService;
         _vocabularyDeckOptions = vocabularyDeckOptions;
         _graphAuthService = graphAuthService;
         _navigationPresenter = navigationPresenter;
@@ -321,6 +337,16 @@ public sealed class TelegramController : ControllerBase
 
             case NavigationRouteKind.VocabularyText:
                 {
+                    var urlFlowResponse = await TryHandleVocabularyUrlFlowAsync(
+                        inbound.Text,
+                        scope,
+                        locale,
+                        cancellationToken);
+                    if (urlFlowResponse is not null)
+                    {
+                        return urlFlowResponse;
+                    }
+
                     var result = await _orchestrator.ProcessAsync(
                         inbound.Text,
                         scope.Channel,
@@ -369,6 +395,7 @@ public sealed class TelegramController : ControllerBase
         if (string.Equals(callbackData, CallbackDataConstants.Nav.Main, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Main, cancellationToken);
+            PendingVocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
             return new TelegramRouteResponse(
                 "nav.main",
                 _navigationPresenter.GetText("menu.main.title", locale),
@@ -401,17 +428,13 @@ public sealed class TelegramController : ControllerBase
 
             return callbackData switch
             {
-                CallbackDataConstants.Vocab.Add => new TelegramRouteResponse(
-                    "vocab.add",
-                    _navigationPresenter.GetText("vocab.add.prompt", locale),
-                    InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale))),
+                CallbackDataConstants.Vocab.Add => HandleVocabularyAddCallback(scope, locale),
                 CallbackDataConstants.Vocab.Stats or CallbackDataConstants.Vocab.ListLegacy
                     => await HandleVocabularyStatsCallbackAsync(locale, cancellationToken),
-                CallbackDataConstants.Vocab.Url => new TelegramRouteResponse(
-                    "vocab.url",
-                    _navigationPresenter.GetText("vocab.url.prompt", locale),
-                    InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale))),
-                CallbackDataConstants.Vocab.Batch => BuildBatchModeResponse(locale),
+                CallbackDataConstants.Vocab.Url => HandleVocabularyUrlStartCallback(scope, locale),
+                CallbackDataConstants.Vocab.UrlSelectAll => await HandleVocabularyUrlSelectAllAsync(scope, locale, cancellationToken),
+                CallbackDataConstants.Vocab.UrlCancel => HandleVocabularyUrlCancelCallback(scope, locale),
+                CallbackDataConstants.Vocab.Batch => BuildBatchModeResponse(scope, locale),
                 CallbackDataConstants.Vocab.SaveYes => await HandleVocabularySaveConfirmationAsync(scope, locale, saveRequested: true, cancellationToken),
                 CallbackDataConstants.Vocab.SaveNo => await HandleVocabularySaveConfirmationAsync(scope, locale, saveRequested: false, cancellationToken),
                 _ => new TelegramRouteResponse(
@@ -788,6 +811,24 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildOneDriveRebuildIndexConfirmationKeyboard(locale)));
         }
 
+        if (string.Equals(callbackData, CallbackDataConstants.OneDrive.ClearCache, StringComparison.Ordinal))
+        {
+            var cachedCount = 0;
+            try
+            {
+                cachedCount = await _vocabularyCardRepository.CountAllAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not count cached words before clear-cache confirmation.");
+            }
+
+            return new TelegramRouteResponse(
+                "settings.onedrive.cache.confirm",
+                EnsureQuestionMarker(_navigationPresenter.GetText("onedrive.clear_cache_warning", locale, cachedCount)),
+                InlineKeyboard(_navigationPresenter.BuildOneDriveClearCacheConfirmationKeyboard(locale)));
+        }
+
         if (string.Equals(callbackData, CallbackDataConstants.OneDrive.RebuildIndexConfirm, StringComparison.Ordinal))
         {
             var status = await _graphAuthService.GetStatusAsync(cancellationToken);
@@ -832,6 +873,45 @@ public sealed class TelegramController : ControllerBase
                 return failedScreen with
                 {
                     Intent = "settings.onedrive.index.failed",
+                    Text = string.Concat(
+                        _navigationPresenter.GetText(
+                            "onedrive.operation_failed",
+                            locale,
+                            WebUtility.HtmlEncode(LocalizeGraphRelatedMessage(ex.Message, locale))),
+                        Environment.NewLine,
+                        Environment.NewLine,
+                        failedScreen.Text)
+                };
+            }
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.OneDrive.ClearCacheConfirm, StringComparison.Ordinal))
+        {
+            try
+            {
+                var deleted = await _vocabularyIndexService.ClearAsync(cancellationToken);
+                var clearedScreen = await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
+
+                return clearedScreen with
+                {
+                    Intent = "settings.onedrive.cache.done",
+                    Text = string.Concat(
+                        _navigationPresenter.GetText("onedrive.clear_cache_done", locale, deleted),
+                        Environment.NewLine,
+                        Environment.NewLine,
+                        _navigationPresenter.GetText("onedrive.clear_cache_hint", locale),
+                        Environment.NewLine,
+                        Environment.NewLine,
+                        clearedScreen.Text)
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "OneDrive cache clear from Telegram settings failed.");
+                var failedScreen = await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
+                return failedScreen with
+                {
+                    Intent = "settings.onedrive.cache.failed",
                     Text = string.Concat(
                         _navigationPresenter.GetText(
                             "onedrive.operation_failed",
@@ -901,6 +981,310 @@ public sealed class TelegramController : ControllerBase
         }
 
         return new OneDriveSyncSummary(completed, requeued, failed, pendingAfterRun);
+    }
+
+    private TelegramRouteResponse HandleVocabularyAddCallback(
+        ConversationScope scope,
+        string locale)
+    {
+        PendingVocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
+
+        return new TelegramRouteResponse(
+            "vocab.add",
+            _navigationPresenter.GetText("vocab.add.prompt", locale),
+            InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+    }
+
+    private TelegramRouteResponse HandleVocabularyUrlStartCallback(
+        ConversationScope scope,
+        string locale)
+    {
+        PendingVocabularyUrlSessions[BuildPendingUrlSessionKey(scope)] = PendingVocabularyUrlSession.AwaitingSource;
+
+        return new TelegramRouteResponse(
+            "vocab.url",
+            _navigationPresenter.GetText("vocab.url.prompt", locale),
+            InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+    }
+
+    private TelegramRouteResponse HandleVocabularyUrlCancelCallback(
+        ConversationScope scope,
+        string locale)
+    {
+        PendingVocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
+
+        return new TelegramRouteResponse(
+            "vocab.url.cancel",
+            _navigationPresenter.GetText("vocab.url.selection_cancelled", locale),
+            InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandleVocabularyUrlSelectAllAsync(
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var key = BuildPendingUrlSessionKey(scope);
+        if (!PendingVocabularyUrlSessions.TryGetValue(key, out var session)
+            || session.Stage != PendingVocabularyUrlStage.AwaitingSelection
+            || session.Candidates.Count == 0)
+        {
+            return new TelegramRouteResponse(
+                "vocab.url.no_pending",
+                _navigationPresenter.GetText("vocab.url.no_pending", locale),
+                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+        }
+
+        var selectedWords = session.Candidates
+            .Select(candidate => candidate.Word)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return await ProcessVocabularyUrlSelectionAsync(selectedWords, scope, locale, cancellationToken);
+    }
+
+    private async Task<TelegramRouteResponse?> TryHandleVocabularyUrlFlowAsync(
+        string inboundText,
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var normalizedInput = inboundText?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedInput))
+        {
+            return null;
+        }
+
+        var pendingKey = BuildPendingUrlSessionKey(scope);
+        var hasSession = PendingVocabularyUrlSessions.TryGetValue(pendingKey, out var session);
+        var shouldAutoStartFromUrl = !hasSession && UrlLikeRegex.IsMatch(normalizedInput);
+
+        if (!hasSession && !shouldAutoStartFromUrl)
+        {
+            return null;
+        }
+
+        session ??= PendingVocabularyUrlSession.AwaitingSource;
+
+        if (session.Stage == PendingVocabularyUrlStage.AwaitingSelection)
+        {
+            var selection = ParseVocabularyUrlSelection(normalizedInput, session.Candidates);
+            if (selection.Action == VocabularyUrlSelectionAction.Cancel)
+            {
+                return HandleVocabularyUrlCancelCallback(scope, locale);
+            }
+
+            if (selection.Action == VocabularyUrlSelectionAction.Invalid)
+            {
+                if (LooksLikeUrlSelectionAttempt(normalizedInput))
+                {
+                    return new TelegramRouteResponse(
+                        "vocab.url.selection.invalid",
+                        _navigationPresenter.GetText("vocab.url.select_parse_failed", locale),
+                        InlineKeyboard(_navigationPresenter.BuildVocabularyUrlSelectionKeyboard(locale)));
+                }
+
+                PendingVocabularyUrlSessions.TryRemove(pendingKey, out _);
+                return null;
+            }
+
+            return await ProcessVocabularyUrlSelectionAsync(
+                selection.SelectedWords,
+                scope,
+                locale,
+                cancellationToken);
+        }
+
+        var discovery = await _vocabularyDiscoveryService.DiscoverAsync(normalizedInput, cancellationToken);
+        if (discovery.Status == VocabularyDiscoveryStatus.InvalidSource
+            || discovery.Status == VocabularyDiscoveryStatus.Failed)
+        {
+            PendingVocabularyUrlSessions[pendingKey] = PendingVocabularyUrlSession.AwaitingSource;
+
+            return new TelegramRouteResponse(
+                "vocab.url.invalid",
+                _navigationPresenter.GetText("vocab.url.invalid", locale),
+                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+        }
+
+        if (discovery.Status != VocabularyDiscoveryStatus.Success || discovery.Candidates.Count == 0)
+        {
+            PendingVocabularyUrlSessions.TryRemove(pendingKey, out _);
+            return new TelegramRouteResponse(
+                "vocab.url.empty",
+                _navigationPresenter.GetText("vocab.url.empty", locale),
+                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+        }
+
+        var orderedCandidates = OrderUrlCandidates(discovery.Candidates);
+        PendingVocabularyUrlSessions[pendingKey] = new PendingVocabularyUrlSession(
+            PendingVocabularyUrlStage.AwaitingSelection,
+            orderedCandidates);
+
+        return new TelegramRouteResponse(
+            "vocab.url.suggestions",
+            BuildVocabularyUrlSuggestionsMessage(orderedCandidates, locale),
+            InlineKeyboard(_navigationPresenter.BuildVocabularyUrlSelectionKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> ProcessVocabularyUrlSelectionAsync(
+        IReadOnlyList<string> selectedWords,
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        if (selectedWords.Count == 0)
+        {
+            return new TelegramRouteResponse(
+                "vocab.url.selection.invalid",
+                _navigationPresenter.GetText("vocab.url.select_parse_failed", locale),
+                InlineKeyboard(_navigationPresenter.BuildVocabularyUrlSelectionKeyboard(locale)));
+        }
+
+        PendingVocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
+        var batchInput = string.Join(Environment.NewLine, selectedWords);
+        var result = await _orchestrator.ProcessAsync(
+            batchInput,
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
+            cancellationToken);
+
+        return await BuildVocabularyTextResponseAsync(result, scope, locale, batchInput, cancellationToken);
+    }
+
+    private static IReadOnlyList<PendingVocabularyUrlCandidate> OrderUrlCandidates(
+        IReadOnlyList<VocabularyDiscoveryCandidate> candidates)
+    {
+        var ordered = candidates
+            .Where(candidate => candidate.PartOfSpeech is "n" or "v" or "adj")
+            .GroupBy(candidate => candidate.Word, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(candidate => candidate.Frequency)
+                .First())
+            .OrderBy(candidate => Array.IndexOf(UrlSelectionPosOrder, candidate.PartOfSpeech))
+            .ThenByDescending(candidate => candidate.Frequency)
+            .ThenBy(candidate => candidate.Word, StringComparer.Ordinal)
+            .ToList();
+
+        var numbered = new List<PendingVocabularyUrlCandidate>(ordered.Count);
+        for (var index = 0; index < ordered.Count; index++)
+        {
+            var current = ordered[index];
+            numbered.Add(new PendingVocabularyUrlCandidate(index + 1, current.Word, current.PartOfSpeech, current.Frequency));
+        }
+
+        return numbered;
+    }
+
+    private string BuildVocabularyUrlSuggestionsMessage(
+        IReadOnlyList<PendingVocabularyUrlCandidate> candidates,
+        string locale)
+    {
+        var lines = new List<string>
+        {
+            _navigationPresenter.GetText("vocab.url.suggestions_title", locale, candidates.Count)
+        };
+
+        foreach (var pos in UrlSelectionPosOrder)
+        {
+            var groupItems = candidates
+                .Where(candidate => string.Equals(candidate.PartOfSpeech, pos, StringComparison.Ordinal))
+                .ToList();
+
+            if (groupItems.Count == 0)
+            {
+                continue;
+            }
+
+            lines.Add(string.Empty);
+            lines.Add(_navigationPresenter.GetText($"vocab.url.suggestions_group_{pos}", locale));
+
+            foreach (var item in groupItems)
+            {
+                lines.Add($"{BatchItemMarker} {item.Number}) {item.Word}");
+            }
+        }
+
+        lines.Add(string.Empty);
+        lines.Add(_navigationPresenter.GetText("vocab.url.suggestions_hint", locale));
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private VocabularyUrlSelectionResult ParseVocabularyUrlSelection(
+        string input,
+        IReadOnlyList<PendingVocabularyUrlCandidate> candidates)
+    {
+        var normalized = input.Trim();
+        if (UrlCancelTokens.Contains(normalized))
+        {
+            return VocabularyUrlSelectionResult.Cancelled;
+        }
+
+        if (UrlSelectAllTokens.Contains(normalized))
+        {
+            var allWords = candidates
+                .Select(candidate => candidate.Word)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return new VocabularyUrlSelectionResult(VocabularyUrlSelectionAction.Select, allWords);
+        }
+
+        var wordsByNumber = SelectionNumberRegex.Matches(normalized)
+            .Select(match => int.TryParse(match.Value, out var number) ? number : 0)
+            .Where(number => number > 0)
+            .Distinct()
+            .Select(number => candidates.FirstOrDefault(candidate => candidate.Number == number)?.Word)
+            .Where(word => !string.IsNullOrWhiteSpace(word))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (wordsByNumber.Count > 0)
+        {
+            return new VocabularyUrlSelectionResult(VocabularyUrlSelectionAction.Select, wordsByNumber);
+        }
+
+        var wordsByToken = normalized
+            .Split([',', ';', '\n', '\r', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(token => token.Trim().ToLowerInvariant())
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(token => candidates.FirstOrDefault(candidate =>
+                string.Equals(candidate.Word, token, StringComparison.OrdinalIgnoreCase))?.Word)
+            .Where(word => !string.IsNullOrWhiteSpace(word))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (wordsByToken.Count > 0)
+        {
+            return new VocabularyUrlSelectionResult(VocabularyUrlSelectionAction.Select, wordsByToken);
+        }
+
+        return VocabularyUrlSelectionResult.Invalid;
+    }
+
+    private static bool LooksLikeUrlSelectionAttempt(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        var normalized = input.Trim();
+        if (UrlSelectAllTokens.Contains(normalized) || UrlCancelTokens.Contains(normalized))
+        {
+            return true;
+        }
+
+        if (SelectionNumberRegex.IsMatch(normalized))
+        {
+            return true;
+        }
+
+        return normalized.Contains(',', StringComparison.Ordinal)
+            || normalized.Contains(';', StringComparison.Ordinal);
     }
 
     private async Task<TelegramRouteResponse> BuildVocabularyTextResponseAsync(
@@ -1717,8 +2101,11 @@ public sealed class TelegramController : ControllerBase
         }
     }
 
-    private TelegramRouteResponse BuildBatchModeResponse(string locale)
+    private TelegramRouteResponse BuildBatchModeResponse(
+        ConversationScope scope,
+        string locale)
     {
+        PendingVocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
         return new TelegramRouteResponse(
             "vocab.batch",
             _navigationPresenter.GetText("vocab.batch.prompt", locale),
@@ -2068,6 +2455,9 @@ public sealed class TelegramController : ControllerBase
     private static string BuildPendingSaveKey(ConversationScope scope)
         => string.Concat(scope.Channel, ":", scope.UserId, ":", scope.ConversationId);
 
+    private static string BuildPendingUrlSessionKey(ConversationScope scope)
+        => string.Concat(scope.Channel, ":", scope.UserId, ":", scope.ConversationId);
+
     private sealed record ConfiguredDeckTarget(
         string Marker,
         string DeckFileName);
@@ -2077,6 +2467,42 @@ public sealed class TelegramController : ControllerBase
         string AssistantReply,
         string TargetDeckFileName,
         string? OverridePartOfSpeech);
+
+    private sealed record PendingVocabularyUrlSession(
+        PendingVocabularyUrlStage Stage,
+        IReadOnlyList<PendingVocabularyUrlCandidate> Candidates)
+    {
+        public static PendingVocabularyUrlSession AwaitingSource { get; }
+            = new(PendingVocabularyUrlStage.AwaitingSource, []);
+    }
+
+    private enum PendingVocabularyUrlStage
+    {
+        AwaitingSource = 0,
+        AwaitingSelection = 1
+    }
+
+    private sealed record PendingVocabularyUrlCandidate(
+        int Number,
+        string Word,
+        string PartOfSpeech,
+        int Frequency);
+
+    private sealed record VocabularyUrlSelectionResult(
+        VocabularyUrlSelectionAction Action,
+        IReadOnlyList<string> SelectedWords)
+    {
+        public static VocabularyUrlSelectionResult Invalid { get; } = new(VocabularyUrlSelectionAction.Invalid, []);
+
+        public static VocabularyUrlSelectionResult Cancelled { get; } = new(VocabularyUrlSelectionAction.Cancel, []);
+    }
+
+    private enum VocabularyUrlSelectionAction
+    {
+        Invalid = 0,
+        Select = 1,
+        Cancel = 2
+    }
 
     private sealed record OneDriveSyncSummary(
         int Completed,
