@@ -34,6 +34,7 @@ public sealed class TelegramController : ControllerBase
     private const string SectionSeparator = "--------------------";
     private const string BatchItemMarker = "🔹";
     private const string QuestionMarker = "❓";
+    private static readonly string[] WarningMarkers = ["⚠️", "⚠"];
     private const int ManualSyncBatchSize = 25;
     private const int ManualSyncMaxPasses = 5;
     private static readonly Regex UrlLikeRegex = new("^https?://", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -2185,6 +2186,11 @@ public sealed class TelegramController : ControllerBase
         if (trimmedStart.StartsWith(QuestionMarker, StringComparison.Ordinal))
         {
             return value;
+        }
+
+        if (WarningMarkers.Any(marker => trimmedStart.StartsWith(marker, StringComparison.Ordinal)))
+        {
+            return $"{QuestionMarker}{Environment.NewLine}{value}";
         }
 
         return $"{QuestionMarker} {value}";

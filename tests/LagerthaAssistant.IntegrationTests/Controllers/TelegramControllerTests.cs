@@ -1157,7 +1157,7 @@ public sealed class TelegramControllerTests
         Assert.True(confirmPayload.Replied);
         Assert.Equal("settings.onedrive.index.confirm", confirmPayload.Intent);
         Assert.Equal(0, indexService.RebuildCalls);
-        Assert.Contains("❓ Rebuilding cache can take some time. Start now?", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains($"❓{Environment.NewLine}⚠️ Rebuilding cache can take some time. Start now?", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("take some time", sender.LastText, StringComparison.OrdinalIgnoreCase);
 
         var response = await sut.Webhook(
@@ -1211,6 +1211,7 @@ public sealed class TelegramControllerTests
 
         Assert.True(confirmPayload.Replied);
         Assert.Equal("settings.onedrive.cache.confirm", confirmPayload.Intent);
+        Assert.Contains($"❓{Environment.NewLine}⚠️ Clear cache?", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("records=57", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, indexService.ClearCalls);
 
@@ -2708,7 +2709,7 @@ public sealed class TelegramControllerTests
                 "onedrive.still_not_signed_in" => "Still not signed in",
                 "onedrive.sync_now" => "Sync pending saves",
                 "onedrive.rebuild_index" => "Rebuild cache",
-                "onedrive.rebuild_index_warning" => "Rebuilding cache can take some time. Start now?",
+                "onedrive.rebuild_index_warning" => "⚠️ Rebuilding cache can take some time. Start now?",
                 "onedrive.rebuild_index_start" => "Start rebuild",
                 "onedrive.rebuild_index_started" => "Rebuilding cache started...",
                 "onedrive.rebuild_index_suggest" => "Tip: cache appears empty. Rebuild it.",
@@ -2716,7 +2717,7 @@ public sealed class TelegramControllerTests
                 "onedrive.sync_now_done" => "Sync complete: completed={0}, requeued={1}, failed={2}, pending={3}.",
                 "onedrive.rebuild_index_done" => "Cache rebuilt from writable decks: scanned={0}, indexed={1}.",
                 "onedrive.clear_cache" => "Clear cache",
-                "onedrive.clear_cache_warning" => "Clear cache? records={0}",
+                "onedrive.clear_cache_warning" => "⚠️ Clear cache? records={0}",
                 "onedrive.clear_cache_start" => "Clear now",
                 "onedrive.clear_cache_done" => "Cache cleared: {0}",
                 "onedrive.clear_cache_hint" => "Run rebuild cache if needed.",
