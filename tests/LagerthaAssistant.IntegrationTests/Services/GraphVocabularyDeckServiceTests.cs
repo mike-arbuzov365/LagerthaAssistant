@@ -218,6 +218,35 @@ The function returns void when there is no value to return.
         Assert.Equal(1, CountWordOccurrencesInColumnB(storedBytes!, "void"));
     }
 
+    [Fact]
+    public async Task GetAllEntriesAsync_ShouldUseFreshRemoteSnapshot_EvenWhenSessionMirrorWasInitialized()
+    {
+        var initialBytes = CreateTemplateWorkbookBytes("build", "(v) build", "We build features.");
+        var updatedBytes = CreateTemplateWorkbookBytes("deploy", "(v) deploy", "We deploy daily.");
+        var remoteFile = new GraphDriveFile("file-1", "wm-verbs-us-en.xlsx", "etag-1", "/Apps/Flashcards Deluxe/wm-verbs-us-en.xlsx");
+
+        var graphClient = new FakeGraphDriveClient(
+            [remoteFile],
+            new Dictionary<string, byte[]> { [remoteFile.Id] = initialBytes },
+            []);
+
+        await using var sut = CreateSut(graphClient);
+
+        // Initialize session mirror with old content.
+        var lookup = await sut.FindInWritableDecksAsync("build");
+        Assert.True(lookup.Found);
+        Assert.Equal(1, graphClient.DownloadCalls);
+
+        // Simulate external file edit in OneDrive.
+        graphClient.SetStoredContent(remoteFile.Id, updatedBytes);
+
+        var entries = await sut.GetAllEntriesAsync();
+        Assert.Single(entries);
+        Assert.Equal("deploy", entries[0].Word, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(entries, entry => entry.Word.Equals("build", StringComparison.OrdinalIgnoreCase));
+        Assert.True(graphClient.DownloadCalls >= 2);
+    }
+
     private static GraphVocabularyDeckService CreateSut(FakeGraphDriveClient graphClient)
     {
         var options = new VocabularyDeckOptions
@@ -437,6 +466,11 @@ The function returns void when there is no value to return.
             return _contentsById.TryGetValue(itemId, out var bytes)
                 ? bytes.ToArray()
                 : null;
+        }
+
+        public void SetStoredContent(string itemId, byte[] bytes)
+        {
+            _contentsById[itemId] = bytes.ToArray();
         }
     }
 }
