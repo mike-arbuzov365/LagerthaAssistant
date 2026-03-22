@@ -217,6 +217,8 @@ public sealed class TelegramController : ControllerBase
                 inbound.UserId,
                 inbound.ConversationId);
 
+            _pendingStateStore.CleanupIfOversized();
+
             // Telegram bot works only with Graph storage mode.
             _storageModeProvider.SetMode(VocabularyStorageMode.Graph);
 
@@ -469,7 +471,7 @@ public sealed class TelegramController : ControllerBase
                 return await HandleShoppingTextAsync(inbound.Text, locale, cancellationToken);
 
             case NavigationRouteKind.WeeklyMenuText:
-                return await HandleWeeklyMenuTextAsync(inbound.Text, locale, cancellationToken);
+                return await HandleWeeklyMenuTextAsync(inbound.Text, locale, scope, cancellationToken);
 
             case NavigationRouteKind.SettingsText:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
@@ -994,13 +996,13 @@ public sealed class TelegramController : ControllerBase
         if (callbackData.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Shopping, cancellationToken);
-            return await HandleFoodCallbackAsync(callbackData, locale, cancellationToken);
+            return await HandleFoodCallbackAsync(callbackData, locale, scope, cancellationToken);
         }
 
         if (callbackData.StartsWith(CallbackDataConstants.Weekly.Prefix, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.WeeklyMenu, cancellationToken);
-            return await HandleFoodCallbackAsync(callbackData, locale, cancellationToken);
+            return await HandleFoodCallbackAsync(callbackData, locale, scope, cancellationToken);
         }
 
         return new TelegramRouteResponse("nav.unknown", _navigationPresenter.GetText("stub.wip", locale));
@@ -3463,9 +3465,29 @@ public sealed class TelegramController : ControllerBase
     private async Task<TelegramRouteResponse> HandleFoodCallbackAsync(
         string callbackData,
         string locale,
+        ConversationScope scope,
         CancellationToken cancellationToken)
     {
+        // Handle meal creation confirm/cancel
+        if (string.Equals(callbackData, CallbackDataConstants.Weekly.CreateConfirm, StringComparison.Ordinal))
+        {
+            return await HandleMealCreateConfirmAsync(scope, locale, cancellationToken);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Weekly.CreateCancel, StringComparison.Ordinal))
+        {
+            return HandleMealCreateCancel(scope, locale);
+        }
+
         var result = await _orchestrator.ProcessAsync(callbackData, TelegramChannel, cancellationToken);
+
+        // If this was a create prompt, set pending action so next text input triggers meal creation
+        if (string.Equals(callbackData, CallbackDataConstants.Weekly.Create, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.MealCreation;
+        }
+
         var keyboard = callbackData.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal)
             ? InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale))
             : InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale));
@@ -3504,6 +3526,7 @@ public sealed class TelegramController : ControllerBase
     private async Task<TelegramRouteResponse> HandleWeeklyMenuTextAsync(
         string text,
         string locale,
+        ConversationScope scope,
         CancellationToken cancellationToken)
     {
         if (_foodTrackingService is null)
@@ -3512,6 +3535,15 @@ public sealed class TelegramController : ControllerBase
                 "weekly.text",
                 _navigationPresenter.GetText("stub.wip", locale),
                 InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        // Check for pending meal creation text input
+        var pendingKey = BuildPendingChatActionKey(scope);
+        if (_pendingStateStore.ChatActions.TryGetValue(pendingKey, out var pendingAction)
+            && pendingAction == PendingChatActionKind.MealCreation)
+        {
+            _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+            return await HandleMealCreationTextAsync(text, scope, locale, cancellationToken);
         }
 
         // If the user typed "N" or "N S" (meal ID + optional servings), log the meal.
@@ -3564,6 +3596,102 @@ public sealed class TelegramController : ControllerBase
         return new TelegramRouteResponse(
             "food.weekly.view",
             sb.ToString().TrimEnd(),
+            InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandleMealCreationTextAsync(
+        string mealName,
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(mealName))
+        {
+            return new TelegramRouteResponse(
+                "food.weekly.create.empty",
+                "Please type a meal name to create.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        // Store a basic pending meal creation — the user can confirm to create it
+        var pending = new PendingMealCreation(
+            Name: mealName.Trim(),
+            CaloriesPerServing: null,
+            ProteinGrams: null,
+            CarbsGrams: null,
+            FatGrams: null,
+            PrepTimeMinutes: null,
+            DefaultServings: 2,
+            Ingredients: []);
+
+        var pendingKey = BuildPendingChatActionKey(scope);
+        _pendingStateStore.MealCreations[pendingKey] = pending;
+
+        var preview = new System.Text.StringBuilder();
+        preview.AppendLine($"Create meal: \"{pending.Name}\"");
+        preview.AppendLine($"Default servings: {pending.DefaultServings}");
+        preview.AppendLine();
+        preview.AppendLine("Confirm creation?");
+
+        return new TelegramRouteResponse(
+            "food.weekly.create.preview",
+            preview.ToString().TrimEnd(),
+            InlineKeyboard(_navigationPresenter.BuildMealCreateConfirmKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandleMealCreateConfirmAsync(
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var pendingKey = BuildPendingChatActionKey(scope);
+        if (!_pendingStateStore.MealCreations.TryRemove(pendingKey, out var pending))
+        {
+            return new TelegramRouteResponse(
+                "food.weekly.create.expired",
+                "No pending meal creation found. Please start again.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        if (_foodTrackingService is null)
+        {
+            return new TelegramRouteResponse(
+                "food.weekly.create.error",
+                "Food tracking is not configured.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        var ingredients = pending.Ingredients
+            .Select(i => (i.Name, i.Quantity))
+            .ToList();
+
+        var meal = await _foodTrackingService.CreateMealAsync(
+            pending.Name,
+            pending.CaloriesPerServing,
+            pending.ProteinGrams,
+            pending.CarbsGrams,
+            pending.FatGrams,
+            pending.PrepTimeMinutes,
+            pending.DefaultServings,
+            ingredients,
+            cancellationToken);
+
+        return new TelegramRouteResponse(
+            "food.weekly.create.done",
+            $"Meal \"{meal.Name}\" created (ID: {meal.Id}).",
+            InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+    }
+
+    private TelegramRouteResponse HandleMealCreateCancel(
+        ConversationScope scope,
+        string locale)
+    {
+        var pendingKey = BuildPendingChatActionKey(scope);
+        _pendingStateStore.MealCreations.TryRemove(pendingKey, out _);
+
+        return new TelegramRouteResponse(
+            "food.weekly.create.cancelled",
+            "Meal creation cancelled.",
             InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
     }
 

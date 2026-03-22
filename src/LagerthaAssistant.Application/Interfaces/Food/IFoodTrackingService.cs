@@ -24,6 +24,17 @@ public interface IFoodTrackingService
 
     Task<IReadOnlyList<MealFrequency>> GetFavouriteMealsAsync(int take = 5, CancellationToken cancellationToken = default);
 
+    Task<MealDto> CreateMealAsync(
+        string name,
+        int? caloriesPerServing,
+        decimal? proteinGrams,
+        decimal? carbsGrams,
+        decimal? fatGrams,
+        int? prepTimeMinutes,
+        int defaultServings,
+        IReadOnlyList<(string Name, string? Quantity)> ingredients,
+        CancellationToken cancellationToken = default);
+
     // ── Meal History & Nutrition ─────────────────────────────────────────────
 
     /// <summary>Logs a meal and returns the ID of the created history entry.</summary>

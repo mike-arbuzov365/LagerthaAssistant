@@ -43,5 +43,18 @@ internal enum PendingChatActionKind
 {
     VocabularyAdd = 0,
     VocabularyBatch = 1,
-    VocabularyImport = 2
+    VocabularyImport = 2,
+    MealCreation = 3
 }
+
+internal sealed record PendingMealCreation(
+    string Name,
+    int? CaloriesPerServing,
+    decimal? ProteinGrams,
+    decimal? CarbsGrams,
+    decimal? FatGrams,
+    int? PrepTimeMinutes,
+    int DefaultServings,
+    IReadOnlyList<PendingMealIngredient> Ingredients);
+
+internal sealed record PendingMealIngredient(string Name, string? Quantity);

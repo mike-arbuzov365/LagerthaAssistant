@@ -56,6 +56,7 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
             CallbackDataConstants.Weekly.Calories => await HandleWeeklyCaloriesAsync(cancellationToken),
             CallbackDataConstants.Weekly.Favourites => await HandleFavouriteMealsAsync(cancellationToken),
             CallbackDataConstants.Weekly.Log => await HandleLogMealPromptAsync(cancellationToken),
+            CallbackDataConstants.Weekly.Create => HandleMealCreatePrompt(),
             _ => Result("food.unknown", "Use the buttons to navigate Shopping or Weekly Menu.")
         };
     }
@@ -232,6 +233,13 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         }
 
         return Result("food.weekly.log.prompt", sb.ToString().TrimEnd());
+    }
+
+    internal static ConversationAgentResult HandleMealCreatePrompt()
+    {
+        return Result(
+            "food.weekly.create.prompt",
+            "What meal would you like to create? Type the name (e.g. \"Chicken Curry\" or \"Pasta Carbonara\").");
     }
 
     internal async Task<ConversationAgentResult> AddItemFromTextAsync(string input, CancellationToken cancellationToken)

@@ -90,7 +90,7 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             [
                 [Button("menu.weekly.view", locale, CallbackDataConstants.Weekly.View), Button("menu.weekly.plan", locale, CallbackDataConstants.Weekly.Plan)],
                 [Button("menu.weekly.calories", locale, CallbackDataConstants.Weekly.Calories), Button("menu.weekly.favourites", locale, CallbackDataConstants.Weekly.Favourites)],
-                [Button("menu.weekly.log", locale, CallbackDataConstants.Weekly.Log)],
+                [Button("menu.weekly.log", locale, CallbackDataConstants.Weekly.Log), Button("menu.weekly.create", locale, CallbackDataConstants.Weekly.Create)],
                 [Button("menu.weekly.back", locale, CallbackDataConstants.Nav.Main)]
             ]);
     }
@@ -203,6 +203,15 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             [
                 [Button("onedrive.clear_cache_start", locale, CallbackDataConstants.OneDrive.ClearCacheConfirm)],
                 [Button("back", locale, CallbackDataConstants.Settings.OneDrive)]
+            ]);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildMealCreateConfirmKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("meal.create.confirm", locale, CallbackDataConstants.Weekly.CreateConfirm), Button("meal.create.cancel", locale, CallbackDataConstants.Weekly.CreateCancel)]
             ]);
     }
 

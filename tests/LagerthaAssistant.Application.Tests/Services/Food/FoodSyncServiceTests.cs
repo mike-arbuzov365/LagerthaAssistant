@@ -405,6 +405,9 @@ public sealed class FoodSyncServiceTests
             return Task.CompletedTask;
         }
 
+        public Task<IReadOnlyList<int>> GetAllIdsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<int>>(Added.Concat(Existing is null ? [] : [Existing]).Select(x => x.Id).ToList());
+
         public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 

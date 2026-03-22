@@ -96,5 +96,8 @@ public static class CallbackDataConstants
         public const string Calories = "weekly:calories";
         public const string Favourites = "weekly:favourites";
         public const string Log = "weekly:log";
+        public const string Create = "weekly:create";
+        public const string CreateConfirm = "weekly:create:yes";
+        public const string CreateCancel = "weekly:create:no";
     }
 }

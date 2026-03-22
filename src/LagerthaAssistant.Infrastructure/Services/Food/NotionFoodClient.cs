@@ -146,12 +146,13 @@ public sealed class NotionFoodClient : INotionFoodClient
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning(
+                _logger.LogError(
                     "Notion query {Label} failed: {Status} — {Error}",
                     label,
                     (int)response.StatusCode,
                     error);
-                break;
+                throw new HttpRequestException(
+                    $"Notion query {label} failed with status {(int)response.StatusCode}: {error}");
             }
 
             var envelope = await response.Content.ReadFromJsonAsync<NotionQueryEnvelope>(JsonOptions, cancellationToken);

@@ -131,8 +131,7 @@ public sealed class FoodTrackingService : IFoodTrackingService
 
     public async Task<IReadOnlyList<MealDto>> GetCookableNowAsync(CancellationToken cancellationToken = default)
     {
-        var allItems = await _foodItemRepo.GetAllAsync(cancellationToken);
-        var availableIds = allItems.Select(x => x.Id).ToList();
+        var availableIds = await _foodItemRepo.GetAllIdsAsync(cancellationToken);
 
         var cookable = await _mealRepo.GetCookableFromInventoryAsync(availableIds, cancellationToken);
         return cookable.Select(MapToDto).ToList();
@@ -191,6 +190,74 @@ public sealed class FoodTrackingService : IFoodTrackingService
     public async Task<CalorieSummary> GetCalorieSummaryAsync(DateTime from, DateTime to, CancellationToken cancellationToken = default)
     {
         return await _historyRepo.GetCalorieSummaryAsync(from, to, cancellationToken);
+    }
+
+    public async Task<MealDto> CreateMealAsync(
+        string name,
+        int? caloriesPerServing,
+        decimal? proteinGrams,
+        decimal? carbsGrams,
+        decimal? fatGrams,
+        int? prepTimeMinutes,
+        int defaultServings,
+        IReadOnlyList<(string Name, string? Quantity)> ingredients,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var meal = new Meal
+        {
+            NotionPageId = $"local:{Guid.NewGuid():N}",
+            Name = name.Trim(),
+            CaloriesPerServing = caloriesPerServing,
+            ProteinGrams = proteinGrams,
+            CarbsGrams = carbsGrams,
+            FatGrams = fatGrams,
+            PrepTimeMinutes = prepTimeMinutes,
+            DefaultServings = defaultServings > 0 ? defaultServings : 2,
+            NotionUpdatedAt = DateTime.UtcNow,
+            NotionSyncStatus = FoodSyncStatus.Pending
+        };
+
+        await _mealRepo.AddAsync(meal, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Link ingredients: try to find existing FoodItems by name, create new ones if not found
+        foreach (var (ingredientName, qty) in ingredients)
+        {
+            var found = await _foodItemRepo.SearchByNameAsync(ingredientName.Trim(), take: 1, cancellationToken);
+            int foodItemId;
+            if (found.Count > 0)
+            {
+                foodItemId = found[0].Id;
+            }
+            else
+            {
+                var newItem = new FoodItem
+                {
+                    NotionPageId = $"local:{Guid.NewGuid():N}",
+                    Name = ingredientName.Trim(),
+                    NotionUpdatedAt = DateTime.UtcNow,
+                    NotionSyncStatus = FoodSyncStatus.Pending
+                };
+                await _foodItemRepo.AddAsync(newItem, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                foodItemId = newItem.Id;
+            }
+
+            meal.Ingredients.Add(new MealIngredient
+            {
+                MealId = meal.Id,
+                FoodItemId = foodItemId,
+                Quantity = qty?.Trim()
+            });
+        }
+
+        if (meal.Ingredients.Count > 0)
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Created meal '{Name}' with {Count} ingredients", meal.Name, meal.Ingredients.Count);
+        return MapToDto(meal);
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────

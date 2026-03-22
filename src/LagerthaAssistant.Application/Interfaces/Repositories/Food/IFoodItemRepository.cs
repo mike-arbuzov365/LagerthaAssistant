@@ -8,6 +8,8 @@ public interface IFoodItemRepository
 
     Task<IReadOnlyList<FoodItem>> GetAllAsync(CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<int>> GetAllIdsAsync(CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<FoodItem>> SearchByNameAsync(string query, int take = 10, CancellationToken cancellationToken = default);
 
     Task AddAsync(FoodItem item, CancellationToken cancellationToken = default);

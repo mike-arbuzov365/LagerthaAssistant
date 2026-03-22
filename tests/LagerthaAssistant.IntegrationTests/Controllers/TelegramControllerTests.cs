@@ -3869,6 +3869,9 @@ public sealed class TelegramControllerTests
 
         public TelegramInlineKeyboardMarkup BuildNotionKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Back", "settings:back")]]);
+
+        public TelegramInlineKeyboardMarkup BuildMealCreateConfirmKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Create", CallbackDataConstants.Weekly.CreateConfirm), new TelegramInlineKeyboardButton("Cancel", CallbackDataConstants.Weekly.CreateCancel)]]);
     }
     private sealed class FakeTelegramFormatter : ITelegramConversationResponseFormatter
     {
@@ -4446,8 +4449,9 @@ public sealed class TelegramControllerTests
 
         public Task<CalorieSummary> GetCalorieSummaryAsync(DateTime from, DateTime to, CancellationToken cancellationToken = default)
             => Task.FromResult(CalorieSummary);
+
+        public Task<MealDto> CreateMealAsync(string name, int? caloriesPerServing, decimal? proteinGrams, decimal? carbsGrams, decimal? fatGrams, int? prepTimeMinutes, int defaultServings, IReadOnlyList<(string Name, string? Quantity)> ingredients, CancellationToken cancellationToken = default)
+            => Task.FromResult(new MealDto(99, name, caloriesPerServing, proteinGrams, carbsGrams, fatGrams, prepTimeMinutes, defaultServings, []));
     }
 }
-
-
 
