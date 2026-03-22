@@ -12,6 +12,7 @@ using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Interfaces.Common;
+using LagerthaAssistant.Application.Interfaces.Food;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
@@ -98,6 +99,7 @@ public sealed class TelegramController : ControllerBase
     private readonly ITelegramConversationResponseFormatter _responseFormatter;
     private readonly ITelegramBotSender _telegramBotSender;
     private readonly ITelegramProcessedUpdateRepository _processedUpdates;
+    private readonly IFoodTrackingService? _foodTrackingService;
     private readonly IUserMemoryRepository? _userMemoryRepository;
     private readonly IUnitOfWork? _unitOfWork;
     private readonly ReleaseAnnouncementOptions _releaseAnnouncementOptions;
@@ -132,7 +134,8 @@ public sealed class TelegramController : ControllerBase
         ILogger<TelegramController> logger,
         IUserMemoryRepository? userMemoryRepository = null,
         IUnitOfWork? unitOfWork = null,
-        IOptions<ReleaseAnnouncementOptions>? releaseAnnouncementOptions = null)
+        IOptions<ReleaseAnnouncementOptions>? releaseAnnouncementOptions = null,
+        IFoodTrackingService? foodTrackingService = null)
     {
         _orchestrator = orchestrator;
         _assistantSessionService = assistantSessionService;
@@ -159,6 +162,7 @@ public sealed class TelegramController : ControllerBase
         _processedUpdates = processedUpdates;
         _userMemoryRepository = userMemoryRepository;
         _unitOfWork = unitOfWork;
+        _foodTrackingService = foodTrackingService;
         _releaseAnnouncementOptions = releaseAnnouncementOptions?.Value ?? new ReleaseAnnouncementOptions();
         _options = options.Value;
         _logger = logger;
@@ -463,16 +467,10 @@ public sealed class TelegramController : ControllerBase
                 }
 
             case NavigationRouteKind.ShoppingText:
-                return new TelegramRouteResponse(
-                    "shopping.stub",
-                    _navigationPresenter.GetText("stub.wip", locale),
-                    InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+                return await HandleShoppingTextAsync(inbound.Text, locale, cancellationToken);
 
             case NavigationRouteKind.WeeklyMenuText:
-                return new TelegramRouteResponse(
-                    "weekly.stub",
-                    _navigationPresenter.GetText("stub.wip", locale),
-                    InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+                return await HandleWeeklyMenuTextAsync(inbound.Text, locale, cancellationToken);
 
             case NavigationRouteKind.SettingsText:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
@@ -997,19 +995,13 @@ public sealed class TelegramController : ControllerBase
         if (callbackData.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Shopping, cancellationToken);
-            return new TelegramRouteResponse(
-                "shopping.stub",
-                _navigationPresenter.GetText("stub.wip", locale),
-                InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+            return await HandleFoodCallbackAsync(callbackData, locale, cancellationToken);
         }
 
         if (callbackData.StartsWith(CallbackDataConstants.Weekly.Prefix, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.WeeklyMenu, cancellationToken);
-            return new TelegramRouteResponse(
-                "weekly.stub",
-                _navigationPresenter.GetText("stub.wip", locale),
-                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+            return await HandleFoodCallbackAsync(callbackData, locale, cancellationToken);
         }
 
         return new TelegramRouteResponse("nav.unknown", _navigationPresenter.GetText("stub.wip", locale));
@@ -3489,6 +3481,115 @@ public sealed class TelegramController : ControllerBase
 
         public static PendingVocabularyUrlSession AwaitingSelection(IReadOnlyList<PendingVocabularyUrlCandidate> candidates)
             => new(PendingVocabularyUrlStage.AwaitingSelection, null, candidates);
+    }
+
+    // ── Food tracking helpers ─────────────────────────────────────────────────
+
+    private async Task<TelegramRouteResponse> HandleFoodCallbackAsync(
+        string callbackData,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var result = await _orchestrator.ProcessAsync(callbackData, TelegramChannel, cancellationToken);
+        var keyboard = callbackData.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal)
+            ? InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale))
+            : InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale));
+        return new TelegramRouteResponse(result.Intent, result.Message ?? string.Empty, keyboard);
+    }
+
+    private async Task<TelegramRouteResponse> HandleShoppingTextAsync(
+        string text,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        if (_foodTrackingService is null || string.IsNullOrWhiteSpace(text))
+        {
+            return new TelegramRouteResponse(
+                "shopping.text",
+                _navigationPresenter.GetText("stub.wip", locale),
+                InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+        }
+
+        // Parse "Name Qty Store" from free text
+        var parts = text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var name = parts[0];
+        var quantity = parts.Length >= 2 ? parts[1] : null;
+        var store = parts.Length >= 3 ? string.Join(" ", parts.Skip(2)) : null;
+
+        var item = await _foodTrackingService.AddGroceryItemAsync(name, quantity, store, cancellationToken);
+        var qty = item.Quantity is not null ? $" × {item.Quantity}" : string.Empty;
+        var st = item.Store is not null ? $" at {item.Store}" : string.Empty;
+
+        return new TelegramRouteResponse(
+            "food.shop.added",
+            $"Added \"{item.Name}\"{qty}{st} to your shopping list.",
+            InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandleWeeklyMenuTextAsync(
+        string text,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        if (_foodTrackingService is null)
+        {
+            return new TelegramRouteResponse(
+                "weekly.text",
+                _navigationPresenter.GetText("stub.wip", locale),
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        // If the user typed "N" or "N S" (meal ID + optional servings), log the meal.
+        var parts = text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 1
+            && int.TryParse(parts[0], out var mealId)
+            && mealId > 0)
+        {
+            var servings = parts.Length >= 2 && decimal.TryParse(parts[1], System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out var s) && s > 0
+                ? s
+                : 1m;
+
+            try
+            {
+                await _foodTrackingService.LogMealAsync(mealId, servings, notes: null, cancellationToken);
+                return new TelegramRouteResponse(
+                    "food.weekly.logged",
+                    $"✅ Logged meal #{mealId} × {servings} serving(s).",
+                    InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+            }
+            catch (InvalidOperationException)
+            {
+                return new TelegramRouteResponse(
+                    "food.weekly.log.not_found",
+                    $"⚠️ Meal with ID {mealId} not found. Press \"Log meal\" to see the list.",
+                    InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+            }
+        }
+
+        // Otherwise show the meals list.
+        var meals = await _foodTrackingService.GetAllMealsAsync(cancellationToken);
+        if (meals.Count == 0)
+        {
+            return new TelegramRouteResponse(
+                "food.weekly.view",
+                "No meals found. Add some meals to Notion Meal Plans first.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Meal plans ({meals.Count} meals):");
+        sb.AppendLine();
+        foreach (var meal in meals)
+        {
+            var calories = meal.CaloriesPerServing.HasValue ? $" — {meal.CaloriesPerServing} kcal/serving" : string.Empty;
+            sb.AppendLine($"🍽 [{meal.Id}] {meal.Name}{calories}");
+        }
+
+        return new TelegramRouteResponse(
+            "food.weekly.view",
+            sb.ToString().TrimEnd(),
+            InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
     }
 
     private enum PendingVocabularyUrlStage

@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Repositories;
+using LagerthaAssistant.Application.Interfaces.Repositories.Food;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Domain.Abstractions;
@@ -16,6 +17,7 @@ using LagerthaAssistant.Infrastructure.Data;
 using LagerthaAssistant.Infrastructure.Options;
 using LagerthaAssistant.Infrastructure.Repositories;
 using LagerthaAssistant.Infrastructure.Services;
+using LagerthaAssistant.Infrastructure.Services.Food;
 using LagerthaAssistant.Infrastructure.Services.Vocabulary;
 using LagerthaAssistant.Infrastructure.Time;
 
@@ -148,6 +150,24 @@ public static class DependencyInjection
         services.AddScoped<IVocabularyDeckModeService, VocabularyDeckModeService>();
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+        // ── Food tracking repos + Notion client options ───────────────────────
+        var notionFoodSection = configuration.GetSection("NotionFood");
+        var notionFoodOptions = new NotionFoodOptions
+        {
+            Enabled = ParseBool(notionFoodSection["Enabled"], false),
+            ApiKey = notionFoodSection["ApiKey"] ?? string.Empty,
+            InventoryDatabaseId = notionFoodSection["InventoryDatabaseId"] ?? string.Empty,
+            MealPlansDatabaseId = notionFoodSection["MealPlansDatabaseId"] ?? string.Empty,
+            GroceryListDatabaseId = notionFoodSection["GroceryListDatabaseId"] ?? string.Empty,
+            RequestTimeoutSeconds = ParseInt(notionFoodSection["RequestTimeoutSeconds"], 60)
+        };
+        services.AddSingleton(notionFoodOptions);
+
+        services.AddScoped<IFoodItemRepository, FoodItemRepository>();
+        services.AddScoped<IMealRepository, MealRepository>();
+        services.AddScoped<IGroceryListRepository, GroceryListRepository>();
+        services.AddScoped<IMealHistoryRepository, MealHistoryRepository>();
 
         return services;
     }

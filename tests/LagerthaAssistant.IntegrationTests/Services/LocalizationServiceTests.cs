@@ -139,6 +139,26 @@ public sealed class LocalizationServiceTests
         Assert.Empty(missingKeys);
     }
 
+    [Theory]
+    [InlineData("en", "menu.weekly.favourites")]
+    [InlineData("en", "menu.weekly.log")]
+    [InlineData("en", "menu.shopping.add")]
+    [InlineData("en", "menu.shopping.list")]
+    [InlineData("en", "menu.shopping.delete")]
+    [InlineData("uk", "menu.weekly.favourites")]
+    [InlineData("uk", "menu.weekly.log")]
+    [InlineData("es", "menu.weekly.favourites")]
+    [InlineData("de", "menu.weekly.favourites")]
+    [InlineData("pl", "menu.weekly.favourites")]
+    [InlineData("fr", "menu.weekly.favourites")]
+    public void Get_ShouldReturnNonEmptyValue_ForFoodUiKeys(string locale, string key)
+    {
+        var sut = new LocalizationService();
+        var value = sut.Get(key, locale);
+        Assert.False(string.IsNullOrWhiteSpace(value));
+        Assert.NotEqual(key, value); // not falling back to the raw key
+    }
+
     private static IReadOnlyDictionary<string, string> GetDictionary(string fieldName)
     {
         var field = typeof(LocalizationService).GetField(fieldName, BindingFlags.Static | BindingFlags.NonPublic);
