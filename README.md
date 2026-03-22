@@ -6,7 +6,7 @@ Console and Telegram AI assistant built with Clean Architecture and PostgreSQL p
 
 - `src/LagerthaAssistant.Domain` - domain rules, entities, shared abstractions.
 - `src/LagerthaAssistant.Application` - use-case services, interfaces, prompt/memory/vocabulary parsing logic.
-- `src/LagerthaAssistant.Infrastructure` - EF Core, repositories, migrations, OpenAI HTTP client, local Excel + OneDrive Graph deck integration.
+- `src/LagerthaAssistant.Infrastructure` - EF Core, repositories, migrations, OpenAI HTTP client, local Excel + OneDrive Graph deck integration, Notion adapters (vocabulary + food sync).
 - `src/LagerthaAssistant.Api` - ASP.NET Core Web API with Telegram webhook adapter and background sync workers.
 - `src/LagerthaAssistant.UI` - interactive console app and command routing.
 - `tests/LagerthaAssistant.*` - domain, application, and integration tests.
@@ -21,7 +21,23 @@ Console and Telegram AI assistant built with Clean Architecture and PostgreSQL p
 - Vocabulary workflow with Excel (`.xlsx`) decks in two storage modes:
   - `local` (direct filesystem access)
   - `graph` (OneDrive via Microsoft Graph)
+- Smart import sources for vocabulary:
+  - URL page text
+  - raw text
+  - photo OCR
+  - file upload (`.txt`, `.pdf`, `.xlsx`, `.docx`)
+- Telegram chat mode with natural-language action routing (assistant can trigger supported bot flows without slash commands).
+- Vocabulary cache maintenance actions (`rebuild` / `clear`) for fast duplicate lookup hygiene.
 - Telegram channel adapter via webhook (`POST /api/telegram/webhook`).
+- Food tracking domain model in SQL:
+  - inventory items
+  - meal plans + ingredients
+  - grocery list
+  - meal history + calorie/macros summaries
+- Notion Food integration (3 databases) with bidirectional sync:
+  - Notion -> SQL (inventory/meals/grocery pull)
+  - SQL -> Notion (grocery status push)
+  - retry/backoff worker in API host
 - Agent orchestration boundaries:
   - command intent is resolved once in orchestrator and reused by agents,
   - boundary policy blocks vocabulary agent from slash commands and command intents,
@@ -385,6 +401,120 @@ Notes:
 }
 ```
 
+### Notion food settings (Inventory / Meal Plans / Grocery List)
+
+```json
+"NotionFood": {
+  "Enabled": false,
+  "ApiKey": "<notion integration secret>",
+  "InventoryDatabaseId": "<notion inventory db id>",
+  "MealPlansDatabaseId": "<notion meal plans db id>",
+  "GroceryListDatabaseId": "<notion grocery list db id>",
+  "ApiBaseUrl": "https://api.notion.com/v1",
+  "Version": "2022-06-28",
+  "RequestTimeoutSeconds": 60
+}
+```
+
+Notes:
+- Use the same Notion integration token that has access to all 3 databases.
+- For production (Railway), keep all secrets/IDs in environment variables, not in repo files.
+- If `Enabled=false` or any required value is missing, food sync calls are blocked intentionally.
+
+### Food sync worker (API only)
+
+```json
+"FoodSyncWorker": {
+  "Enabled": false,
+  "SyncFromNotionIntervalSeconds": 300,
+  "SyncToNotionIntervalSeconds": 30,
+  "BatchSize": 25,
+  "RunOnStartup": true,
+  "MaxBackoffSeconds": 600,
+  "BackoffFactor": 2
+}
+```
+
+Notes:
+- Runs only in API host.
+- `SyncFromNotionIntervalSeconds`: pull Inventory/Meals/Grocery from Notion into SQL.
+- `SyncToNotionIntervalSeconds`: push local grocery state updates to Notion.
+- Worker applies exponential backoff on repeated pull failures.
+
+### Environment keys reference (Railway)
+
+Set values in Railway service variables (do not keep secrets in repo files).
+
+Required minimum:
+
+```text
+ConnectionStrings__DefaultConnection
+OpenAI__ApiKey
+Telegram__Enabled
+Telegram__BotToken
+Telegram__WebhookSecret
+```
+
+Vocabulary + storage mode:
+
+```text
+VocabularyStorage__DefaultMode
+VocabularyDecks__FolderPath
+VocabularyDecks__FilePattern
+VocabularyDecks__IrregularVerbDeckFileName
+VocabularyDecks__PhrasalVerbDeckFileName
+VocabularyDecks__ReadOnlyFileNames__0
+VocabularyDecks__ReadOnlyFileNames__1
+VocabularyDecks__ReadOnlyFileNames__2
+```
+
+Graph / OneDrive:
+
+```text
+Graph__TenantId
+Graph__ClientId
+Graph__RootPath
+Graph__TokenCachePath
+```
+
+Vocabulary Notion export:
+
+```text
+Notion__Enabled
+Notion__ApiKey
+Notion__DatabaseId
+Notion__ApiBaseUrl
+Notion__Version
+Notion__ConflictMode
+Notion__RequestTimeoutSeconds
+NotionSyncWorker__Enabled
+NotionSyncWorker__IntervalSeconds
+NotionSyncWorker__BatchSize
+NotionSyncWorker__RunOnStartup
+NotionSyncWorker__MaxBackoffSeconds
+NotionSyncWorker__BackoffFactor
+```
+
+Food Notion sync (new):
+
+```text
+NotionFood__Enabled
+NotionFood__ApiKey
+NotionFood__InventoryDatabaseId
+NotionFood__MealPlansDatabaseId
+NotionFood__GroceryListDatabaseId
+NotionFood__ApiBaseUrl
+NotionFood__Version
+NotionFood__RequestTimeoutSeconds
+FoodSyncWorker__Enabled
+FoodSyncWorker__SyncFromNotionIntervalSeconds
+FoodSyncWorker__SyncToNotionIntervalSeconds
+FoodSyncWorker__BatchSize
+FoodSyncWorker__RunOnStartup
+FoodSyncWorker__MaxBackoffSeconds
+FoodSyncWorker__BackoffFactor
+```
+
 UI scope overrides (optional):
 
 - `LAGERTHA_USER_ID` - override default UI user identity (otherwise OS username is used).
@@ -448,20 +578,17 @@ Notes:
 
 ### Database setup (first time)
 
-After cloning the repo, generate and apply migrations:
+After cloning the repo, apply existing migrations (do not generate new initial migration):
 
 ```powershell
-# Generate initial migration for PostgreSQL
-dotnet ef migrations add InitialCreate `
-  --project src/LagerthaAssistant.Infrastructure/LagerthaAssistant.Infrastructure.csproj `
-  --startup-project src/LagerthaAssistant.Api/LagerthaAssistant.Api.csproj
-
-# Migrations are applied automatically on app startup (MigrateAsync in Program.cs)
-# To apply manually:
 dotnet ef database update `
   --project src/LagerthaAssistant.Infrastructure/LagerthaAssistant.Infrastructure.csproj `
   --startup-project src/LagerthaAssistant.Api/LagerthaAssistant.Api.csproj
 ```
+
+Notes:
+- Both UI and API also run `Database.Migrate()` on startup.
+- On Railway you normally do not run EF CLI manually.
 
 ### Run
 
@@ -533,71 +660,95 @@ On startup both UI and API apply EF migrations automatically.
 
 ## Deploy to Railway.app
 
-### Step 1 — Create Telegram bot
+### Step 1 - Create Telegram bot
 
 1. Open Telegram, find `@BotFather`.
 2. Send `/newbot`, enter a name and username (must end with `bot`).
 3. Save the token: `1234567890:ABCDEFabcdef...`
-4. Choose a `WebhookSecret` — any random string, e.g. `my-secret-42`.
+4. Choose a `WebhookSecret` (any random string), for example `my-secret-42`.
 
-### Step 2 — Create Railway project
+### Step 2 - Create Railway project
 
 1. Go to [railway.app](https://railway.app) and sign in with GitHub.
-2. Click **New Project → Deploy from GitHub repo** and select this repository.
-3. Railway detects .NET automatically. Set the **Root Directory** to `src/LagerthaAssistant.Api`.
+2. Click **New Project -> Deploy from GitHub repo** and select this repository.
+3. In service settings, configure Docker build:
+   - **Root Directory**: `src`
+   - **Dockerfile Path**: `LagerthaAssistant.Api/Dockerfile`
 
-### Step 3 — Add PostgreSQL
+### Step 3 - Add PostgreSQL
 
-1. In your Railway project click **New → Database → Add PostgreSQL**.
-2. Go to the PostgreSQL service → **Variables** tab and copy `DATABASE_URL`.
+1. In your Railway project click **New -> Database -> Add PostgreSQL**.
+2. Open PostgreSQL service -> **Variables** and copy `DATABASE_URL`.
 
-### Step 4 — Set environment variables
+### Step 4 - Set environment variables (API service)
 
-In your API service → **Variables** tab, add:
+Add at least:
 
 ```
-ConnectionStrings__DefaultConnection = <value of DATABASE_URL from step 3, but convert to Npgsql format>
+ConnectionStrings__DefaultConnection = <Npgsql format connection string>
 OpenAI__ApiKey                       = sk-...
 Telegram__Enabled                    = true
 Telegram__BotToken                   = <token from BotFather>
 Telegram__WebhookSecret              = <your secret>
 ```
 
-> Railway provides `DATABASE_URL` in the format `postgresql://user:pass@host:port/db`.
-> Convert it to Npgsql format: `Host=<host>;Port=<port>;Database=<db>;Username=<user>;Password=<pass>`
-> Or set the `DATABASE_URL` env var directly and read it in code (Npgsql also accepts URI format if configured).
+Optional Graph/OneDrive mode:
 
-### Step 5 — Generate PostgreSQL migrations
-
-Run locally before pushing (migrations directory was cleared when switching from SQL Server):
-
-```powershell
-dotnet ef migrations add InitialCreate `
-  --project src/LagerthaAssistant.Infrastructure/LagerthaAssistant.Infrastructure.csproj `
-  --startup-project src/LagerthaAssistant.Api/LagerthaAssistant.Api.csproj
-
-git add src/LagerthaAssistant.Infrastructure/Migrations/
-git commit -m "feat(db): add postgres initial migration"
-git push
+```
+Graph__TenantId                      = consumers
+Graph__ClientId                      = <entra app client id>
+Graph__RootPath                      = /Apps/Flashcards Deluxe
+VocabularyStorage__DefaultMode       = graph
 ```
 
-Railway will redeploy automatically on push. Migrations run at startup.
+Optional Notion vocabulary export worker:
 
-### Step 6 — Register Telegram webhook
+```
+Notion__Enabled                      = true
+Notion__ApiKey                       = <notion integration token>
+Notion__DatabaseId                   = <notion vocabulary db id>
+NotionSyncWorker__Enabled            = true
+```
 
-After deploy, get your Railway URL (e.g. `https://your-app.up.railway.app`) and run:
+Optional Notion food sync (3 databases):
+
+```
+NotionFood__Enabled                  = true
+NotionFood__ApiKey                   = <notion integration token>
+NotionFood__InventoryDatabaseId      = <db id>
+NotionFood__MealPlansDatabaseId      = <db id>
+NotionFood__GroceryListDatabaseId    = <db id>
+FoodSyncWorker__Enabled              = true
+```
+
+`DATABASE_URL` note:
+- Railway provides URL format: `postgresql://user:pass@host:port/db`.
+- App expects `ConnectionStrings__DefaultConnection` in Npgsql format:
+  `Host=<host>;Port=<port>;Database=<db>;Username=<user>;Password=<pass>`.
+
+### Step 5 - Deploy
+
+Push to your deployment branch. Railway redeploys automatically.
+
+Important:
+- Do **not** run EF CLI manually on Railway (`dotnet ef migrations add` / `dotnet ef database update`).
+- Migrations are already in repo and are applied automatically on app startup (`Database.Migrate()`).
+
+### Step 6 - Register Telegram webhook
+
+After deploy, get your Railway URL (for example `https://your-app.up.railway.app`) and run:
 
 ```
 https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://your-app.up.railway.app/api/telegram/webhook&secret_token=<WEBHOOK_SECRET>
 ```
 
-Check status:
+Check webhook status:
 
 ```
 https://api.telegram.org/bot<TOKEN>/getWebhookInfo
 ```
 
-Or use the helper script:
+Or use helper script:
 
 ```powershell
 ./scripts/telegram-webhook.ps1 `
@@ -606,13 +757,13 @@ Or use the helper script:
   -WebhookSecret "<secret>"
 ```
 
-### Step 7 — Verify
+### Step 7 - Verify
 
 ```
 https://your-app.up.railway.app/health
 ```
 
-Send a message to your bot in Telegram — it should reply.
+Send a message to your Telegram bot and verify logs in Railway.
 
 ---
 
@@ -755,3 +906,4 @@ Mode hints:
 dotnet build LagerthaAssistant.sln
 dotnet test LagerthaAssistant.sln -v minimal
 ```
+
