@@ -28,11 +28,11 @@ public sealed class ReleaseAnnouncementOptions
 
         return normalized switch
         {
-            LocalizationConstants.UkrainianLocale => string.IsNullOrWhiteSpace(NotesUk) ? NotesEn : NotesUk,
-            LocalizationConstants.SpanishLocale => string.IsNullOrWhiteSpace(NotesEs) ? NotesEn : NotesEs,
-            LocalizationConstants.FrenchLocale => string.IsNullOrWhiteSpace(NotesFr) ? NotesEn : NotesFr,
-            LocalizationConstants.GermanLocale => string.IsNullOrWhiteSpace(NotesDe) ? NotesEn : NotesDe,
-            LocalizationConstants.PolishLocale => string.IsNullOrWhiteSpace(NotesPl) ? NotesEn : NotesPl,
+            LocalizationConstants.UkrainianLocale => NotesUk,
+            LocalizationConstants.SpanishLocale => NotesEs,
+            LocalizationConstants.FrenchLocale => NotesFr,
+            LocalizationConstants.GermanLocale => NotesDe,
+            LocalizationConstants.PolishLocale => NotesPl,
             _ => NotesEn
         };
     }
