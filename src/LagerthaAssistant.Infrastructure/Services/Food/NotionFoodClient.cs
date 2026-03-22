@@ -57,11 +57,12 @@ public sealed class NotionFoodClient : INotionFoodClient
         if (!response.IsSuccessStatusCode)
         {
             var error = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning(
+            _logger.LogError(
                 "Notion PATCH page {PageId} failed: {Status} — {Error}",
                 notionPageId,
                 (int)response.StatusCode,
                 error);
+            response.EnsureSuccessStatusCode();
         }
     }
 

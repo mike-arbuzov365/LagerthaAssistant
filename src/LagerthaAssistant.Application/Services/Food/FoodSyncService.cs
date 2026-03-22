@@ -97,20 +97,24 @@ public sealed class FoodSyncService : IFoodSyncService
                 {
                     var meal = MapToMeal(page, notionUpdatedAt);
                     await _mealRepo.AddAsync(meal, cancellationToken);
+                    // Save first to get the generated meal ID needed for MealIngredient FKs.
                     await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-                    var linked = await LinkIngredientsAsync(meal, page, notionIdToFoodItemId, cancellationToken);
+                    var linked = LinkIngredients(meal, page, notionIdToFoodItemId);
                     ingredientsLinked += linked;
+                    if (linked > 0)
+                        await _unitOfWork.SaveChangesAsync(cancellationToken);
                     mealsUpserted++;
                 }
                 else if (notionUpdatedAt > existing.NotionUpdatedAt)
                 {
                     UpdateMeal(existing, page, notionUpdatedAt);
-                    // Re-sync ingredients: remove stale, add new.
+                    // Re-sync ingredients: remove stale, add new — atomically in one SaveChanges.
+                    // Do NOT save between Clear() and re-link: if linking fails, no data is lost.
                     existing.Ingredients.Clear();
-                    await _unitOfWork.SaveChangesAsync(cancellationToken);
-                    var linked = await LinkIngredientsAsync(existing, page, notionIdToFoodItemId, cancellationToken);
+                    var linked = LinkIngredients(existing, page, notionIdToFoodItemId);
                     ingredientsLinked += linked;
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
                     mealsUpserted++;
                 }
             }
@@ -293,11 +297,14 @@ public sealed class FoodSyncService : IFoodSyncService
         }
     }
 
-    private async Task<int> LinkIngredientsAsync(
+    /// <summary>
+    /// Links ingredients to a meal in-memory only. Caller is responsible for calling SaveChanges.
+    /// Must be called after the meal already has a valid DB-generated Id.
+    /// </summary>
+    private int LinkIngredients(
         Meal meal,
         NotionPage page,
-        Dictionary<string, int> notionIdToFoodItemId,
-        CancellationToken cancellationToken)
+        Dictionary<string, int> notionIdToFoodItemId)
     {
         var ingredientNotionIds = GetRelationIds(page, "Ingredients Needed");
         var linked = 0;
@@ -319,11 +326,6 @@ public sealed class FoodSyncService : IFoodSyncService
                 FoodItemId = foodItemId
             });
             linked++;
-        }
-
-        if (linked > 0)
-        {
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
         return linked;
