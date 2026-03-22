@@ -40,6 +40,32 @@ public sealed record MealFrequency(
     int TimesEaten,
     DateTime? LastEatenAt);
 
+public sealed record DailyProgressDto(
+    int GoalCalories,
+    int ConsumedCalories,
+    int RemainingCalories,
+    decimal PercentComplete,
+    int MealsLogged);
+
+public sealed record DietDiversityDto(
+    int DaysAnalyzed,
+    int UniqueMeals,
+    int TotalMeals,
+    IReadOnlyList<string> RepeatedMeals,
+    IReadOnlyList<string> UniqueMealNames);
+
+public sealed record PortionCalculationDto(
+    string MealName,
+    int DefaultServings,
+    int TargetServings,
+    decimal Multiplier,
+    IReadOnlyList<ScaledIngredientDto> Ingredients);
+
+public sealed record ScaledIngredientDto(
+    string Name,
+    string? OriginalQuantity,
+    string? ScaledQuantity);
+
 public sealed record FoodSyncSummary(
     int InventoryUpserted,
     int MealsUpserted,

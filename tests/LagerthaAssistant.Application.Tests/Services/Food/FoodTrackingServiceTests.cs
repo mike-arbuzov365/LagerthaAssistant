@@ -428,6 +428,9 @@ public sealed class FoodTrackingServiceTests
         public Task<IReadOnlyList<FoodItem>> GetAllAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<FoodItem>>(AllItems);
 
+        public Task<IReadOnlyList<int>> GetAllIdsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<int>>(AllItems.Select(x => x.Id).ToList());
+
         public Task<IReadOnlyList<FoodItem>> SearchByNameAsync(string query, int take = 10, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<FoodItem>>(AllItems
                 .Where(x => x.Name.Contains(query, StringComparison.OrdinalIgnoreCase))

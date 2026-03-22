@@ -131,8 +131,7 @@ public sealed class FoodTrackingService : IFoodTrackingService
 
     public async Task<IReadOnlyList<MealDto>> GetCookableNowAsync(CancellationToken cancellationToken = default)
     {
-        var allItems = await _foodItemRepo.GetAllAsync(cancellationToken);
-        var availableIds = allItems.Select(x => x.Id).ToList();
+        var availableIds = await _foodItemRepo.GetAllIdsAsync(cancellationToken);
 
         var cookable = await _mealRepo.GetCookableFromInventoryAsync(availableIds, cancellationToken);
         return cookable.Select(MapToDto).ToList();
@@ -191,6 +190,170 @@ public sealed class FoodTrackingService : IFoodTrackingService
     public async Task<CalorieSummary> GetCalorieSummaryAsync(DateTime from, DateTime to, CancellationToken cancellationToken = default)
     {
         return await _historyRepo.GetCalorieSummaryAsync(from, to, cancellationToken);
+    }
+
+    public async Task<int> LogQuickMealAsync(string name, int calories, decimal servings, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var safeServings = Math.Max(0.5m, servings);
+
+        // Create a temporary meal for this photo log
+        var meal = new Meal
+        {
+            NotionPageId = $"photo:{Guid.NewGuid():N}",
+            Name = name.Trim(),
+            CaloriesPerServing = calories,
+            NotionUpdatedAt = DateTime.UtcNow,
+            NotionSyncStatus = FoodSyncStatus.Pending
+        };
+        await _mealRepo.AddAsync(meal, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var entry = new MealHistory
+        {
+            MealId = meal.Id,
+            EatenAt = DateTime.UtcNow,
+            Servings = safeServings,
+            CaloriesConsumed = (int)Math.Round(calories * safeServings),
+            Notes = "Photo log"
+        };
+
+        await _historyRepo.AddAsync(entry, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Photo-logged meal '{Name}' ({Calories} kcal x {Servings})", name, calories, safeServings);
+        return entry.Id;
+    }
+
+    public async Task<DailyProgressDto> GetDailyProgressAsync(int calorieGoal, CancellationToken cancellationToken = default)
+    {
+        var today = DateTime.UtcNow.Date;
+        var tomorrow = today.AddDays(1);
+        var summary = await _historyRepo.GetCalorieSummaryAsync(today, tomorrow, cancellationToken);
+        var entries = await _historyRepo.GetRangeAsync(today, tomorrow, cancellationToken);
+        var consumed = summary.TotalCalories;
+        var remaining = Math.Max(0, calorieGoal - consumed);
+        var pct = calorieGoal > 0 ? Math.Min(100, (decimal)consumed / calorieGoal * 100) : 0;
+        return new DailyProgressDto(calorieGoal, consumed, remaining, Math.Round(pct, 1), entries.Count);
+    }
+
+    public async Task<DietDiversityDto> GetDietDiversityAsync(int days = 7, CancellationToken cancellationToken = default)
+    {
+        var to = DateTime.UtcNow;
+        var from = to.AddDays(-days).Date;
+        var entries = await _historyRepo.GetRangeAsync(from, to, cancellationToken);
+
+        var mealGroups = entries.GroupBy(e => e.MealId).ToList();
+        var uniqueMeals = mealGroups.Count;
+        var repeated = mealGroups.Where(g => g.Count() > 1)
+            .Select(g => g.First().Meal?.Name ?? $"Meal #{g.Key}")
+            .ToList();
+        var uniqueNames = mealGroups.Select(g => g.First().Meal?.Name ?? $"Meal #{g.Key}").ToList();
+
+        return new DietDiversityDto(days, uniqueMeals, entries.Count, repeated, uniqueNames);
+    }
+
+    public async Task<PortionCalculationDto?> CalculatePortionsAsync(int mealId, int targetServings, CancellationToken cancellationToken = default)
+    {
+        var meals = await _mealRepo.GetAllWithIngredientsAsync(cancellationToken);
+        var mealWithIngr = meals.FirstOrDefault(m => m.Id == mealId);
+        if (mealWithIngr is null) return null;
+
+        var defaultServings = Math.Max(1, mealWithIngr.DefaultServings);
+        var multiplier = (decimal)targetServings / defaultServings;
+
+        var scaled = mealWithIngr.Ingredients.Select(i =>
+        {
+            var originalQty = i.Quantity;
+            string? scaledQty = null;
+            if (!string.IsNullOrWhiteSpace(originalQty))
+            {
+                scaledQty = ScaleQuantity(originalQty, multiplier);
+            }
+            return new ScaledIngredientDto(i.FoodItem?.Name ?? "Unknown", originalQty, scaledQty);
+        }).ToList();
+
+        return new PortionCalculationDto(mealWithIngr.Name, defaultServings, targetServings, Math.Round(multiplier, 2), scaled);
+    }
+
+    private static string ScaleQuantity(string qty, decimal multiplier)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(qty.Trim(), @"^(\d+(?:[.,]\d+)?)(.*)$");
+        if (match.Success && decimal.TryParse(match.Groups[1].Value.Replace(',', '.'),
+                System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var num))
+        {
+            var scaled = Math.Round(num * multiplier, 1);
+            return $"{scaled}{match.Groups[2].Value}";
+        }
+        return qty;
+    }
+
+    public async Task<MealDto> CreateMealAsync(
+        string name,
+        int? caloriesPerServing,
+        decimal? proteinGrams,
+        decimal? carbsGrams,
+        decimal? fatGrams,
+        int? prepTimeMinutes,
+        int defaultServings,
+        IReadOnlyList<(string Name, string? Quantity)> ingredients,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var meal = new Meal
+        {
+            NotionPageId = $"local:{Guid.NewGuid():N}",
+            Name = name.Trim(),
+            CaloriesPerServing = caloriesPerServing,
+            ProteinGrams = proteinGrams,
+            CarbsGrams = carbsGrams,
+            FatGrams = fatGrams,
+            PrepTimeMinutes = prepTimeMinutes,
+            DefaultServings = defaultServings > 0 ? defaultServings : 2,
+            NotionUpdatedAt = DateTime.UtcNow,
+            NotionSyncStatus = FoodSyncStatus.Pending
+        };
+
+        await _mealRepo.AddAsync(meal, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Link ingredients: try to find existing FoodItems by name, create new ones if not found
+        foreach (var (ingredientName, qty) in ingredients)
+        {
+            var found = await _foodItemRepo.SearchByNameAsync(ingredientName.Trim(), take: 1, cancellationToken);
+            int foodItemId;
+            if (found.Count > 0)
+            {
+                foodItemId = found[0].Id;
+            }
+            else
+            {
+                var newItem = new FoodItem
+                {
+                    NotionPageId = $"local:{Guid.NewGuid():N}",
+                    Name = ingredientName.Trim(),
+                    NotionUpdatedAt = DateTime.UtcNow,
+                    NotionSyncStatus = FoodSyncStatus.Pending
+                };
+                await _foodItemRepo.AddAsync(newItem, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                foodItemId = newItem.Id;
+            }
+
+            meal.Ingredients.Add(new MealIngredient
+            {
+                MealId = meal.Id,
+                FoodItemId = foodItemId,
+                Quantity = qty?.Trim()
+            });
+        }
+
+        if (meal.Ingredients.Count > 0)
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Created meal '{Name}' with {Count} ingredients", meal.Name, meal.Ingredients.Count);
+        return MapToDto(meal);
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -6,7 +5,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Interfaces;
+using LagerthaAssistant.Api.Models;
 using LagerthaAssistant.Api.Options;
+using LagerthaAssistant.Api.Services;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
@@ -70,11 +71,7 @@ public sealed class TelegramController : ControllerBase
         "cancel", "stop", "no", "ні", "cancelar", "annuler", "abbrechen", "anuluj"
     };
 
-    private static readonly ConcurrentDictionary<string, GraphDeviceLoginChallenge> PendingGraphChallenges = new(StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<string, PendingVocabularySaveRequest> PendingVocabularySaves = new(StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<string, PendingVocabularyBatchSaveRequest> PendingVocabularyBatchSaves = new(StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<string, PendingVocabularyUrlSession> PendingVocabularyUrlSessions = new(StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<string, PendingChatActionKind> PendingChatActions = new(StringComparer.Ordinal);
+    private readonly TelegramPendingStateStore _pendingStateStore;
 
     private readonly IConversationOrchestrator _orchestrator;
     private readonly IAssistantSessionService _assistantSessionService;
@@ -143,8 +140,10 @@ public sealed class TelegramController : ControllerBase
         NotionFoodOptions? notionFoodOptions = null,
         IOptions<NotionSyncWorkerOptions>? notionSyncWorkerOptions = null,
         IOptions<FoodSyncWorkerOptions>? foodSyncWorkerOptions = null,
-        IFoodTrackingService? foodTrackingService = null)
+        IFoodTrackingService? foodTrackingService = null,
+        TelegramPendingStateStore? pendingStateStore = null)
     {
+        _pendingStateStore = pendingStateStore ?? new TelegramPendingStateStore();
         _orchestrator = orchestrator;
         _assistantSessionService = assistantSessionService;
         _scopeAccessor = scopeAccessor;
@@ -229,6 +228,8 @@ public sealed class TelegramController : ControllerBase
                 TelegramChannel,
                 inbound.UserId,
                 inbound.ConversationId);
+
+            _pendingStateStore.CleanupIfOversized();
 
             // Telegram bot works only with Graph storage mode.
             _storageModeProvider.SetMode(VocabularyStorageMode.Graph);
@@ -359,7 +360,7 @@ public sealed class TelegramController : ControllerBase
 
             case NavigationRouteKind.MainChatButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Chat, cancellationToken);
-                PendingChatActions.TryRemove(BuildPendingChatActionKey(scope), out _);
+                _pendingStateStore.ChatActions.TryRemove(BuildPendingChatActionKey(scope), out _);
                 return new TelegramRouteResponse(
                     "nav.main.chat",
                     _navigationPresenter.GetText("menu.chat.title", locale),
@@ -368,7 +369,7 @@ public sealed class TelegramController : ControllerBase
             case NavigationRouteKind.ChatText:
                 {
                     var pendingChatKey = BuildPendingChatActionKey(scope);
-                    if (PendingChatActions.TryGetValue(pendingChatKey, out var pendingAction))
+                    if (_pendingStateStore.ChatActions.TryGetValue(pendingChatKey, out var pendingAction))
                     {
                         var pendingResponse = await TryHandlePendingChatActionAsync(
                             pendingAction,
@@ -482,7 +483,9 @@ public sealed class TelegramController : ControllerBase
                 return await HandleShoppingTextAsync(inbound.Text, locale, cancellationToken);
 
             case NavigationRouteKind.WeeklyMenuText:
-                return await HandleWeeklyMenuTextAsync(inbound.Text, locale, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(inbound.PhotoFileId))
+                    return await HandleWeeklyMenuPhotoAsync(inbound.PhotoFileId, locale, scope, cancellationToken);
+                return await HandleWeeklyMenuTextAsync(inbound.Text, locale, scope, cancellationToken);
 
             case NavigationRouteKind.SettingsText:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
@@ -521,14 +524,14 @@ public sealed class TelegramController : ControllerBase
 
                     if (importResponse is null)
                     {
-                        PendingChatActions.TryRemove(pendingKey, out _);
+                        _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
                         return null;
                     }
 
-                    var keepPending = PendingVocabularyUrlSessions.ContainsKey(BuildPendingUrlSessionKey(scope));
+                    var keepPending = _pendingStateStore.VocabularyUrlSessions.ContainsKey(BuildPendingUrlSessionKey(scope));
                     if (!keepPending)
                     {
-                        PendingChatActions.TryRemove(pendingKey, out _);
+                        _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
                     }
 
                     return await FinalizeChatActionResponseAsync(scope, importResponse, cancellationToken);
@@ -547,7 +550,7 @@ public sealed class TelegramController : ControllerBase
                         || string.Equals(text, "cancel", StringComparison.OrdinalIgnoreCase)
                         || string.Equals(text, "скасувати", StringComparison.OrdinalIgnoreCase))
                     {
-                        PendingChatActions.TryRemove(pendingKey, out _);
+                        _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
                         return await FinalizeChatActionResponseAsync(
                             scope,
                             new TelegramRouteResponse(
@@ -565,12 +568,12 @@ public sealed class TelegramController : ControllerBase
                         cancellationToken);
 
                     var response = await BuildVocabularyTextResponseAsync(result, scope, locale, text, cancellationToken);
-                    PendingChatActions.TryRemove(pendingKey, out _);
+                    _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
                     return await FinalizeChatActionResponseAsync(scope, response, cancellationToken);
                 }
 
             default:
-                PendingChatActions.TryRemove(pendingKey, out _);
+                _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
                 return null;
         }
     }
@@ -603,53 +606,53 @@ public sealed class TelegramController : ControllerBase
                         inlineWord,
                         cancellationToken);
 
-                    PendingChatActions.TryRemove(pendingKey, out _);
+                    _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
                     return await FinalizeChatActionResponseAsync(scope, inlineResponse, cancellationToken);
                 }
 
-                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyAdd;
+                _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.VocabularyAdd;
                 return await FinalizeChatActionResponseAsync(
                     scope,
                     HandleVocabularyAddCallback(scope, locale),
                     cancellationToken);
 
             case "assistant.vocabulary.batch.start":
-                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyBatch;
+                _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.VocabularyBatch;
                 return await FinalizeChatActionResponseAsync(
                     scope,
                     BuildBatchModeResponse(scope, locale),
                     cancellationToken);
 
             case "assistant.vocabulary.import.start":
-                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
+                _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
                 return await FinalizeChatActionResponseAsync(
                     scope,
                     HandleVocabularyImportStartCallback(scope, locale),
                     cancellationToken);
 
             case "assistant.vocabulary.import.source.photo":
-                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
+                _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
                 return await FinalizeChatActionResponseAsync(
                     scope,
                     HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.Photo),
                     cancellationToken);
 
             case "assistant.vocabulary.import.source.file":
-                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
+                _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
                 return await FinalizeChatActionResponseAsync(
                     scope,
                     HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.File),
                     cancellationToken);
 
             case "assistant.vocabulary.import.source.url":
-                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
+                _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
                 return await FinalizeChatActionResponseAsync(
                     scope,
                     HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.Url),
                     cancellationToken);
 
             case "assistant.vocabulary.import.source.text":
-                PendingChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
+                _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.VocabularyImport;
                 return await FinalizeChatActionResponseAsync(
                     scope,
                     HandleVocabularyImportSourceCallback(scope, locale, TelegramImportSourceType.Text),
@@ -948,8 +951,8 @@ public sealed class TelegramController : ControllerBase
         if (string.Equals(callbackData, CallbackDataConstants.Nav.Main, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Main, cancellationToken);
-            PendingVocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
-            PendingChatActions.TryRemove(BuildPendingChatActionKey(scope), out _);
+            _pendingStateStore.VocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
+            _pendingStateStore.ChatActions.TryRemove(BuildPendingChatActionKey(scope), out _);
             return new TelegramRouteResponse(
                 "nav.main",
                 _navigationPresenter.GetText("menu.main.title", locale),
@@ -1007,13 +1010,13 @@ public sealed class TelegramController : ControllerBase
         if (callbackData.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Shopping, cancellationToken);
-            return await HandleFoodCallbackAsync(callbackData, locale, cancellationToken);
+            return await HandleFoodCallbackAsync(callbackData, locale, scope, cancellationToken);
         }
 
         if (callbackData.StartsWith(CallbackDataConstants.Weekly.Prefix, StringComparison.Ordinal))
         {
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.WeeklyMenu, cancellationToken);
-            return await HandleFoodCallbackAsync(callbackData, locale, cancellationToken);
+            return await HandleFoodCallbackAsync(callbackData, locale, scope, cancellationToken);
         }
 
         return new TelegramRouteResponse("nav.unknown", _navigationPresenter.GetText("stub.wip", locale));
@@ -1149,7 +1152,7 @@ public sealed class TelegramController : ControllerBase
         if (string.Equals(callbackData, CallbackDataConstants.OneDrive.Logout, StringComparison.Ordinal))
         {
             await _graphAuthService.LogoutAsync(cancellationToken);
-            PendingGraphChallenges.TryRemove(BuildGraphChallengeKey(scope), out _);
+            _pendingStateStore.GraphChallenges.TryRemove(BuildGraphChallengeKey(scope), out _);
 
             var screen = await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
             return screen with
@@ -1180,7 +1183,7 @@ public sealed class TelegramController : ControllerBase
                 };
             }
 
-            PendingGraphChallenges[BuildGraphChallengeKey(scope)] = start.Challenge;
+            _pendingStateStore.GraphChallenges[BuildGraphChallengeKey(scope)] = start.Challenge;
             var expiresInMinutes = Math.Max(1, (int)Math.Ceiling(start.Challenge.ExpiresInSeconds / 60d));
 
             return new TelegramRouteResponse(
@@ -1198,7 +1201,7 @@ public sealed class TelegramController : ControllerBase
         if (string.Equals(callbackData, CallbackDataConstants.OneDrive.CheckLogin, StringComparison.Ordinal))
         {
             var challengeKey = BuildGraphChallengeKey(scope);
-            if (!PendingGraphChallenges.TryGetValue(challengeKey, out var challenge))
+            if (!_pendingStateStore.GraphChallenges.TryGetValue(challengeKey, out var challenge))
             {
                 var missingScreen = await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
                 return missingScreen with
@@ -1214,7 +1217,7 @@ public sealed class TelegramController : ControllerBase
 
             if (challenge.ExpiresAtUtc <= DateTimeOffset.UtcNow)
             {
-                PendingGraphChallenges.TryRemove(challengeKey, out _);
+                _pendingStateStore.GraphChallenges.TryRemove(challengeKey, out _);
                 var expiredScreen = await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken);
                 return expiredScreen with
                 {
@@ -1231,7 +1234,7 @@ public sealed class TelegramController : ControllerBase
             OneDriveSyncSummary? syncSummary = null;
             if (complete.Succeeded)
             {
-                PendingGraphChallenges.TryRemove(challengeKey, out _);
+                _pendingStateStore.GraphChallenges.TryRemove(challengeKey, out _);
                 await _storagePreferenceService.SetModeAsync(scope, VocabularyStorageMode.Graph, cancellationToken);
                 _storageModeProvider.SetMode(VocabularyStorageMode.Graph);
 
@@ -1541,7 +1544,7 @@ public sealed class TelegramController : ControllerBase
         ConversationScope scope,
         string locale)
     {
-        PendingVocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
+        _pendingStateStore.VocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
 
         return new TelegramRouteResponse(
             "vocab.add",
@@ -1553,7 +1556,7 @@ public sealed class TelegramController : ControllerBase
         ConversationScope scope,
         string locale)
     {
-        PendingVocabularyUrlSessions[BuildPendingUrlSessionKey(scope)] = PendingVocabularyUrlSession.AwaitingSourceType;
+        _pendingStateStore.VocabularyUrlSessions[BuildPendingUrlSessionKey(scope)] = PendingVocabularyUrlSession.AwaitingSourceType;
 
         return new TelegramRouteResponse(
             "vocab.import",
@@ -1566,7 +1569,7 @@ public sealed class TelegramController : ControllerBase
         string locale,
         TelegramImportSourceType sourceType)
     {
-        PendingVocabularyUrlSessions[BuildPendingUrlSessionKey(scope)] = PendingVocabularyUrlSession.AwaitingSourceInput(sourceType);
+        _pendingStateStore.VocabularyUrlSessions[BuildPendingUrlSessionKey(scope)] = PendingVocabularyUrlSession.AwaitingSourceInput(sourceType);
 
         var promptKey = sourceType switch
         {
@@ -1586,7 +1589,7 @@ public sealed class TelegramController : ControllerBase
         ConversationScope scope,
         string locale)
     {
-        PendingVocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
+        _pendingStateStore.VocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
 
         return new TelegramRouteResponse(
             "vocab.url.cancel",
@@ -1600,7 +1603,7 @@ public sealed class TelegramController : ControllerBase
         CancellationToken cancellationToken)
     {
         var key = BuildPendingUrlSessionKey(scope);
-        if (!PendingVocabularyUrlSessions.TryGetValue(key, out var session)
+        if (!_pendingStateStore.VocabularyUrlSessions.TryGetValue(key, out var session)
             || session.Stage != PendingVocabularyUrlStage.AwaitingSelection
             || session.Candidates.Count == 0)
         {
@@ -1634,7 +1637,7 @@ public sealed class TelegramController : ControllerBase
         }
 
         var pendingKey = BuildPendingUrlSessionKey(scope);
-        var hasSession = PendingVocabularyUrlSessions.TryGetValue(pendingKey, out var session);
+        var hasSession = _pendingStateStore.VocabularyUrlSessions.TryGetValue(pendingKey, out var session);
         var autoDetectedSource = DetectSourceTypeFromInbound(inbound);
         var shouldAutoStart = !hasSession
                               && (UrlLikeRegex.IsMatch(normalizedInput)
@@ -1653,12 +1656,12 @@ public sealed class TelegramController : ControllerBase
             var autoDetected = DetectSourceTypeFromInbound(inbound);
             if (autoDetected is null || autoDetected == TelegramImportSourceType.Text)
             {
-                PendingVocabularyUrlSessions.TryRemove(pendingKey, out _);
+                _pendingStateStore.VocabularyUrlSessions.TryRemove(pendingKey, out _);
                 return null;
             }
 
             session = PendingVocabularyUrlSession.AwaitingSourceInput(autoDetected.Value);
-            PendingVocabularyUrlSessions[pendingKey] = session;
+            _pendingStateStore.VocabularyUrlSessions[pendingKey] = session;
         }
 
         if (session.Stage == PendingVocabularyUrlStage.AwaitingSelection)
@@ -1679,7 +1682,7 @@ public sealed class TelegramController : ControllerBase
                         InlineKeyboard(_navigationPresenter.BuildVocabularyUrlSelectionKeyboard(locale)));
                 }
 
-                PendingVocabularyUrlSessions.TryRemove(pendingKey, out _);
+                _pendingStateStore.VocabularyUrlSessions.TryRemove(pendingKey, out _);
                 return null;
             }
 
@@ -1692,7 +1695,7 @@ public sealed class TelegramController : ControllerBase
 
         if (session.SourceType is null)
         {
-            PendingVocabularyUrlSessions[pendingKey] = PendingVocabularyUrlSession.AwaitingSourceType;
+            _pendingStateStore.VocabularyUrlSessions[pendingKey] = PendingVocabularyUrlSession.AwaitingSourceType;
             return new TelegramRouteResponse(
                 "vocab.import",
                 _navigationPresenter.GetText("vocab.import.choose_source", locale),
@@ -1708,7 +1711,7 @@ public sealed class TelegramController : ControllerBase
         var read = await _importSourceReader.ReadTextAsync(importInbound, session.SourceType.Value, cancellationToken);
         if (read.Status != TelegramImportSourceReadStatus.Success || string.IsNullOrWhiteSpace(read.Text))
         {
-            PendingVocabularyUrlSessions[pendingKey] = session;
+            _pendingStateStore.VocabularyUrlSessions[pendingKey] = session;
             return BuildImportReadErrorResponse(read, session.SourceType.Value, locale);
         }
 
@@ -1716,7 +1719,7 @@ public sealed class TelegramController : ControllerBase
         if (discovery.Status == VocabularyDiscoveryStatus.InvalidSource
             || discovery.Status == VocabularyDiscoveryStatus.Failed)
         {
-            PendingVocabularyUrlSessions[pendingKey] = session;
+            _pendingStateStore.VocabularyUrlSessions[pendingKey] = session;
 
             return new TelegramRouteResponse(
                 "vocab.url.invalid",
@@ -1726,7 +1729,7 @@ public sealed class TelegramController : ControllerBase
 
         if (discovery.Status != VocabularyDiscoveryStatus.Success || discovery.Candidates.Count == 0)
         {
-            PendingVocabularyUrlSessions.TryRemove(pendingKey, out _);
+            _pendingStateStore.VocabularyUrlSessions.TryRemove(pendingKey, out _);
             return new TelegramRouteResponse(
                 "vocab.url.empty",
                 _navigationPresenter.GetText("vocab.url.empty", locale),
@@ -1736,7 +1739,7 @@ public sealed class TelegramController : ControllerBase
         var orderedCandidates = OrderUrlCandidates(discovery.Candidates);
         if (orderedCandidates.Count == 1)
         {
-            PendingVocabularyUrlSessions.TryRemove(pendingKey, out _);
+            _pendingStateStore.VocabularyUrlSessions.TryRemove(pendingKey, out _);
             return await ProcessVocabularyUrlSelectionAsync(
                 [orderedCandidates[0].Word],
                 scope,
@@ -1744,7 +1747,7 @@ public sealed class TelegramController : ControllerBase
                 cancellationToken);
         }
 
-        PendingVocabularyUrlSessions[pendingKey] = PendingVocabularyUrlSession.AwaitingSelection(orderedCandidates);
+        _pendingStateStore.VocabularyUrlSessions[pendingKey] = PendingVocabularyUrlSession.AwaitingSelection(orderedCandidates);
 
         return new TelegramRouteResponse(
             "vocab.url.suggestions",
@@ -1766,7 +1769,7 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildVocabularyUrlSelectionKeyboard(locale)));
         }
 
-        PendingVocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
+        _pendingStateStore.VocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
         var batchInput = string.Join(Environment.NewLine, selectedWords);
         var result = await _orchestrator.ProcessAsync(
             batchInput,
@@ -1978,8 +1981,8 @@ public sealed class TelegramController : ControllerBase
     {
         var formatted = _responseFormatter.Format(result);
         var pendingKey = BuildPendingSaveKey(scope);
-        PendingVocabularySaves.TryRemove(pendingKey, out _);
-        PendingVocabularyBatchSaves.TryRemove(pendingKey, out _);
+        _pendingStateStore.VocabularySaves.TryRemove(pendingKey, out _);
+        _pendingStateStore.VocabularyBatchSaves.TryRemove(pendingKey, out _);
 
         if (string.Equals(result.Intent, "command.unsupported", StringComparison.OrdinalIgnoreCase))
         {
@@ -2032,7 +2035,7 @@ public sealed class TelegramController : ControllerBase
             if (saveCandidates.Count == 1 && !result.IsBatch)
             {
                 var pending = saveCandidates[0];
-                PendingVocabularySaves[pendingKey] = pending;
+                _pendingStateStore.VocabularySaves[pendingKey] = pending;
 
                 var askText = _navigationPresenter.GetText(
                     "vocab.save.ask",
@@ -2057,7 +2060,7 @@ public sealed class TelegramController : ControllerBase
 
             if (result.IsBatch && saveCandidates.Count > 0)
             {
-                PendingVocabularyBatchSaves[pendingKey] = new PendingVocabularyBatchSaveRequest(saveCandidates);
+                _pendingStateStore.VocabularyBatchSaves[pendingKey] = new PendingVocabularyBatchSaveRequest(saveCandidates);
 
                 var askHint = _navigationPresenter.GetText("vocab.save_batch_ask_hint", locale);
                 var askQuestion = EnsureQuestionMarker(
@@ -2122,7 +2125,7 @@ public sealed class TelegramController : ControllerBase
         CancellationToken cancellationToken)
     {
         var pendingKey = BuildPendingSaveKey(scope);
-        if (!PendingVocabularySaves.TryGetValue(pendingKey, out var pending))
+        if (!_pendingStateStore.VocabularySaves.TryGetValue(pendingKey, out var pending))
         {
             return new TelegramRouteResponse(
                 "vocab.save.none",
@@ -2132,7 +2135,7 @@ public sealed class TelegramController : ControllerBase
 
         if (!saveRequested)
         {
-            PendingVocabularySaves.TryRemove(pendingKey, out _);
+            _pendingStateStore.VocabularySaves.TryRemove(pendingKey, out _);
             return new TelegramRouteResponse(
                 "vocab.save.skip",
                 _navigationPresenter.GetText("vocab.save.skip", locale),
@@ -2155,7 +2158,7 @@ public sealed class TelegramController : ControllerBase
             && !missingDeckError;
         if (!keepPending)
         {
-            PendingVocabularySaves.TryRemove(pendingKey, out _);
+            _pendingStateStore.VocabularySaves.TryRemove(pendingKey, out _);
         }
 
         var statusText = BuildAppendStatusMessage(appendResult, locale);
@@ -2704,7 +2707,7 @@ public sealed class TelegramController : ControllerBase
         CancellationToken cancellationToken)
     {
         var pendingKey = BuildPendingSaveKey(scope);
-        if (!PendingVocabularyBatchSaves.TryGetValue(pendingKey, out var pendingBatch)
+        if (!_pendingStateStore.VocabularyBatchSaves.TryGetValue(pendingKey, out var pendingBatch)
             || pendingBatch.Items.Count == 0)
         {
             return new TelegramRouteResponse(
@@ -2715,14 +2718,14 @@ public sealed class TelegramController : ControllerBase
 
         if (!saveRequested)
         {
-            PendingVocabularyBatchSaves.TryRemove(pendingKey, out _);
+            _pendingStateStore.VocabularyBatchSaves.TryRemove(pendingKey, out _);
             return new TelegramRouteResponse(
                 "vocab.save.batch.skip",
                 _navigationPresenter.GetText("vocab.save_batch_skip", locale),
                 InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
         }
 
-        PendingVocabularyBatchSaves.TryRemove(pendingKey, out _);
+        _pendingStateStore.VocabularyBatchSaves.TryRemove(pendingKey, out _);
 
         var saveMessages = new List<string>();
         var saved = 0;
@@ -2880,7 +2883,7 @@ public sealed class TelegramController : ControllerBase
         ConversationScope scope,
         string locale)
     {
-        PendingVocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
+        _pendingStateStore.VocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
         return new TelegramRouteResponse(
             "vocab.batch",
             _navigationPresenter.GetText("vocab.batch.prompt", locale),
@@ -3564,38 +3567,45 @@ public sealed class TelegramController : ControllerBase
         string Marker,
         string DeckFileName);
 
-    private sealed record PendingVocabularySaveRequest(
-        string RequestedWord,
-        string AssistantReply,
-        string TargetDeckFileName,
-        string? OverridePartOfSpeech);
-
-    private sealed record PendingVocabularyBatchSaveRequest(
-        IReadOnlyList<PendingVocabularySaveRequest> Items);
-
-    private sealed record PendingVocabularyUrlSession(
-        PendingVocabularyUrlStage Stage,
-        TelegramImportSourceType? SourceType,
-        IReadOnlyList<PendingVocabularyUrlCandidate> Candidates)
-    {
-        public static PendingVocabularyUrlSession AwaitingSourceType { get; }
-            = new(PendingVocabularyUrlStage.AwaitingSourceType, null, []);
-
-        public static PendingVocabularyUrlSession AwaitingSourceInput(TelegramImportSourceType sourceType)
-            => new(PendingVocabularyUrlStage.AwaitingSourceInput, sourceType, []);
-
-        public static PendingVocabularyUrlSession AwaitingSelection(IReadOnlyList<PendingVocabularyUrlCandidate> candidates)
-            => new(PendingVocabularyUrlStage.AwaitingSelection, null, candidates);
-    }
-
     // ── Food tracking helpers ─────────────────────────────────────────────────
 
     private async Task<TelegramRouteResponse> HandleFoodCallbackAsync(
         string callbackData,
         string locale,
+        ConversationScope scope,
         CancellationToken cancellationToken)
     {
+        // Handle meal creation confirm/cancel
+        if (string.Equals(callbackData, CallbackDataConstants.Weekly.CreateConfirm, StringComparison.Ordinal))
+        {
+            return await HandleMealCreateConfirmAsync(scope, locale, cancellationToken);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Weekly.CreateCancel, StringComparison.Ordinal))
+        {
+            return HandleMealCreateCancel(scope, locale);
+        }
+
+        // Handle photo food log confirm/cancel
+        if (string.Equals(callbackData, CallbackDataConstants.Weekly.PhotoConfirm, StringComparison.Ordinal))
+        {
+            return await HandlePhotoLogConfirmAsync(scope, locale, cancellationToken);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Weekly.PhotoCancel, StringComparison.Ordinal))
+        {
+            return HandlePhotoLogCancel(scope, locale);
+        }
+
         var result = await _orchestrator.ProcessAsync(callbackData, TelegramChannel, cancellationToken);
+
+        // If this was a create prompt, set pending action so next text input triggers meal creation
+        if (string.Equals(callbackData, CallbackDataConstants.Weekly.Create, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.MealCreation;
+        }
+
         var keyboard = callbackData.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal)
             ? InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale))
             : InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale));
@@ -3634,6 +3644,7 @@ public sealed class TelegramController : ControllerBase
     private async Task<TelegramRouteResponse> HandleWeeklyMenuTextAsync(
         string text,
         string locale,
+        ConversationScope scope,
         CancellationToken cancellationToken)
     {
         if (_foodTrackingService is null)
@@ -3644,8 +3655,47 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
         }
 
-        // If the user typed "N" or "N S" (meal ID + optional servings), log the meal.
+        // Check for pending meal creation text input
+        var pendingKey = BuildPendingChatActionKey(scope);
+        if (_pendingStateStore.ChatActions.TryGetValue(pendingKey, out var pendingAction)
+            && pendingAction == PendingChatActionKind.MealCreation)
+        {
+            _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+            return await HandleMealCreationTextAsync(text, scope, locale, cancellationToken);
+        }
+
+        // Check for portion calculator command: "portion <mealId> <servings>"
         var parts = text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 3
+            && parts[0].Equals("portion", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(parts[1], out var portionMealId)
+            && int.TryParse(parts[2], out var targetServings)
+            && targetServings > 0)
+        {
+            var calc = await _foodTrackingService.CalculatePortionsAsync(portionMealId, targetServings, cancellationToken);
+            if (calc is null)
+            {
+                return new TelegramRouteResponse(
+                    "food.weekly.portion.not_found",
+                    $"Meal with ID {portionMealId} not found.",
+                    InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+            }
+
+            var portionSb = new System.Text.StringBuilder();
+            portionSb.AppendLine($"{calc.MealName} \u2014 {calc.TargetServings} servings (\u00d7{calc.Multiplier})");
+            portionSb.AppendLine();
+            foreach (var i in calc.Ingredients)
+            {
+                var scaled = i.ScaledQuantity ?? i.OriginalQuantity ?? "\u2014";
+                portionSb.AppendLine($"  \u2022 {i.Name}: {scaled}");
+            }
+            return new TelegramRouteResponse(
+                "food.weekly.portion",
+                portionSb.ToString().TrimEnd(),
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        // If the user typed "N" or "N S" (meal ID + optional servings), log the meal.
         if (parts.Length >= 1
             && int.TryParse(parts[0], out var mealId)
             && mealId > 0)
@@ -3697,25 +3747,177 @@ public sealed class TelegramController : ControllerBase
             InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
     }
 
-    private enum PendingVocabularyUrlStage
+    private async Task<TelegramRouteResponse> HandleMealCreationTextAsync(
+        string mealName,
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
     {
-        AwaitingSourceType = 0,
-        AwaitingSourceInput = 1,
-        AwaitingSelection = 2
+        if (string.IsNullOrWhiteSpace(mealName))
+        {
+            return new TelegramRouteResponse(
+                "food.weekly.create.empty",
+                "Please type a meal name to create.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        // Store a basic pending meal creation — the user can confirm to create it
+        var pending = new PendingMealCreation(
+            Name: mealName.Trim(),
+            CaloriesPerServing: null,
+            ProteinGrams: null,
+            CarbsGrams: null,
+            FatGrams: null,
+            PrepTimeMinutes: null,
+            DefaultServings: 2,
+            Ingredients: []);
+
+        var pendingKey = BuildPendingChatActionKey(scope);
+        _pendingStateStore.MealCreations[pendingKey] = pending;
+
+        var preview = new System.Text.StringBuilder();
+        preview.AppendLine($"Create meal: \"{pending.Name}\"");
+        preview.AppendLine($"Default servings: {pending.DefaultServings}");
+        preview.AppendLine();
+        preview.AppendLine("Confirm creation?");
+
+        return new TelegramRouteResponse(
+            "food.weekly.create.preview",
+            preview.ToString().TrimEnd(),
+            InlineKeyboard(_navigationPresenter.BuildMealCreateConfirmKeyboard(locale)));
     }
 
-    private enum PendingChatActionKind
+    private async Task<TelegramRouteResponse> HandleMealCreateConfirmAsync(
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
     {
-        VocabularyAdd = 0,
-        VocabularyBatch = 1,
-        VocabularyImport = 2
+        var pendingKey = BuildPendingChatActionKey(scope);
+        if (!_pendingStateStore.MealCreations.TryRemove(pendingKey, out var pending))
+        {
+            return new TelegramRouteResponse(
+                "food.weekly.create.expired",
+                "No pending meal creation found. Please start again.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        if (_foodTrackingService is null)
+        {
+            return new TelegramRouteResponse(
+                "food.weekly.create.error",
+                "Food tracking is not configured.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        var ingredients = pending.Ingredients
+            .Select(i => (i.Name, i.Quantity))
+            .ToList();
+
+        var meal = await _foodTrackingService.CreateMealAsync(
+            pending.Name,
+            pending.CaloriesPerServing,
+            pending.ProteinGrams,
+            pending.CarbsGrams,
+            pending.FatGrams,
+            pending.PrepTimeMinutes,
+            pending.DefaultServings,
+            ingredients,
+            cancellationToken);
+
+        return new TelegramRouteResponse(
+            "food.weekly.create.done",
+            $"Meal \"{meal.Name}\" created (ID: {meal.Id}).",
+            InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
     }
 
-    private sealed record PendingVocabularyUrlCandidate(
-        int Number,
-        string Word,
-        string PartOfSpeech,
-        int Frequency);
+    private TelegramRouteResponse HandleMealCreateCancel(
+        ConversationScope scope,
+        string locale)
+    {
+        var pendingKey = BuildPendingChatActionKey(scope);
+        _pendingStateStore.MealCreations.TryRemove(pendingKey, out _);
+
+        return new TelegramRouteResponse(
+            "food.weekly.create.cancelled",
+            "Meal creation cancelled.",
+            InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandleWeeklyMenuPhotoAsync(
+        string photoFileId,
+        string locale,
+        ConversationScope scope,
+        CancellationToken cancellationToken)
+    {
+        var result = await _importSourceReader.IdentifyFoodAsync(photoFileId, cancellationToken);
+
+        if (!result.Success || result.MealName is null || result.EstimatedCalories is null)
+        {
+            return new TelegramRouteResponse(
+                "food.photo.failed",
+                result.Error ?? "Could not identify food in the photo. Try again with a clearer image.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        var pending = new PendingFoodPhotoLog(result.MealName, result.EstimatedCalories.Value, 1m);
+        var pendingKey = BuildPendingChatActionKey(scope);
+        _pendingStateStore.FoodPhotoLogs[pendingKey] = pending;
+
+        var preview = new System.Text.StringBuilder();
+        preview.AppendLine($"Identified: {pending.MealName}");
+        preview.AppendLine($"Estimated calories: {pending.EstimatedCalories} kcal");
+        preview.AppendLine($"Servings: {pending.Servings}");
+        preview.AppendLine();
+        preview.AppendLine("Log this meal?");
+
+        return new TelegramRouteResponse(
+            "food.photo.preview",
+            preview.ToString().TrimEnd(),
+            InlineKeyboard(_navigationPresenter.BuildFoodPhotoConfirmKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandlePhotoLogConfirmAsync(
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var pendingKey = BuildPendingChatActionKey(scope);
+        if (!_pendingStateStore.FoodPhotoLogs.TryRemove(pendingKey, out var pending))
+        {
+            return new TelegramRouteResponse(
+                "food.photo.expired",
+                "No pending photo log found. Please send a photo again.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        if (_foodTrackingService is null)
+        {
+            return new TelegramRouteResponse(
+                "food.photo.error",
+                "Food tracking is not configured.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        await _foodTrackingService.LogQuickMealAsync(pending.MealName, pending.EstimatedCalories, pending.Servings, cancellationToken);
+
+        return new TelegramRouteResponse(
+            "food.photo.logged",
+            $"\u2705 Logged \"{pending.MealName}\" ({pending.EstimatedCalories} kcal \u00d7 {pending.Servings}).",
+            InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+    }
+
+    private TelegramRouteResponse HandlePhotoLogCancel(
+        ConversationScope scope,
+        string locale)
+    {
+        var pendingKey = BuildPendingChatActionKey(scope);
+        _pendingStateStore.FoodPhotoLogs.TryRemove(pendingKey, out _);
+
+        return new TelegramRouteResponse(
+            "food.photo.cancelled",
+            "Photo log cancelled.",
+            InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+    }
 
     private sealed record VocabularyUrlSelectionResult(
         VocabularyUrlSelectionAction Action,
