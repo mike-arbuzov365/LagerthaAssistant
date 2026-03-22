@@ -2732,7 +2732,8 @@ public sealed class TelegramControllerTests
             userMemoryRepository,
             unitOfWork,
             Options.Create(releaseAnnouncementOptions ?? new ReleaseAnnouncementOptions()),
-            foodTrackingService);
+            foodTrackingService,
+            new TelegramPendingStateStore());
     }
 
     private static TelegramWebhookUpdateRequest BuildTextUpdate(
