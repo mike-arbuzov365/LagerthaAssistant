@@ -10,8 +10,10 @@ using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Interfaces.Common;
+using LagerthaAssistant.Application.Interfaces.Food;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
+using LagerthaAssistant.Application.Models.Food;
 using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Localization;
@@ -2759,7 +2761,8 @@ public sealed class TelegramControllerTests
         FakeTelegramImportSourceReader? importSourceReader = null,
         FakeUserMemoryRepository? userMemoryRepository = null,
         FakeUnitOfWork? unitOfWork = null,
-        ReleaseAnnouncementOptions? releaseAnnouncementOptions = null)
+        ReleaseAnnouncementOptions? releaseAnnouncementOptions = null,
+        FakeFoodTrackingService? foodTrackingService = null)
     {
         return new TelegramController(
             orchestrator,
@@ -2789,7 +2792,8 @@ public sealed class TelegramControllerTests
             NullLogger<TelegramController>.Instance,
             userMemoryRepository,
             unitOfWork,
-            Options.Create(releaseAnnouncementOptions ?? new ReleaseAnnouncementOptions()));
+            Options.Create(releaseAnnouncementOptions ?? new ReleaseAnnouncementOptions()),
+            foodTrackingService);
     }
 
     private static TelegramWebhookUpdateRequest BuildTextUpdate(
@@ -4234,5 +4238,291 @@ public sealed class TelegramControllerTests
         var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
         Assert.True(payload.Processed);
         Assert.Equal(1, sender.CallbackAnswers);
+    }
+
+    // ── Food: Shopping callbacks ──────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(CallbackDataConstants.Shop.List, "food.shop.list")]
+    [InlineData(CallbackDataConstants.Shop.Add, "food.shop.add.prompt")]
+    [InlineData(CallbackDataConstants.Shop.Delete, "food.shop.clear")]
+    public async Task Webhook_ShouldHandleShopCallback_AndReturnShoppingKeyboard(string callbackData, string expectedIntent)
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = ConversationAgentResult.Empty("food-tracking-agent", expectedIntent, "response")
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Shopping };
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("response"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: new FakeFoodTrackingService());
+
+        var response = await sut.Webhook(BuildCallbackUpdate(1001, 2002, callbackData, null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Processed);
+        Assert.Equal(expectedIntent, payload.Intent);
+        Assert.IsType<TelegramInlineKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+        Assert.Equal(1, sender.CallbackAnswers);
+    }
+
+    // ── Food: Weekly callbacks ────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(CallbackDataConstants.Weekly.View, "food.weekly.view")]
+    [InlineData(CallbackDataConstants.Weekly.Plan, "food.weekly.cookable")]
+    [InlineData(CallbackDataConstants.Weekly.Calories, "food.weekly.calories")]
+    [InlineData(CallbackDataConstants.Weekly.Favourites, "food.weekly.favourites")]
+    [InlineData(CallbackDataConstants.Weekly.Log, "food.weekly.log.prompt")]
+    public async Task Webhook_ShouldHandleWeeklyCallback_AndReturnWeeklyKeyboard(string callbackData, string expectedIntent)
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = ConversationAgentResult.Empty("food-tracking-agent", expectedIntent, "response")
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.WeeklyMenu };
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("response"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: new FakeFoodTrackingService());
+
+        var response = await sut.Webhook(BuildCallbackUpdate(1001, 2002, callbackData, null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.True(payload.Processed);
+        Assert.Equal(expectedIntent, payload.Intent);
+        Assert.IsType<TelegramInlineKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+    }
+
+    // ── Food: Shopping text input ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task Webhook_ShouldAddGroceryItem_WhenTextInShoppingSection()
+    {
+        var foodService = new FakeFoodTrackingService();
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Shopping };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "Milk 2L Costco", null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("food.shop.added", payload.Intent);
+        Assert.Contains("Milk", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.IsType<TelegramInlineKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldReturnStubResponse_WhenTextInShoppingSection_AndFoodServiceNull()
+    {
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Shopping };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true }
+            /* foodTrackingService: null by default */);
+
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "Milk", null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("shopping.text", payload.Intent);
+    }
+
+    // ── Food: Weekly text input – meal logging ────────────────────────────────
+
+    [Fact]
+    public async Task Webhook_ShouldLogMeal_WhenNumberTextInWeeklySection()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            LogMealResult = 42
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.WeeklyMenu };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "5 2", null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("food.weekly.logged", payload.Intent);
+        Assert.Contains("5", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(5, foodService.LastLoggedMealId);
+        Assert.Equal(2m, foodService.LastLoggedServings);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldReturnNotFound_WhenMealIdNotFound_InWeeklySection()
+    {
+        var foodService = new FakeFoodTrackingService { ThrowOnLog = true };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.WeeklyMenu };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "999", null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("food.weekly.log.not_found", payload.Intent);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldShowMealList_WhenNonNumericTextInWeeklySection()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            Meals = [new MealDto(1, "Soup", 300, null, null, null, 20, 2, [])]
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.WeeklyMenu };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "what can I eat?", null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("food.weekly.view", payload.Intent);
+        Assert.Contains("Soup", sender.LastText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── Food: FakeFoodTrackingService ─────────────────────────────────────────
+
+    private sealed class FakeFoodTrackingService : IFoodTrackingService
+    {
+        public IReadOnlyList<GroceryListItemDto> GroceryItems { get; init; } = [];
+        public IReadOnlyList<MealDto> Meals { get; init; } = [];
+        public IReadOnlyList<MealDto> CookableMeals { get; init; } = [];
+        public IReadOnlyList<MealFrequency> FavouriteMeals { get; init; } = [];
+        public CalorieSummary CalorieSummary { get; init; } = new(DateTime.MinValue, DateTime.MaxValue, 0, 0, 0, 0, 0);
+        public int ClearedCount { get; init; }
+        public int LogMealResult { get; init; } = 1;
+        public bool ThrowOnLog { get; init; }
+
+        public int LastLoggedMealId { get; private set; }
+        public decimal LastLoggedServings { get; private set; }
+
+        public Task<IReadOnlyList<GroceryListItemDto>> GetActiveGroceryListAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(GroceryItems);
+
+        public Task<GroceryListItemDto> AddGroceryItemAsync(string name, string? quantity, string? store, CancellationToken cancellationToken = default)
+            => Task.FromResult(new GroceryListItemDto(99, name, quantity, null, store, false));
+
+        public Task<int> MarkItemsBoughtAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default)
+            => Task.FromResult(itemIds.Count);
+
+        public Task<int> MarkAllBoughtAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<int> ClearBoughtItemsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(ClearedCount);
+
+        public Task<IReadOnlyList<MealDto>> GetAllMealsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(Meals);
+
+        public Task<IReadOnlyList<MealDto>> GetCookableNowAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(CookableMeals);
+
+        public Task<IReadOnlyList<MealFrequency>> GetFavouriteMealsAsync(int take = 5, CancellationToken cancellationToken = default)
+            => Task.FromResult(FavouriteMeals);
+
+        public Task<int> LogMealAsync(int mealId, decimal servings, string? notes, CancellationToken cancellationToken = default)
+        {
+            if (ThrowOnLog) throw new InvalidOperationException($"Meal {mealId} not found.");
+            LastLoggedMealId = mealId;
+            LastLoggedServings = servings;
+            return Task.FromResult(LogMealResult);
+        }
+
+        public Task<CalorieSummary> GetCalorieSummaryAsync(DateTime from, DateTime to, CancellationToken cancellationToken = default)
+            => Task.FromResult(CalorieSummary);
     }
 }

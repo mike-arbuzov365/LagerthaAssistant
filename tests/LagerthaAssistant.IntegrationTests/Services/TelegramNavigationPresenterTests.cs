@@ -76,4 +76,55 @@ public sealed class TelegramNavigationPresenterTests
         Assert.Equal("vocab:stats", keyboard.InlineKeyboard[1][1].CallbackData);
         Assert.Contains("Стат", keyboard.InlineKeyboard[1][1].Text, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void BuildShoppingKeyboard_ShouldContainExpectedCallbacks()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildShoppingKeyboard("en");
+        var callbacks = keyboard.InlineKeyboard
+            .SelectMany(row => row)
+            .Select(b => b.CallbackData)
+            .ToList();
+
+        Assert.Contains("shop:add", callbacks);
+        Assert.Contains("shop:list", callbacks);
+        Assert.Contains("shop:delete", callbacks);
+        Assert.Contains("nav:main", callbacks);
+    }
+
+    [Fact]
+    public void BuildWeeklyMenuKeyboard_ShouldContainAllFoodCallbacks()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildWeeklyMenuKeyboard("en");
+        var callbacks = keyboard.InlineKeyboard
+            .SelectMany(row => row)
+            .Select(b => b.CallbackData)
+            .ToList();
+
+        Assert.Contains("weekly:view", callbacks);
+        Assert.Contains("weekly:plan", callbacks);
+        Assert.Contains("weekly:calories", callbacks);
+        Assert.Contains("weekly:favourites", callbacks);
+        Assert.Contains("weekly:log", callbacks);
+        Assert.Contains("nav:main", callbacks);
+    }
+
+    [Fact]
+    public void BuildWeeklyMenuKeyboard_ShouldLocalizeButtons_ForUkrainian()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildWeeklyMenuKeyboard("uk");
+        var allText = keyboard.InlineKeyboard
+            .SelectMany(row => row)
+            .Select(b => b.Text)
+            .ToList();
+
+        Assert.Contains(allText, t => t.Contains("Улюблені", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(allText, t => t.Contains("Записати", StringComparison.OrdinalIgnoreCase));
+    }
 }

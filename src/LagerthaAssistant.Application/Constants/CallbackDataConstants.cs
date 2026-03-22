@@ -94,5 +94,7 @@ public static class CallbackDataConstants
         public const string View = "weekly:view";
         public const string Plan = "weekly:plan";
         public const string Calories = "weekly:calories";
+        public const string Favourites = "weekly:favourites";
+        public const string Log = "weekly:log";
     }
 }

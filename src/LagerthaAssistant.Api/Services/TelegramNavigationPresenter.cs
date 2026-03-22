@@ -89,7 +89,8 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             InlineKeyboard:
             [
                 [Button("menu.weekly.view", locale, CallbackDataConstants.Weekly.View), Button("menu.weekly.plan", locale, CallbackDataConstants.Weekly.Plan)],
-                [Button("menu.weekly.calories", locale, CallbackDataConstants.Weekly.Calories)],
+                [Button("menu.weekly.calories", locale, CallbackDataConstants.Weekly.Calories), Button("menu.weekly.favourites", locale, CallbackDataConstants.Weekly.Favourites)],
+                [Button("menu.weekly.log", locale, CallbackDataConstants.Weekly.Log)],
                 [Button("menu.weekly.back", locale, CallbackDataConstants.Nav.Main)]
             ]);
     }
