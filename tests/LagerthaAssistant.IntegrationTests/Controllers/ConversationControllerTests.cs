@@ -666,6 +666,13 @@ public sealed class ConversationControllerTests
         public Task<ConversationAgentResult> ProcessAsync(
             string input,
             string channel,
+            string locale,
+            CancellationToken cancellationToken)
+            => ProcessAsync(input, channel, null, null, cancellationToken);
+
+        public Task<ConversationAgentResult> ProcessAsync(
+            string input,
+            string channel,
             string? userId,
             string? conversationId,
             CancellationToken cancellationToken = default)
