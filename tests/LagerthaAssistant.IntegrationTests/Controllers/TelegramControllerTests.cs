@@ -1,4 +1,4 @@
-﻿namespace LagerthaAssistant.IntegrationTests.Controllers;
+namespace LagerthaAssistant.IntegrationTests.Controllers;
 
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Controllers;
@@ -137,7 +137,68 @@ public sealed class TelegramControllerTests
             CancellationToken.None);
 
         Assert.NotNull(stored);
-        Assert.Equal("2026.03.20", stored!.Value);
+        Assert.StartsWith("2026.03.20|en|", stored!.Value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldShowReleaseAnnouncementAgain_WhenLocaleChanges()
+    {
+        var orchestrator = new FakeConversationOrchestrator();
+        var sender = new FakeTelegramBotSender();
+        var memoryRepository = new FakeUserMemoryRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var localeStateService = new FakeUserLocaleStateService
+        {
+            NextLocale = "en",
+            StoredLocale = "en"
+        };
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService
+            {
+                CurrentMode = VocabularyStorageMode.Graph
+            },
+            assistantSessionService: null,
+            localeStateService: localeStateService,
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("assistant reply"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            userMemoryRepository: memoryRepository,
+            unitOfWork: unitOfWork,
+            releaseAnnouncementOptions: new ReleaseAnnouncementOptions
+            {
+                Enabled = true,
+                Version = "2026.03.22",
+                ReleaseDate = "2026-03-22",
+                NotesEn = "English notes",
+                NotesUk = "Українські нотатки"
+            });
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 561), CancellationToken.None);
+        Assert.Contains("Bot update", sender.LastText, StringComparison.Ordinal);
+        Assert.Equal(1, unitOfWork.SaveChangesCalls);
+
+        localeStateService.NextLocale = "uk";
+        localeStateService.StoredLocale = "uk";
+
+        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 562), CancellationToken.None);
+        Assert.Contains("Bot update", sender.LastText, StringComparison.Ordinal);
+        Assert.Equal(2, unitOfWork.SaveChangesCalls);
+
+        var stored = await memoryRepository.GetByKeyAsync(
+            UserPreferenceMemoryKeys.ReleaseLastNotifiedVersion,
+            "telegram",
+            "2002",
+            CancellationToken.None);
+
+        Assert.NotNull(stored);
+        Assert.StartsWith("2026.03.22|uk|", stored!.Value, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -184,7 +245,7 @@ public sealed class TelegramControllerTests
             "2002",
             CancellationToken.None);
         Assert.NotNull(stored);
-        Assert.Equal("build-20df36d2", stored!.Value);
+        Assert.StartsWith("build-20df36d2|en|", stored!.Value, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2732,6 +2793,10 @@ public sealed class TelegramControllerTests
             userMemoryRepository,
             unitOfWork,
             Options.Create(releaseAnnouncementOptions ?? new ReleaseAnnouncementOptions()),
+            notionOptions: null,
+            notionFoodOptions: null,
+            notionSyncWorkerOptions: null,
+            foodSyncWorkerOptions: null,
             foodTrackingService,
             new TelegramPendingStateStore());
     }
@@ -3737,7 +3802,25 @@ public sealed class TelegramControllerTests
                 "settings.save_mode" => "Save mode",
                 "settings.storage_mode" => "Storage mode",
                 "settings.onedrive" => "OneDrive / Graph",
-                "settings.notion" => "Notion (coming soon)",
+                "settings.notion" => "Notion",
+                "settings.notion_enabled" => "Enabled",
+                "settings.notion_partial" => "Needs setup",
+                "settings.notion_disabled" => "Disabled",
+                "release.title" => "Bot update",
+                "release.version" => "Version",
+                "release.date" => "Date",
+                "release.whats_new" => "What's new",
+                "release.notes_default" => "Improved chat mode action handling and response quality.",
+                "notion.title" => "<b>Notion</b>",
+                "notion.vocabulary" => "Vocabulary export",
+                "notion.food" => "Food sync",
+                "notion.status_enabled" => "Enabled",
+                "notion.status_disabled" => "Disabled",
+                "notion.configured_yes" => "Configured",
+                "notion.configured_no" => "Missing required keys",
+                "notion.worker_enabled" => "Worker enabled",
+                "notion.worker_disabled" => "Worker disabled",
+                "notion.tip" => "Set Notion keys in Railway variables if you want syncing to run.",
                 "savemode.title" => "Save mode: {0}",
                 "savemode.changed" => "Changed to {0}",
                 "storagemode.title" => "Storage mode: {0}",

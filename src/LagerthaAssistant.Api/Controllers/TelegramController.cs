@@ -100,6 +100,10 @@ public sealed class TelegramController : ControllerBase
     private readonly IUserMemoryRepository? _userMemoryRepository;
     private readonly IUnitOfWork? _unitOfWork;
     private readonly ReleaseAnnouncementOptions _releaseAnnouncementOptions;
+    private readonly NotionOptions _notionOptions;
+    private readonly NotionFoodOptions _notionFoodOptions;
+    private readonly NotionSyncWorkerOptions _notionSyncWorkerOptions;
+    private readonly FoodSyncWorkerOptions _foodSyncWorkerOptions;
     private readonly TelegramOptions _options;
     private readonly ILogger<TelegramController> _logger;
 
@@ -132,6 +136,10 @@ public sealed class TelegramController : ControllerBase
         IUserMemoryRepository? userMemoryRepository = null,
         IUnitOfWork? unitOfWork = null,
         IOptions<ReleaseAnnouncementOptions>? releaseAnnouncementOptions = null,
+        NotionOptions? notionOptions = null,
+        NotionFoodOptions? notionFoodOptions = null,
+        IOptions<NotionSyncWorkerOptions>? notionSyncWorkerOptions = null,
+        IOptions<FoodSyncWorkerOptions>? foodSyncWorkerOptions = null,
         IFoodTrackingService? foodTrackingService = null,
         TelegramPendingStateStore? pendingStateStore = null)
     {
@@ -163,6 +171,10 @@ public sealed class TelegramController : ControllerBase
         _unitOfWork = unitOfWork;
         _foodTrackingService = foodTrackingService;
         _releaseAnnouncementOptions = releaseAnnouncementOptions?.Value ?? new ReleaseAnnouncementOptions();
+        _notionOptions = notionOptions ?? new NotionOptions();
+        _notionFoodOptions = notionFoodOptions ?? new NotionFoodOptions();
+        _notionSyncWorkerOptions = notionSyncWorkerOptions?.Value ?? new NotionSyncWorkerOptions();
+        _foodSyncWorkerOptions = foodSyncWorkerOptions?.Value ?? new FoodSyncWorkerOptions();
         _options = options.Value;
         _logger = logger;
 
@@ -1091,11 +1103,7 @@ public sealed class TelegramController : ControllerBase
                 IsHtml: true),
             CallbackDataConstants.Settings.SaveMode => await BuildSaveModeResponseAsync(scope, locale, cancellationToken),
             CallbackDataConstants.Settings.OneDrive => await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken),
-            CallbackDataConstants.Settings.Notion => new TelegramRouteResponse(
-                "settings.notion",
-                _navigationPresenter.GetText("notion.title", locale),
-                InlineKeyboard(_navigationPresenter.BuildNotionKeyboard(locale)),
-                IsHtml: true),
+            CallbackDataConstants.Settings.Notion => BuildNotionSectionResponse(locale),
             CallbackDataConstants.Settings.Back => await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken),
             _ => await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken)
         };
@@ -2896,10 +2904,12 @@ public sealed class TelegramController : ControllerBase
         var storageModeLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.storage_mode", locale));
         var oneDriveLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.onedrive", locale));
         var notionLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.notion", locale));
+        var notionStatusKey = ResolveNotionSettingsStatusKey();
         var oneDriveStatus = StripStatusPrefix(
             _navigationPresenter.GetText(
                 graphStatus.IsAuthenticated ? "onedrive.status_connected" : "onedrive.status_disconnected",
                 locale));
+        var notionStatus = StripStatusPrefix(_navigationPresenter.GetText(notionStatusKey, locale));
 
         var text = string.Join(Environment.NewLine, new[]
         {
@@ -2909,7 +2919,7 @@ public sealed class TelegramController : ControllerBase
             $"• <b>{WebUtility.HtmlEncode(saveModeLabel)}:</b> <b>{WebUtility.HtmlEncode(_saveModePreferenceService.ToText(saveMode))}</b>",
             $"• <b>{WebUtility.HtmlEncode(storageModeLabel)}:</b> <b>{WebUtility.HtmlEncode(_storageModeProvider.ToText(storageMode))}</b>",
             $"• <b>{WebUtility.HtmlEncode(oneDriveLabel)}:</b> {WebUtility.HtmlEncode(oneDriveStatus)}",
-            $"• {WebUtility.HtmlEncode(notionLabel)}"
+            $"• <b>{WebUtility.HtmlEncode(notionLabel)}:</b> {WebUtility.HtmlEncode(notionStatus)}"
         });
 
         return new TelegramRouteResponse(
@@ -2917,6 +2927,82 @@ public sealed class TelegramController : ControllerBase
             text,
             InlineKeyboard(_navigationPresenter.BuildSettingsKeyboard(locale)),
             IsHtml: true);
+    }
+
+    private TelegramRouteResponse BuildNotionSectionResponse(string locale)
+    {
+        var notionTitle = _navigationPresenter.GetText("notion.title", locale);
+        var vocabularyLabel = _navigationPresenter.GetText("notion.vocabulary", locale);
+        var foodLabel = _navigationPresenter.GetText("notion.food", locale);
+
+        var vocabularyEnabled = _notionOptions.Enabled;
+        var vocabularyConfigured = IsNotionVocabularyConfigured();
+        var vocabularyStatus = _navigationPresenter.GetText(
+            vocabularyEnabled ? "notion.status_enabled" : "notion.status_disabled",
+            locale);
+        var vocabularyConfiguredStatus = _navigationPresenter.GetText(
+            vocabularyConfigured ? "notion.configured_yes" : "notion.configured_no",
+            locale);
+        var vocabularyWorkerStatus = _navigationPresenter.GetText(
+            _notionSyncWorkerOptions.Enabled ? "notion.worker_enabled" : "notion.worker_disabled",
+            locale);
+
+        var foodEnabled = _notionFoodOptions.Enabled;
+        var foodConfigured = _notionFoodOptions.IsConfigured;
+        var foodStatus = _navigationPresenter.GetText(
+            foodEnabled ? "notion.status_enabled" : "notion.status_disabled",
+            locale);
+        var foodConfiguredStatus = _navigationPresenter.GetText(
+            foodConfigured ? "notion.configured_yes" : "notion.configured_no",
+            locale);
+        var foodWorkerStatus = _navigationPresenter.GetText(
+            _foodSyncWorkerOptions.Enabled ? "notion.worker_enabled" : "notion.worker_disabled",
+            locale);
+
+        var lines = new List<string>
+        {
+            notionTitle,
+            string.Empty,
+            $"• <b>{WebUtility.HtmlEncode(vocabularyLabel)}</b>: {WebUtility.HtmlEncode(vocabularyStatus)}",
+            $"  {WebUtility.HtmlEncode(vocabularyConfiguredStatus)}",
+            $"  {WebUtility.HtmlEncode(vocabularyWorkerStatus)}",
+            string.Empty,
+            $"• <b>{WebUtility.HtmlEncode(foodLabel)}</b>: {WebUtility.HtmlEncode(foodStatus)}",
+            $"  {WebUtility.HtmlEncode(foodConfiguredStatus)}",
+            $"  {WebUtility.HtmlEncode(foodWorkerStatus)}",
+            string.Empty,
+            WebUtility.HtmlEncode(_navigationPresenter.GetText("notion.tip", locale))
+        };
+
+        return new TelegramRouteResponse(
+            "settings.notion",
+            string.Join(Environment.NewLine, lines),
+            InlineKeyboard(_navigationPresenter.BuildNotionKeyboard(locale)),
+            IsHtml: true);
+    }
+
+    private string ResolveNotionSettingsStatusKey()
+    {
+        var hasEnabledNotionFlow = _notionOptions.Enabled || _notionFoodOptions.Enabled;
+        if (!hasEnabledNotionFlow)
+        {
+            return "settings.notion_disabled";
+        }
+
+        var vocabularyMissingConfig = _notionOptions.Enabled && !IsNotionVocabularyConfigured();
+        var foodMissingConfig = _notionFoodOptions.Enabled && !_notionFoodOptions.IsConfigured;
+        if (vocabularyMissingConfig || foodMissingConfig)
+        {
+            return "settings.notion_partial";
+        }
+
+        return "settings.notion_enabled";
+    }
+
+    private bool IsNotionVocabularyConfigured()
+    {
+        return !string.IsNullOrWhiteSpace(_notionOptions.ApiKey)
+            && !string.IsNullOrWhiteSpace(_notionOptions.DatabaseId);
     }
 
     private static string StripLeadingDecorations(string value)
@@ -3148,9 +3234,24 @@ public sealed class TelegramController : ControllerBase
                 scope.UserId,
                 cancellationToken);
 
-            if (entry is not null && string.Equals(entry.Value?.Trim(), version, StringComparison.Ordinal))
+            var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(locale);
+            var resolvedNotes = ResolveReleaseAnnouncementNotes(normalizedLocale);
+            var releaseToken = BuildReleaseNotificationToken(version, normalizedLocale, resolvedNotes);
+
+            if (entry is not null)
             {
-                return outboundText;
+                var storedToken = entry.Value?.Trim() ?? string.Empty;
+                if (string.Equals(storedToken, releaseToken, StringComparison.Ordinal))
+                {
+                    return outboundText;
+                }
+
+                // Backward compatibility for entries that stored only the version.
+                if (string.Equals(storedToken, version, StringComparison.Ordinal)
+                    && string.Equals(normalizedLocale, LocalizationConstants.EnglishLocale, StringComparison.Ordinal))
+                {
+                    return outboundText;
+                }
             }
 
             if (entry is null)
@@ -3158,7 +3259,7 @@ public sealed class TelegramController : ControllerBase
                 await _userMemoryRepository.AddAsync(new UserMemoryEntry
                 {
                     Key = UserPreferenceMemoryKeys.ReleaseLastNotifiedVersion,
-                    Value = version,
+                    Value = releaseToken,
                     Confidence = 1.0,
                     IsActive = false,
                     LastSeenAtUtc = DateTimeOffset.UtcNow,
@@ -3168,14 +3269,14 @@ public sealed class TelegramController : ControllerBase
             }
             else
             {
-                entry.Value = version;
+                entry.Value = releaseToken;
                 entry.Confidence = 1.0;
                 entry.IsActive = false;
                 entry.LastSeenAtUtc = DateTimeOffset.UtcNow;
             }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-            var releaseBlock = BuildReleaseAnnouncementBlock(locale, version);
+            var releaseBlock = BuildReleaseAnnouncementBlock(locale, version, resolvedNotes);
             _logger.LogInformation(
                 "Release announcement queued for user. Channel={Channel}; UserId={UserId}; Version={Version}",
                 scope.Channel,
@@ -3272,44 +3373,48 @@ public sealed class TelegramController : ControllerBase
         return value;
     }
 
-    private string BuildReleaseAnnouncementBlock(string locale, string version)
+    private static string BuildReleaseNotificationToken(string version, string locale, string notes)
+    {
+        var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(locale);
+        var notesHash = ComputeStableHash(notes);
+        return $"{version}|{normalizedLocale}|{notesHash}";
+    }
+
+    private static string ComputeStableHash(string value)
+    {
+        var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
+        var hash = SHA256.HashData(bytes);
+        return Convert.ToHexString(hash[..8]).ToLowerInvariant();
+    }
+
+    private string ResolveReleaseAnnouncementNotes(string locale)
     {
         var normalized = LocalizationConstants.NormalizeLocaleCode(locale);
         var notes = _releaseAnnouncementOptions.ResolveNotes(normalized)?.Trim();
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            notes = _navigationPresenter.GetText("release.notes_default", normalized);
+        }
+
+        return notes;
+    }
+
+    private string BuildReleaseAnnouncementBlock(string locale, string version, string notes)
+    {
+        var normalized = LocalizationConstants.NormalizeLocaleCode(locale);
         var encodedVersion = WebUtility.HtmlEncode(version);
         var releaseDate = ResolveReleaseAnnouncementDate();
         var dateText = releaseDate.ToString("yyyy-MM-dd");
         var encodedDate = WebUtility.HtmlEncode(dateText);
 
-        if (string.IsNullOrWhiteSpace(notes))
-        {
-            notes = normalized switch
-            {
-                LocalizationConstants.UkrainianLocale => "Покращено chat-режим і потоки виконання дій з природної мови.",
-                LocalizationConstants.SpanishLocale => "Pequeñas mejoras de estabilidad y calidad.",
-                LocalizationConstants.FrenchLocale => "Petites améliorations de stabilité et de qualité.",
-                LocalizationConstants.GermanLocale => "Kleine Verbesserungen bei Stabilität und Qualität.",
-                LocalizationConstants.PolishLocale => "Drobne usprawnienia stabilności i jakości.",
-                _ => "Improved chat mode action handling and response quality."
-            };
-        }
+        var title = _navigationPresenter.GetText("release.title", normalized);
+        var versionLabel = _navigationPresenter.GetText("release.version", normalized);
+        var dateLabel = _navigationPresenter.GetText("release.date", normalized);
+        var whatsNewLabel = _navigationPresenter.GetText("release.whats_new", normalized);
 
         var encodedNotes = WebUtility.HtmlEncode(notes);
 
-        return normalized switch
-        {
-            LocalizationConstants.UkrainianLocale
-                => $"📣 <b>Оновлення бота</b>{Environment.NewLine}Версія: <b>{encodedVersion}</b>{Environment.NewLine}Дата: {encodedDate}{Environment.NewLine}Що нового: {encodedNotes}",
-            LocalizationConstants.SpanishLocale
-                => $"📣 <b>Actualización del bot</b>{Environment.NewLine}Versión: <b>{encodedVersion}</b>{Environment.NewLine}Fecha: {encodedDate}{Environment.NewLine}Novedades: {encodedNotes}",
-            LocalizationConstants.FrenchLocale
-                => $"📣 <b>Mise à jour du bot</b>{Environment.NewLine}Version : <b>{encodedVersion}</b>{Environment.NewLine}Date : {encodedDate}{Environment.NewLine}Nouveautés : {encodedNotes}",
-            LocalizationConstants.GermanLocale
-                => $"📣 <b>Bot-Update</b>{Environment.NewLine}Version: <b>{encodedVersion}</b>{Environment.NewLine}Datum: {encodedDate}{Environment.NewLine}Neu: {encodedNotes}",
-            LocalizationConstants.PolishLocale
-                => $"📣 <b>Aktualizacja bota</b>{Environment.NewLine}Wersja: <b>{encodedVersion}</b>{Environment.NewLine}Data: {encodedDate}{Environment.NewLine}Nowości: {encodedNotes}",
-            _ => $"📣 <b>Bot update</b>{Environment.NewLine}Version: <b>{encodedVersion}</b>{Environment.NewLine}Date: {encodedDate}{Environment.NewLine}What's new: {encodedNotes}"
-        };
+        return $"<b>{title}</b>{Environment.NewLine}{versionLabel}: <b>{encodedVersion}</b>{Environment.NewLine}{dateLabel}: {encodedDate}{Environment.NewLine}{whatsNewLabel}: {encodedNotes}";
     }
 
     private TelegramRouteResponse BuildOnboardingLanguagePickerResponse(string locale)
@@ -3843,4 +3948,3 @@ public sealed class TelegramController : ControllerBase
         bool IsHtml = false,
         string? FollowUpMainKeyboardLocale = null);
 }
-
