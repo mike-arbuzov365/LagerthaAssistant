@@ -31,6 +31,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.Configure<VocabularySyncWorkerOptions>(builder.Configuration.GetSection("VocabularySyncWorker"));
 builder.Services.Configure<NotionSyncWorkerOptions>(builder.Configuration.GetSection("NotionSyncWorker"));
+builder.Services.Configure<FoodSyncWorkerOptions>(builder.Configuration.GetSection("FoodSyncWorker"));
 builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
 builder.Services.Configure<ReleaseAnnouncementOptions>(builder.Configuration.GetSection("ReleaseAnnouncement"));
 builder.Services.AddSingleton<IValidateOptions<TelegramOptions>, TelegramOptionsValidator>();
@@ -41,6 +42,12 @@ builder.Services.AddHttpClient("telegram", client =>
 builder.Services.AddHttpClient("vocab-discovery", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(20);
+});
+builder.Services.AddHttpClient<LagerthaAssistant.Application.Interfaces.Food.INotionFoodClient, LagerthaAssistant.Infrastructure.Services.Food.NotionFoodClient>("notion-food", (sp, client) =>
+{
+    var opts = sp.GetRequiredService<LagerthaAssistant.Infrastructure.Options.NotionFoodOptions>();
+    client.BaseAddress = new Uri(opts.ApiBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(opts.RequestTimeoutSeconds);
 });
 builder.Services.AddSingleton<ITelegramConversationResponseFormatter, TelegramConversationResponseFormatter>();
 builder.Services.AddSingleton<ITelegramBotSender, TelegramBotSender>();
@@ -60,6 +67,7 @@ builder.Services.AddRateLimiter(opts =>
 });
 builder.Services.AddHostedService<VocabularySyncHostedService>();
 builder.Services.AddHostedService<NotionSyncHostedService>();
+builder.Services.AddHostedService<FoodSyncHostedService>();
 
 var app = builder.Build();
 

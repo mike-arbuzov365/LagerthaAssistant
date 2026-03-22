@@ -24,6 +24,12 @@ public sealed class AppDbContext : DbContext
     public DbSet<TelegramProcessedUpdate> TelegramProcessedUpdates => Set<TelegramProcessedUpdate>();
     public DbSet<GraphAuthToken> GraphAuthTokens => Set<GraphAuthToken>();
 
+    public DbSet<FoodItem> FoodItems => Set<FoodItem>();
+    public DbSet<Meal> Meals => Set<Meal>();
+    public DbSet<MealIngredient> MealIngredients => Set<MealIngredient>();
+    public DbSet<GroceryListItem> GroceryListItems => Set<GroceryListItem>();
+    public DbSet<MealHistory> MealHistory => Set<MealHistory>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -39,6 +45,11 @@ public sealed class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ConversationIntentMetricConfiguration());
         modelBuilder.ApplyConfiguration(new TelegramProcessedUpdateConfiguration());
         modelBuilder.ApplyConfiguration(new GraphAuthTokenConfiguration());
+        modelBuilder.ApplyConfiguration(new FoodItemConfiguration());
+        modelBuilder.ApplyConfiguration(new MealConfiguration());
+        modelBuilder.ApplyConfiguration(new MealIngredientConfiguration());
+        modelBuilder.ApplyConfiguration(new GroceryListItemConfiguration());
+        modelBuilder.ApplyConfiguration(new MealHistoryConfiguration());
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
