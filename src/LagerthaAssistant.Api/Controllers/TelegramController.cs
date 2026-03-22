@@ -470,7 +470,7 @@ public sealed class TelegramController : ControllerBase
                 return await HandleShoppingTextAsync(inbound.Text, locale, cancellationToken);
 
             case NavigationRouteKind.WeeklyMenuText:
-                return await HandleWeeklyMenuTextAsync(locale, cancellationToken);
+                return await HandleWeeklyMenuTextAsync(inbound.Text, locale, cancellationToken);
 
             case NavigationRouteKind.SettingsText:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
@@ -3527,6 +3527,7 @@ public sealed class TelegramController : ControllerBase
     }
 
     private async Task<TelegramRouteResponse> HandleWeeklyMenuTextAsync(
+        string text,
         string locale,
         CancellationToken cancellationToken)
     {
@@ -3538,6 +3539,35 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
         }
 
+        // If the user typed "N" or "N S" (meal ID + optional servings), log the meal.
+        var parts = text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 1
+            && int.TryParse(parts[0], out var mealId)
+            && mealId > 0)
+        {
+            var servings = parts.Length >= 2 && decimal.TryParse(parts[1], System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out var s) && s > 0
+                ? s
+                : 1m;
+
+            try
+            {
+                await _foodTrackingService.LogMealAsync(mealId, servings, notes: null, cancellationToken);
+                return new TelegramRouteResponse(
+                    "food.weekly.logged",
+                    $"✅ Logged meal #{mealId} × {servings} serving(s).",
+                    InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+            }
+            catch (InvalidOperationException)
+            {
+                return new TelegramRouteResponse(
+                    "food.weekly.log.not_found",
+                    $"⚠️ Meal with ID {mealId} not found. Press \"Log meal\" to see the list.",
+                    InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+            }
+        }
+
+        // Otherwise show the meals list.
         var meals = await _foodTrackingService.GetAllMealsAsync(cancellationToken);
         if (meals.Count == 0)
         {
@@ -3553,7 +3583,7 @@ public sealed class TelegramController : ControllerBase
         foreach (var meal in meals)
         {
             var calories = meal.CaloriesPerServing.HasValue ? $" — {meal.CaloriesPerServing} kcal/serving" : string.Empty;
-            sb.AppendLine($"🍽 {meal.Name}{calories}");
+            sb.AppendLine($"🍽 [{meal.Id}] {meal.Name}{calories}");
         }
 
         return new TelegramRouteResponse(

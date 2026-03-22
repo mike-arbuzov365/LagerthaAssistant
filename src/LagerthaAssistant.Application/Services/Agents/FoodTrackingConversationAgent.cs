@@ -54,6 +54,8 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
             CallbackDataConstants.Weekly.View => await HandleWeeklyViewAsync(cancellationToken),
             CallbackDataConstants.Weekly.Plan => await HandleCookableNowAsync(cancellationToken),
             CallbackDataConstants.Weekly.Calories => await HandleWeeklyCaloriesAsync(cancellationToken),
+            CallbackDataConstants.Weekly.Favourites => await HandleFavouriteMealsAsync(cancellationToken),
+            CallbackDataConstants.Weekly.Log => await HandleLogMealPromptAsync(cancellationToken),
             _ => Result("food.unknown", "Use the buttons to navigate Shopping or Weekly Menu.")
         };
     }
@@ -184,6 +186,52 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         sb.AppendLine($"Fat:     {summary.TotalFatGrams:F0} g");
 
         return Result("food.weekly.calories", sb.ToString().TrimEnd());
+    }
+
+    internal async Task<ConversationAgentResult> HandleFavouriteMealsAsync(CancellationToken cancellationToken)
+    {
+        var meals = await _foodService.GetFavouriteMealsAsync(take: 10, cancellationToken);
+
+        if (meals.Count == 0)
+        {
+            return Result("food.weekly.favourites", "No meal history yet. Log your meals to build your favourites list.");
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"⭐ Your top meals ({meals.Count}):");
+        sb.AppendLine();
+
+        for (var i = 0; i < meals.Count; i++)
+        {
+            var meal = meals[i];
+            var last = meal.LastEatenAt.HasValue ? $" — last: {meal.LastEatenAt.Value:MMM d}" : string.Empty;
+            sb.AppendLine($"{i + 1}. {meal.MealName} × {meal.TimesEaten}{last}");
+        }
+
+        return Result("food.weekly.favourites", sb.ToString().TrimEnd());
+    }
+
+    internal async Task<ConversationAgentResult> HandleLogMealPromptAsync(CancellationToken cancellationToken)
+    {
+        var meals = await _foodService.GetAllMealsAsync(cancellationToken);
+
+        if (meals.Count == 0)
+        {
+            return Result("food.weekly.log.prompt", "No meals found. Add meals in Notion Meal Plans first, then sync.");
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Which meal did you eat? Reply with the meal ID and optional servings:");
+        sb.AppendLine("  Format: <id>  or  <id> <servings>  (e.g. \"5\" or \"5 2.5\")");
+        sb.AppendLine();
+
+        foreach (var meal in meals)
+        {
+            var calories = meal.CaloriesPerServing.HasValue ? $" {meal.CaloriesPerServing} kcal" : string.Empty;
+            sb.AppendLine($"  [{meal.Id}] {meal.Name}{calories} (default {meal.DefaultServings} serving(s))");
+        }
+
+        return Result("food.weekly.log.prompt", sb.ToString().TrimEnd());
     }
 
     internal async Task<ConversationAgentResult> AddItemFromTextAsync(string input, CancellationToken cancellationToken)

@@ -216,6 +216,72 @@ public sealed class FoodTrackingConversationAgentTests
         Assert.Equal("food.unknown", result.Intent);
     }
 
+    [Fact]
+    public async Task HandleAsync_WeeklyFavourites_ShouldReturnNoHistory_WhenEmpty()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Favourites, []));
+
+        Assert.Equal("food.weekly.favourites", result.Intent);
+        Assert.Contains("No meal history", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WeeklyFavourites_ShouldListMeals_WhenHistoryExists()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            FavouriteMeals =
+            [
+                new MealFrequency(1, "Pasta", 7, new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc)),
+                new MealFrequency(2, "Soup", 3, null)
+            ]
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Favourites, []));
+
+        Assert.Equal("food.weekly.favourites", result.Intent);
+        Assert.Contains("Pasta", result.Message);
+        Assert.Contains("7", result.Message);
+        Assert.Contains("Soup", result.Message);
+        Assert.Contains("3", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WeeklyLog_ShouldReturnNoMeals_WhenEmpty()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Log, []));
+
+        Assert.Equal("food.weekly.log.prompt", result.Intent);
+        Assert.Contains("No meals found", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WeeklyLog_ShouldShowMealListWithIds_WhenMealsExist()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            Meals =
+            [
+                new MealDto(5, "Borsch", 350, null, null, null, 45, 2, []),
+                new MealDto(12, "Pasta", 600, null, null, null, 20, 1, [])
+            ]
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Log, []));
+
+        Assert.Equal("food.weekly.log.prompt", result.Intent);
+        Assert.Contains("[5]", result.Message);
+        Assert.Contains("Borsch", result.Message);
+        Assert.Contains("[12]", result.Message);
+        Assert.Contains("Pasta", result.Message);
+    }
+
     // ── Profile ──────────────────────────────────────────────────────────────
 
     [Fact]
@@ -239,6 +305,7 @@ public sealed class FoodTrackingConversationAgentTests
         public IReadOnlyList<GroceryListItemDto> GroceryItems { get; init; } = [];
         public IReadOnlyList<MealDto> Meals { get; init; } = [];
         public IReadOnlyList<MealDto> CookableMeals { get; init; } = [];
+        public IReadOnlyList<MealFrequency> FavouriteMeals { get; init; } = [];
         public CalorieSummary CalorieSummary { get; init; } = new(DateTime.MinValue, DateTime.MaxValue, 0, 0, 0, 0, 0);
         public int ClearedCount { get; init; }
 
@@ -264,7 +331,7 @@ public sealed class FoodTrackingConversationAgentTests
             => Task.FromResult(CookableMeals);
 
         public Task<IReadOnlyList<MealFrequency>> GetFavouriteMealsAsync(int take = 5, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<MealFrequency>>([]);
+            => Task.FromResult(FavouriteMeals);
 
         public Task<int> LogMealAsync(int mealId, decimal servings, string? notes, CancellationToken cancellationToken = default)
             => Task.FromResult(1);
