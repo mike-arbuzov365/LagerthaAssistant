@@ -471,6 +471,8 @@ public sealed class TelegramController : ControllerBase
                 return await HandleShoppingTextAsync(inbound.Text, locale, cancellationToken);
 
             case NavigationRouteKind.WeeklyMenuText:
+                if (!string.IsNullOrWhiteSpace(inbound.PhotoFileId))
+                    return await HandleWeeklyMenuPhotoAsync(inbound.PhotoFileId, locale, scope, cancellationToken);
                 return await HandleWeeklyMenuTextAsync(inbound.Text, locale, scope, cancellationToken);
 
             case NavigationRouteKind.SettingsText:
@@ -3479,6 +3481,17 @@ public sealed class TelegramController : ControllerBase
             return HandleMealCreateCancel(scope, locale);
         }
 
+        // Handle photo food log confirm/cancel
+        if (string.Equals(callbackData, CallbackDataConstants.Weekly.PhotoConfirm, StringComparison.Ordinal))
+        {
+            return await HandlePhotoLogConfirmAsync(scope, locale, cancellationToken);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Weekly.PhotoCancel, StringComparison.Ordinal))
+        {
+            return HandlePhotoLogCancel(scope, locale);
+        }
+
         var result = await _orchestrator.ProcessAsync(callbackData, TelegramChannel, cancellationToken);
 
         // If this was a create prompt, set pending action so next text input triggers meal creation
@@ -3546,8 +3559,38 @@ public sealed class TelegramController : ControllerBase
             return await HandleMealCreationTextAsync(text, scope, locale, cancellationToken);
         }
 
-        // If the user typed "N" or "N S" (meal ID + optional servings), log the meal.
+        // Check for portion calculator command: "portion <mealId> <servings>"
         var parts = text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 3
+            && parts[0].Equals("portion", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(parts[1], out var portionMealId)
+            && int.TryParse(parts[2], out var targetServings)
+            && targetServings > 0)
+        {
+            var calc = await _foodTrackingService.CalculatePortionsAsync(portionMealId, targetServings, cancellationToken);
+            if (calc is null)
+            {
+                return new TelegramRouteResponse(
+                    "food.weekly.portion.not_found",
+                    $"Meal with ID {portionMealId} not found.",
+                    InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+            }
+
+            var portionSb = new System.Text.StringBuilder();
+            portionSb.AppendLine($"{calc.MealName} \u2014 {calc.TargetServings} servings (\u00d7{calc.Multiplier})");
+            portionSb.AppendLine();
+            foreach (var i in calc.Ingredients)
+            {
+                var scaled = i.ScaledQuantity ?? i.OriginalQuantity ?? "\u2014";
+                portionSb.AppendLine($"  \u2022 {i.Name}: {scaled}");
+            }
+            return new TelegramRouteResponse(
+                "food.weekly.portion",
+                portionSb.ToString().TrimEnd(),
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        // If the user typed "N" or "N S" (meal ID + optional servings), log the meal.
         if (parts.Length >= 1
             && int.TryParse(parts[0], out var mealId)
             && mealId > 0)
@@ -3692,6 +3735,82 @@ public sealed class TelegramController : ControllerBase
         return new TelegramRouteResponse(
             "food.weekly.create.cancelled",
             "Meal creation cancelled.",
+            InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandleWeeklyMenuPhotoAsync(
+        string photoFileId,
+        string locale,
+        ConversationScope scope,
+        CancellationToken cancellationToken)
+    {
+        var result = await _importSourceReader.IdentifyFoodAsync(photoFileId, cancellationToken);
+
+        if (!result.Success || result.MealName is null || result.EstimatedCalories is null)
+        {
+            return new TelegramRouteResponse(
+                "food.photo.failed",
+                result.Error ?? "Could not identify food in the photo. Try again with a clearer image.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        var pending = new PendingFoodPhotoLog(result.MealName, result.EstimatedCalories.Value, 1m);
+        var pendingKey = BuildPendingChatActionKey(scope);
+        _pendingStateStore.FoodPhotoLogs[pendingKey] = pending;
+
+        var preview = new System.Text.StringBuilder();
+        preview.AppendLine($"Identified: {pending.MealName}");
+        preview.AppendLine($"Estimated calories: {pending.EstimatedCalories} kcal");
+        preview.AppendLine($"Servings: {pending.Servings}");
+        preview.AppendLine();
+        preview.AppendLine("Log this meal?");
+
+        return new TelegramRouteResponse(
+            "food.photo.preview",
+            preview.ToString().TrimEnd(),
+            InlineKeyboard(_navigationPresenter.BuildFoodPhotoConfirmKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandlePhotoLogConfirmAsync(
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var pendingKey = BuildPendingChatActionKey(scope);
+        if (!_pendingStateStore.FoodPhotoLogs.TryRemove(pendingKey, out var pending))
+        {
+            return new TelegramRouteResponse(
+                "food.photo.expired",
+                "No pending photo log found. Please send a photo again.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        if (_foodTrackingService is null)
+        {
+            return new TelegramRouteResponse(
+                "food.photo.error",
+                "Food tracking is not configured.",
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+        }
+
+        await _foodTrackingService.LogQuickMealAsync(pending.MealName, pending.EstimatedCalories, pending.Servings, cancellationToken);
+
+        return new TelegramRouteResponse(
+            "food.photo.logged",
+            $"\u2705 Logged \"{pending.MealName}\" ({pending.EstimatedCalories} kcal \u00d7 {pending.Servings}).",
+            InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+    }
+
+    private TelegramRouteResponse HandlePhotoLogCancel(
+        ConversationScope scope,
+        string locale)
+    {
+        var pendingKey = BuildPendingChatActionKey(scope);
+        _pendingStateStore.FoodPhotoLogs.TryRemove(pendingKey, out _);
+
+        return new TelegramRouteResponse(
+            "food.photo.cancelled",
+            "Photo log cancelled.",
             InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
     }
 

@@ -41,4 +41,16 @@ public interface IFoodTrackingService
     Task<int> LogMealAsync(int mealId, decimal servings, string? notes, CancellationToken cancellationToken = default);
 
     Task<CalorieSummary> GetCalorieSummaryAsync(DateTime from, DateTime to, CancellationToken cancellationToken = default);
+
+    /// <summary>Logs a quick meal from a photo (creates a temporary meal record).</summary>
+    Task<int> LogQuickMealAsync(string name, int calories, decimal servings, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns daily calorie progress against a goal.</summary>
+    Task<DailyProgressDto> GetDailyProgressAsync(int calorieGoal, CancellationToken cancellationToken = default);
+
+    /// <summary>Analyses diet diversity over the given number of days.</summary>
+    Task<DietDiversityDto> GetDietDiversityAsync(int days = 7, CancellationToken cancellationToken = default);
+
+    /// <summary>Calculates scaled ingredient quantities for a given number of servings.</summary>
+    Task<PortionCalculationDto?> CalculatePortionsAsync(int mealId, int targetServings, CancellationToken cancellationToken = default);
 }

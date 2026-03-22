@@ -3405,6 +3405,17 @@ public sealed class TelegramControllerTests
 
             return Task.FromResult(NextResult);
         }
+
+        public TelegramFoodIdentificationResult NextFoodResult { get; set; }
+            = new(true, "Test Meal", 500);
+
+        public Task<TelegramFoodIdentificationResult> IdentifyFoodAsync(
+            string photoFileId,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(NextFoodResult);
+        }
     }
 
     private sealed class FakeAssistantSessionService : IAssistantSessionService
@@ -3872,6 +3883,9 @@ public sealed class TelegramControllerTests
 
         public TelegramInlineKeyboardMarkup BuildMealCreateConfirmKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Create", CallbackDataConstants.Weekly.CreateConfirm), new TelegramInlineKeyboardButton("Cancel", CallbackDataConstants.Weekly.CreateCancel)]]);
+
+        public TelegramInlineKeyboardMarkup BuildFoodPhotoConfirmKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Log this", CallbackDataConstants.Weekly.PhotoConfirm), new TelegramInlineKeyboardButton("Cancel", CallbackDataConstants.Weekly.PhotoCancel)]]);
     }
     private sealed class FakeTelegramFormatter : ITelegramConversationResponseFormatter
     {
@@ -4452,6 +4466,25 @@ public sealed class TelegramControllerTests
 
         public Task<MealDto> CreateMealAsync(string name, int? caloriesPerServing, decimal? proteinGrams, decimal? carbsGrams, decimal? fatGrams, int? prepTimeMinutes, int defaultServings, IReadOnlyList<(string Name, string? Quantity)> ingredients, CancellationToken cancellationToken = default)
             => Task.FromResult(new MealDto(99, name, caloriesPerServing, proteinGrams, carbsGrams, fatGrams, prepTimeMinutes, defaultServings, []));
+
+        public int LastQuickLogCalories { get; private set; }
+        public string? LastQuickLogName { get; private set; }
+
+        public Task<int> LogQuickMealAsync(string name, int calories, decimal servings, CancellationToken cancellationToken = default)
+        {
+            LastQuickLogName = name;
+            LastQuickLogCalories = calories;
+            return Task.FromResult(1);
+        }
+
+        public Task<DailyProgressDto> GetDailyProgressAsync(int calorieGoal, CancellationToken cancellationToken = default)
+            => Task.FromResult(new DailyProgressDto(calorieGoal, 800, calorieGoal - 800, 40m, 3));
+
+        public Task<DietDiversityDto> GetDietDiversityAsync(int days = 7, CancellationToken cancellationToken = default)
+            => Task.FromResult(new DietDiversityDto(days, 4, 10, ["Oatmeal"], ["Oatmeal", "Salad", "Pasta", "Soup"]));
+
+        public Task<PortionCalculationDto?> CalculatePortionsAsync(int mealId, int targetServings, CancellationToken cancellationToken = default)
+            => Task.FromResult<PortionCalculationDto?>(new PortionCalculationDto("Test Meal", 2, targetServings, (decimal)targetServings / 2, []));
     }
 }
 

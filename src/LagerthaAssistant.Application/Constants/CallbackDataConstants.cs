@@ -99,5 +99,9 @@ public static class CallbackDataConstants
         public const string Create = "weekly:create";
         public const string CreateConfirm = "weekly:create:yes";
         public const string CreateCancel = "weekly:create:no";
+        public const string PhotoConfirm = "weekly:photo:yes";
+        public const string PhotoCancel = "weekly:photo:no";
+        public const string DailyGoal = "weekly:goal";
+        public const string Diversity = "weekly:diversity";
     }
 }

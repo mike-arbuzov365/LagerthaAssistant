@@ -57,6 +57,8 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
             CallbackDataConstants.Weekly.Favourites => await HandleFavouriteMealsAsync(cancellationToken),
             CallbackDataConstants.Weekly.Log => await HandleLogMealPromptAsync(cancellationToken),
             CallbackDataConstants.Weekly.Create => HandleMealCreatePrompt(),
+            CallbackDataConstants.Weekly.DailyGoal => await HandleDailyGoalAsync(cancellationToken),
+            CallbackDataConstants.Weekly.Diversity => await HandleDietDiversityAsync(cancellationToken),
             _ => Result("food.unknown", "Use the buttons to navigate Shopping or Weekly Menu.")
         };
     }
@@ -240,6 +242,58 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         return Result(
             "food.weekly.create.prompt",
             "What meal would you like to create? Type the name (e.g. \"Chicken Curry\" or \"Pasta Carbonara\").");
+    }
+
+    internal async Task<ConversationAgentResult> HandleDailyGoalAsync(CancellationToken cancellationToken)
+    {
+        const int defaultGoal = 2000;
+        var progress = await _foodService.GetDailyProgressAsync(defaultGoal, cancellationToken);
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Daily progress \u2014 {DateTime.UtcNow:MMM d}");
+        sb.AppendLine();
+        var bar = BuildProgressBar(progress.PercentComplete);
+        sb.AppendLine($"{bar} {progress.PercentComplete:F0}%");
+        sb.AppendLine($"Consumed: {progress.ConsumedCalories} / {progress.GoalCalories} kcal");
+        sb.AppendLine($"Remaining: {progress.RemainingCalories} kcal");
+        sb.AppendLine($"Meals logged: {progress.MealsLogged}");
+
+        return Result("food.weekly.goal", sb.ToString().TrimEnd());
+    }
+
+    internal async Task<ConversationAgentResult> HandleDietDiversityAsync(CancellationToken cancellationToken)
+    {
+        var div = await _foodService.GetDietDiversityAsync(7, cancellationToken);
+
+        if (div.TotalMeals == 0)
+            return Result("food.weekly.diversity", "No meals logged in the past 7 days.");
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Diet diversity \u2014 last {div.DaysAnalyzed} days");
+        sb.AppendLine();
+        sb.AppendLine($"Total meals: {div.TotalMeals}");
+        sb.AppendLine($"Unique meals: {div.UniqueMeals}");
+
+        if (div.RepeatedMeals.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Most repeated:");
+            foreach (var name in div.RepeatedMeals.Take(5))
+                sb.AppendLine($"  \U0001f501 {name}");
+        }
+
+        var ratio = div.TotalMeals > 0 ? (decimal)div.UniqueMeals / div.TotalMeals * 100 : 0;
+        sb.AppendLine();
+        sb.AppendLine($"Diversity score: {ratio:F0}% unique");
+
+        return Result("food.weekly.diversity", sb.ToString().TrimEnd());
+    }
+
+    private static string BuildProgressBar(decimal percent)
+    {
+        var filled = (int)(percent / 10);
+        var empty = 10 - filled;
+        return new string('\u2588', Math.Min(filled, 10)) + new string('\u2591', Math.Max(empty, 0));
     }
 
     internal async Task<ConversationAgentResult> AddItemFromTextAsync(string input, CancellationToken cancellationToken)

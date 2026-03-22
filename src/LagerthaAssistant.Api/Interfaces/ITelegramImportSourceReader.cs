@@ -6,7 +6,17 @@ public interface ITelegramImportSourceReader
         TelegramImportInbound inbound,
         TelegramImportSourceType sourceType,
         CancellationToken cancellationToken = default);
+
+    Task<TelegramFoodIdentificationResult> IdentifyFoodAsync(
+        string photoFileId,
+        CancellationToken cancellationToken = default);
 }
+
+public sealed record TelegramFoodIdentificationResult(
+    bool Success,
+    string? MealName = null,
+    int? EstimatedCalories = null,
+    string? Error = null);
 
 public sealed record TelegramImportInbound(
     string Text,
