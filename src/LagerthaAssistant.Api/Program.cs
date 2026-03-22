@@ -52,6 +52,7 @@ builder.Services.AddHttpClient<LagerthaAssistant.Application.Interfaces.Food.INo
 builder.Services.AddSingleton<ITelegramConversationResponseFormatter, TelegramConversationResponseFormatter>();
 builder.Services.AddSingleton<ITelegramBotSender, TelegramBotSender>();
 builder.Services.AddSingleton<ITelegramNavigationPresenter, TelegramNavigationPresenter>();
+builder.Services.AddSingleton<TelegramPendingStateStore>();
 builder.Services.AddScoped<ITelegramImportSourceReader, TelegramImportSourceReader>();
 builder.Services.AddScoped<IVocabularyDiscoveryService, VocabularyDiscoveryService>();
 builder.Services.AddRateLimiter(opts =>

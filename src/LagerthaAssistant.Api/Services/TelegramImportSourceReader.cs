@@ -90,6 +90,121 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         };
     }
 
+    public async Task<TelegramFoodIdentificationResult> IdentifyFoodAsync(
+        string photoFileId,
+        CancellationToken cancellationToken = default)
+    {
+        var download = await DownloadTelegramFileAsync(photoFileId, MaxPhotoBytes, cancellationToken);
+        if (!download.Success)
+            return new TelegramFoodIdentificationResult(false, Error: download.Error);
+
+        return await IdentifyFoodFromImageAsync(download.Content!, cancellationToken);
+    }
+
+    private async Task<TelegramFoodIdentificationResult> IdentifyFoodFromImageAsync(
+        byte[] imageBytes,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_openAiOptions.ApiKey))
+            return new TelegramFoodIdentificationResult(false, Error: "OpenAI API key is not configured.");
+
+        var baseUrl = string.IsNullOrWhiteSpace(_openAiOptions.BaseUrl)
+            ? OpenAiConstants.DefaultBaseUrl
+            : _openAiOptions.BaseUrl.Trim();
+        if (!baseUrl.EndsWith("/", StringComparison.Ordinal))
+            baseUrl += "/";
+
+        var endpoint = new Uri(new Uri(baseUrl), OpenAiConstants.ChatCompletionsEndpoint);
+        var dataUrl = $"data:image/jpeg;base64,{Convert.ToBase64String(imageBytes)}";
+
+        var requestBody = new
+        {
+            model = _openAiOptions.Model,
+            temperature = 0.0,
+            messages = new object[]
+            {
+                new
+                {
+                    role = "system",
+                    content = "You identify food from photos. Respond with exactly two lines:\nLine 1: meal name\nLine 2: estimated calories per serving (number only)\nIf you cannot identify food, respond with \"unknown\" on line 1 and \"0\" on line 2."
+                },
+                new
+                {
+                    role = "user",
+                    content = new object[]
+                    {
+                        new
+                        {
+                            type = "text",
+                            text = "What food is in this photo? Give me the meal name and estimated calories."
+                        },
+                        new
+                        {
+                            type = "image_url",
+                            image_url = new
+                            {
+                                url = dataUrl
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var payload = JsonSerializer.Serialize(requestBody);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _openAiOptions.ApiKey);
+
+        using var client = _httpClientFactory.CreateClient("vocab-discovery");
+        using var response = await client.SendAsync(request, cancellationToken);
+        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Food identification request failed with status {StatusCode}: {Body}", (int)response.StatusCode, raw);
+            return new TelegramFoodIdentificationResult(false, Error: $"Food identification request failed ({(int)response.StatusCode}).");
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var text = ExtractAssistantText(doc.RootElement);
+            return ParseFoodIdentificationResponse(text);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse food identification response.");
+            return new TelegramFoodIdentificationResult(false, Error: "Failed to parse food identification response.");
+        }
+    }
+
+    private static TelegramFoodIdentificationResult ParseFoodIdentificationResponse(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return new TelegramFoodIdentificationResult(false, Error: "Empty response from Vision API.");
+
+        var lines = text.Trim().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length < 2)
+            return new TelegramFoodIdentificationResult(false, Error: "Unexpected response format from Vision API.");
+
+        var mealName = lines[0].Trim();
+        var caloriesText = lines[1].Trim();
+
+        // Extract digits from calories line
+        var digitsOnly = new string(caloriesText.Where(char.IsDigit).ToArray());
+        if (!int.TryParse(digitsOnly, out var calories) || calories <= 0)
+            calories = 0;
+
+        if (string.Equals(mealName, "unknown", StringComparison.OrdinalIgnoreCase) || calories == 0)
+            return new TelegramFoodIdentificationResult(false, Error: "Could not identify food in the photo.");
+
+        return new TelegramFoodIdentificationResult(true, mealName, calories);
+    }
+
     private static TelegramImportSourceReadResult ReadUrl(TelegramImportInbound inbound)
     {
         if (!string.IsNullOrWhiteSpace(inbound.PhotoFileId) || !string.IsNullOrWhiteSpace(inbound.DocumentFileId))

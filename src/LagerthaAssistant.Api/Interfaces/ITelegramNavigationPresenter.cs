@@ -46,4 +46,8 @@ public interface ITelegramNavigationPresenter
     TelegramInlineKeyboardMarkup BuildVocabularyUrlSelectionKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildNotionKeyboard(string locale);
+
+    TelegramInlineKeyboardMarkup BuildMealCreateConfirmKeyboard(string locale);
+
+    TelegramInlineKeyboardMarkup BuildFoodPhotoConfirmKeyboard(string locale);
 }
