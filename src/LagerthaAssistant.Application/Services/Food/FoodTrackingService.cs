@@ -36,6 +36,74 @@ public sealed class FoodTrackingService : IFoodTrackingService
         _logger = logger;
     }
 
+    // ── Inventory ─────────────────────────────────────────────────────────────
+
+    public async Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 50, CancellationToken cancellationToken = default)
+    {
+        var items = await _foodItemRepo.GetAllAsync(cancellationToken);
+        return items.Take(take).Select(MapFoodItemToDto).ToList();
+    }
+
+    public async Task<IReadOnlyList<FoodItemDto>> SearchInventoryAsync(string query, int take = 10, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return await GetAllInventoryAsync(take, cancellationToken);
+
+        var items = await _foodItemRepo.SearchByNameAsync(query.Trim(), take, cancellationToken);
+        return items.Select(MapFoodItemToDto).ToList();
+    }
+
+    public async Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(
+        int foodItemId,
+        string? quantity,
+        string? store,
+        CancellationToken cancellationToken = default)
+    {
+        var allItems = await _foodItemRepo.GetAllAsync(cancellationToken);
+        var foodItem = allItems.FirstOrDefault(x => x.Id == foodItemId)
+            ?? throw new InvalidOperationException($"Food item {foodItemId} not found in inventory.");
+
+        string notionPageId;
+        try
+        {
+            notionPageId = await _notionClient.CreateGroceryItemAsync(foodItem.Name, quantity, store, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create grocery item in Notion for inventory item {Id}; using local id", foodItemId);
+            notionPageId = $"local:{Guid.NewGuid():N}";
+        }
+
+        var item = new GroceryListItem
+        {
+            NotionPageId = notionPageId,
+            Name = foodItem.Name,
+            Quantity = quantity?.Trim(),
+            Store = store?.Trim(),
+            FoodItemId = foodItemId,
+            IsBought = false,
+            NotionUpdatedAt = DateTime.UtcNow,
+            NotionSyncStatus = notionPageId.StartsWith("local:", StringComparison.Ordinal)
+                ? FoodSyncStatus.Pending
+                : FoodSyncStatus.Synced
+        };
+
+        await _groceryRepo.AddAsync(item, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Added '{Name}' (inventory id={Id}) to shopping list", foodItem.Name, foodItemId);
+        return MapToDto(item);
+    }
+
+    public async Task<IReadOnlyList<FoodItemDto>> GetLowStockItemsAsync(CancellationToken cancellationToken = default)
+    {
+        var items = await _foodItemRepo.GetAllAsync(cancellationToken);
+        return items
+            .Where(x => x.MinQuantity.HasValue && x.CurrentQuantity.HasValue && x.CurrentQuantity.Value < x.MinQuantity.Value)
+            .Select(MapFoodItemToDto)
+            .ToList();
+    }
+
     // ── Shopping ─────────────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<GroceryListItemDto>> GetActiveGroceryListAsync(CancellationToken cancellationToken = default)
@@ -357,6 +425,13 @@ public sealed class FoodTrackingService : IFoodTrackingService
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────
+
+    private static FoodItemDto MapFoodItemToDto(FoodItem item) =>
+        new(item.Id, item.Name, item.Category, item.Store, item.Price, item.Quantity)
+        {
+            CurrentQuantity = item.CurrentQuantity,
+            MinQuantity = item.MinQuantity
+        };
 
     private static GroceryListItemDto MapToDto(GroceryListItem item) =>
         new(item.Id, item.Name, item.Quantity, item.EstimatedCost, item.Store, item.IsBought);

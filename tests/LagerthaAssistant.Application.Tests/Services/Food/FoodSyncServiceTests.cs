@@ -293,6 +293,87 @@ public sealed class FoodSyncServiceTests
         Assert.False(summary.HasErrors);
     }
 
+    // ── DateTime UTC kind enforcement ────────────────────────────────────────
+
+    [Theory]
+    [InlineData("2026-01-15T10:30:00Z")]
+    [InlineData("2026-01-15T10:30:00+00:00")]
+    [InlineData("2026-01-15T10:30:00")]
+    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForFoodItemNotionUpdatedAt(string lastEditedTime)
+    {
+        var notion = new FakeNotionFoodClient
+        {
+            InventoryPages = [MakePage("page-1", lastEditedTime,
+                ("Item Name", Title("Apple")))]
+        };
+        var foodRepo = new FakeFoodItemRepository();
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        await sut.SyncFromNotionAsync();
+
+        Assert.Equal(DateTimeKind.Utc, foodRepo.Added[0].NotionUpdatedAt.Kind);
+    }
+
+    [Theory]
+    [InlineData("2026-01-15T10:30:00Z")]
+    [InlineData("2026-01-15T10:30:00+00:00")]
+    [InlineData("2026-01-15T10:30:00")]
+    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForGroceryItemNotionUpdatedAt(string lastEditedTime)
+    {
+        var notion = new FakeNotionFoodClient
+        {
+            GroceryPages = [MakePage("grocery-1", lastEditedTime,
+                ("Item Name", Title("Milk")),
+                ("Bought?", Checkbox(false)))]
+        };
+        var groceryRepo = new FakeGroceryListRepository();
+        var sut = CreateSut(notion: notion, groceryRepo: groceryRepo);
+
+        await sut.SyncFromNotionAsync();
+
+        Assert.Equal(DateTimeKind.Utc, groceryRepo.Added[0].NotionUpdatedAt.Kind);
+    }
+
+    [Theory]
+    [InlineData("2026-01-15T10:30:00Z")]
+    [InlineData("2026-01-15T10:30:00+00:00")]
+    [InlineData("2026-01-15T10:30:00")]
+    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForMealNotionUpdatedAt(string lastEditedTime)
+    {
+        var notion = new FakeNotionFoodClient
+        {
+            MealPages = [MakePage("meal-1", lastEditedTime,
+                ("Meal Name", Title("Pasta")))]
+        };
+        var mealRepo = new FakeMealRepository();
+        var sut = CreateSut(notion: notion, mealRepo: mealRepo);
+
+        await sut.SyncFromNotionAsync();
+
+        Assert.Equal(DateTimeKind.Utc, mealRepo.Added[0].NotionUpdatedAt.Kind);
+    }
+
+    [Theory]
+    [InlineData("2026-01-15T10:30:00Z")]
+    [InlineData("2026-01-15T10:30:00+00:00")]
+    [InlineData("2026-01-15")]
+    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForFoodItemDateProperty(string dateString)
+    {
+        var notion = new FakeNotionFoodClient
+        {
+            InventoryPages = [MakePage("page-1", "2026-01-01T00:00:00Z",
+                ("Item Name", Title("Apple")),
+                ("Added to Cart on", DateProp(dateString)))]
+        };
+        var foodRepo = new FakeFoodItemRepository();
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        await sut.SyncFromNotionAsync();
+
+        Assert.NotNull(foodRepo.Added[0].LastAddedToCartAt);
+        Assert.Equal(DateTimeKind.Utc, foodRepo.Added[0].LastAddedToCartAt!.Value.Kind);
+    }
+
     // ── SyncGroceryChangesToNotionAsync ──────────────────────────────────────
 
     [Fact]
@@ -400,6 +481,9 @@ public sealed class FoodSyncServiceTests
 
     private static NotionPropertyValue Relation(params string[] ids)
         => new("relation", null, null, null, null, null, null, ids.Select(id => new NotionRelationItem(id)).ToList());
+
+    private static NotionPropertyValue DateProp(string date)
+        => new("date", null, null, null, null, null, new NotionDateValue(date), null);
 
     // ── Fakes ─────────────────────────────────────────────────────────────────
 
