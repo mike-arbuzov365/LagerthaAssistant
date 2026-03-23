@@ -15,7 +15,15 @@ public interface IConversationOrchestrator
         string input,
         string channel,
         string locale,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken = default);
+
+    Task<ConversationAgentResult> ProcessAsync(
+        string input,
+        string channel,
+        string locale,
+        string? userId,
+        string? conversationId,
+        CancellationToken cancellationToken = default);
 
     Task<ConversationAgentResult> ProcessAsync(
         string input,

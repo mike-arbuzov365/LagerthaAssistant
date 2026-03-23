@@ -38,20 +38,29 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
     }
 
     public Task<ConversationAgentResult> ProcessAsync(string input, CancellationToken cancellationToken = default)
-        => ProcessAsync(input, ConversationScope.DefaultChannel, null, null, cancellationToken);
+        => ProcessAsync(input, ConversationScope.DefaultChannel, locale: "en", userId: null, conversationId: null, cancellationToken);
 
     public Task<ConversationAgentResult> ProcessAsync(
         string input,
         string channel,
         CancellationToken cancellationToken = default)
-        => ProcessInternalAsync(input, channel, locale: "en", userId: null, conversationId: null, cancellationToken);
+        => ProcessAsync(input, channel, locale: "en", userId: null, conversationId: null, cancellationToken);
 
     public Task<ConversationAgentResult> ProcessAsync(
         string input,
         string channel,
         string locale,
-        CancellationToken cancellationToken)
-        => ProcessInternalAsync(input, channel, locale, userId: null, conversationId: null, cancellationToken);
+        CancellationToken cancellationToken = default)
+        => ProcessAsync(input, channel, locale, userId: null, conversationId: null, cancellationToken);
+
+    public Task<ConversationAgentResult> ProcessAsync(
+        string input,
+        string channel,
+        string locale,
+        string? userId,
+        string? conversationId,
+        CancellationToken cancellationToken = default)
+        => ProcessInternalAsync(input, channel, locale, userId, conversationId, cancellationToken);
 
     public Task<ConversationAgentResult> ProcessAsync(
         string input,
@@ -59,7 +68,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         string? userId,
         string? conversationId,
         CancellationToken cancellationToken = default)
-        => ProcessInternalAsync(input, channel, locale: "en", userId, conversationId, cancellationToken);
+        => ProcessAsync(input, channel, locale: "en", userId, conversationId, cancellationToken);
 
     private async Task<ConversationAgentResult> ProcessInternalAsync(
         string input,

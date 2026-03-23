@@ -217,6 +217,26 @@ public sealed class FoodSyncService : IFoodSyncService
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
+                if (IsLocalPageId(item.NotionPageId))
+                {
+                    var createdPageId = await _notionClient.CreateGroceryItemAsync(
+                        item.Name,
+                        item.Quantity,
+                        item.Store,
+                        cancellationToken);
+
+                    if (string.IsNullOrWhiteSpace(createdPageId))
+                    {
+                        throw new InvalidOperationException("Notion returned an empty page ID for grocery item creation.");
+                    }
+
+                    item.NotionPageId = createdPageId.Trim();
+                    _logger.LogInformation(
+                        "Upgraded local grocery sync ID to Notion page ID. ItemId={ItemId}; NewNotionPageId={NotionPageId}",
+                        item.Id,
+                        item.NotionPageId);
+                }
+
                 await _notionClient.MarkGroceryItemBoughtAsync(item.NotionPageId, item.IsBought, cancellationToken);
                 item.NotionSyncStatus = FoodSyncStatus.Synced;
                 item.NotionSyncedAt = DateTime.UtcNow;
@@ -229,6 +249,7 @@ public sealed class FoodSyncService : IFoodSyncService
                 _logger.LogWarning(ex, "Failed to sync grocery item {Id} to Notion", item.Id);
                 item.NotionSyncStatus = FoodSyncStatus.Failed;
                 item.NotionLastError = ex.Message;
+                item.NotionLastAttemptAt = DateTime.UtcNow;
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
         }
@@ -435,4 +456,7 @@ public sealed class FoodSyncService : IFoodSyncService
             return DateTime.SpecifyKind(dt.ToUniversalTime(), DateTimeKind.Utc);
         return DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
     }
+
+    private static bool IsLocalPageId(string pageId)
+        => pageId.StartsWith("local:", StringComparison.OrdinalIgnoreCase);
 }

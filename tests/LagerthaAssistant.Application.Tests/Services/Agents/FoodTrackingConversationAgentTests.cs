@@ -335,7 +335,7 @@ public sealed class FoodTrackingConversationAgentTests
 
         var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Diversity, []));
 
-        Assert.Equal("food.weekly.diversity", result.Intent);
+        Assert.Equal("food.weekly.diversity.empty", result.Intent);
         Assert.Contains("No meals", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -386,7 +386,7 @@ public sealed class FoodTrackingConversationAgentTests
     {
         var sut = CreateSut();
 
-        var result = await sut.AddItemFromTextAsync("Milk 2L SuperMart", CancellationToken.None);
+        var result = await sut.AddItemFromTextAsync("Milk | qty:2L | store:SuperMart", CancellationToken.None);
 
         Assert.Equal("food.shop.added", result.Intent);
         Assert.Contains("Milk", result.Message);
@@ -399,10 +399,21 @@ public sealed class FoodTrackingConversationAgentTests
     {
         var sut = CreateSut();
 
-        var result = await sut.AddItemFromTextAsync("Eggs 12pcs Whole Foods Market", CancellationToken.None);
+        var result = await sut.AddItemFromTextAsync("Eggs | qty:12pcs | store:Whole Foods Market", CancellationToken.None);
 
         Assert.Equal("food.shop.added", result.Intent);
         Assert.Contains("Whole Foods Market", result.Message);
+    }
+
+    [Fact]
+    public async Task AddItemFromTextAsync_ShouldFallbackToName_WhenInputIsAmbiguous()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.AddItemFromTextAsync("Milk 2L SuperMart", CancellationToken.None);
+
+        Assert.Equal("food.shop.added", result.Intent);
+        Assert.Contains("Milk 2L SuperMart", result.Message);
     }
 
     // ── Inventory handlers ───────────────────────────────────────────────────
@@ -586,6 +597,8 @@ public sealed class FoodTrackingConversationAgentTests
             ["food.weekly.diversity.unique"] = "Unique meals: {0}",
             ["food.weekly.diversity.repeated"] = "Most repeated:",
             ["food.weekly.diversity.score"] = "Diversity score: {0:F0}% unique",
+            ["inventory.cart.added"] = "Added \"{0}\" to your shopping list.",
+            ["inventory.cart.not_found"] = "Item not found in inventory.",
             ["food.unknown"] = "Use the buttons to navigate Shopping or Weekly Menu.",
         };
 
@@ -608,6 +621,40 @@ public sealed class FoodTrackingConversationAgentTests
 
         public Task<IReadOnlyList<GroceryListItemDto>> GetActiveGroceryListAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(GroceryItems);
+
+        public Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 50, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<FoodItemDto>>(InventoryItems.Take(take).ToList());
+
+        public Task<IReadOnlyList<FoodItemDto>> SearchInventoryAsync(string query, int take = 10, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return GetAllInventoryAsync(take, cancellationToken);
+            }
+
+            var matches = InventoryItems
+                .Where(x => x.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Take(take)
+                .ToList();
+            return Task.FromResult<IReadOnlyList<FoodItemDto>>(matches);
+        }
+
+        public Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default)
+        {
+            var found = InventoryItems.FirstOrDefault(x => x.Id == foodItemId);
+            if (found is null)
+            {
+                throw new InvalidOperationException($"Food item {foodItemId} not found in inventory.");
+            }
+
+            return Task.FromResult(new GroceryListItemDto(100 + foodItemId, found.Name, quantity, null, store, false));
+        }
+
+        public Task<IReadOnlyList<FoodItemDto>> GetLowStockItemsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<FoodItemDto>>(
+                InventoryItems
+                    .Where(x => x.MinQuantity.HasValue && x.CurrentQuantity.HasValue && x.CurrentQuantity.Value < x.MinQuantity.Value)
+                    .ToList());
 
         public Task<GroceryListItemDto> AddGroceryItemAsync(string name, string? quantity, string? store, CancellationToken cancellationToken = default)
             => Task.FromResult(new GroceryListItemDto(99, name, quantity, null, store, false));
@@ -646,7 +693,7 @@ public sealed class FoodTrackingConversationAgentTests
             => Task.FromResult(new DailyProgressDto(calorieGoal, 800, calorieGoal - 800, 40m, 3));
 
         public Task<DietDiversityDto> GetDietDiversityAsync(int days = 7, CancellationToken cancellationToken = default)
-            => Task.FromResult(new DietDiversityDto(days, 4, 10, ["Oatmeal"], ["Oatmeal", "Salad", "Pasta", "Soup"]));
+            => Task.FromResult(DietDiversity with { DaysAnalyzed = days });
 
         public Task<PortionCalculationDto?> CalculatePortionsAsync(int mealId, int targetServings, CancellationToken cancellationToken = default)
             => Task.FromResult<PortionCalculationDto?>(new PortionCalculationDto("Test Meal", 2, targetServings, (decimal)targetServings / 2, []));

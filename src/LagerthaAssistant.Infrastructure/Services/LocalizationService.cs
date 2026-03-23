@@ -1495,6 +1495,73 @@ public sealed class LocalizationService : ILocalizationService
         ["onedrive.error_declined"] = "Login was declined. Try sign-in again from Settings -> OneDrive / Graph.",
     };
 
+    // Transitional fallback for newly introduced food/inventory keys until all locale dictionaries are fully synchronized.
+    private static readonly IReadOnlyDictionary<string, string> SupplementalEnglish = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["inventory.add_to_cart_hint"] = "To add to cart: reply with item ID, e.g. \"42\" or \"42 2kg\"",
+        ["inventory.low_stock.title"] = "Low stock — {0} item(s) to reorder:",
+        ["inventory.low_stock.item"] = "  ⚠️ {0} — {1} (needs restock)",
+        ["food.shop.qty_suffix"] = " × {0}",
+        ["food.shop.store_suffix"] = " at {0}",
+        ["food.weekly.view.line"] = "🍽 [{0}] {1}{2}",
+        ["food.weekly.view.calories_suffix"] = " — {0} kcal/serving",
+        ["food.weekly.log.not_found"] = "⚠️ Meal with ID {0} not found. Press \"Log meal\" to see the list.",
+        ["food.weekly.logged"] = "✅ Logged meal #{0} × {1} serving(s).",
+        ["food.weekly.create.empty"] = "Please type a meal name to create.",
+        ["food.weekly.create.preview.title"] = "Create meal: \"{0}\"",
+        ["food.weekly.create.preview.servings"] = "Default servings: {0}",
+        ["food.weekly.create.preview.confirm"] = "Confirm creation?",
+        ["food.weekly.create.expired"] = "No pending meal creation found. Please start again.",
+        ["food.weekly.create.error"] = "Food tracking is not configured.",
+        ["food.weekly.create.done"] = "Meal \"{0}\" created (ID: {1}).",
+        ["food.weekly.create.cancelled"] = "Meal creation cancelled.",
+        ["food.weekly.portion.title"] = "{0} — {1} servings (×{2})",
+        ["food.weekly.portion.ingredient"] = "  • {0}: {1}",
+        ["food.weekly.portion.not_found"] = "Meal with ID {0} not found.",
+        ["food.photo.failed_default"] = "Could not identify food in the photo. Try again with a clearer image.",
+        ["food.photo.preview.identified"] = "Identified: {0}",
+        ["food.photo.preview.calories"] = "Estimated calories: {0} kcal",
+        ["food.photo.preview.servings"] = "Servings: {0}",
+        ["food.photo.preview.confirm"] = "Log this meal?",
+        ["food.photo.expired"] = "No pending photo log found. Please send a photo again.",
+        ["food.photo.error"] = "Food tracking is not configured.",
+        ["food.photo.logged"] = "✅ Logged \"{0}\" ({1} kcal × {2}).",
+        ["food.photo.cancelled"] = "Photo log cancelled."
+    };
+
+    private static readonly IReadOnlyDictionary<string, string> SupplementalUkrainian = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["inventory.add_to_cart_hint"] = "Щоб додати у список покупок: надішли ID товару, наприклад \"42\" або \"42 2кг\"",
+        ["inventory.low_stock.title"] = "Низькі запаси — позицій для докупівлі: {0}",
+        ["inventory.low_stock.item"] = "  ⚠️ {0} — {1} (треба поповнити)",
+        ["food.shop.qty_suffix"] = " × {0}",
+        ["food.shop.store_suffix"] = " у {0}",
+        ["food.weekly.view.line"] = "🍽 [{0}] {1}{2}",
+        ["food.weekly.view.calories_suffix"] = " — {0} ккал/порція",
+        ["food.weekly.log.not_found"] = "⚠️ Страву з ID {0} не знайдено. Натисни «Записати прийом», щоб побачити список.",
+        ["food.weekly.logged"] = "✅ Записано прийом #{0} × {1} порц.",
+        ["food.weekly.create.empty"] = "Напиши назву страви для створення.",
+        ["food.weekly.create.preview.title"] = "Створити страву: \"{0}\"",
+        ["food.weekly.create.preview.servings"] = "Порцій за замовчуванням: {0}",
+        ["food.weekly.create.preview.confirm"] = "Підтвердити створення?",
+        ["food.weekly.create.expired"] = "Немає незавершеного створення страви. Почни ще раз.",
+        ["food.weekly.create.error"] = "Фуд-трекінг не налаштовано.",
+        ["food.weekly.create.done"] = "Страву \"{0}\" створено (ID: {1}).",
+        ["food.weekly.create.cancelled"] = "Створення страви скасовано.",
+        ["food.weekly.portion.title"] = "{0} — {1} порцій (×{2})",
+        ["food.weekly.portion.ingredient"] = "  • {0}: {1}",
+        ["food.weekly.portion.not_found"] = "Страву з ID {0} не знайдено.",
+        ["food.photo.failed_default"] = "Не вдалося розпізнати їжу на фото. Спробуй ще раз із чіткішим зображенням.",
+        ["food.photo.preview.identified"] = "Розпізнано: {0}",
+        ["food.photo.preview.calories"] = "Орієнтовні калорії: {0} ккал",
+        ["food.photo.preview.servings"] = "Порції: {0}",
+        ["food.photo.preview.confirm"] = "Записати цей прийом?",
+        ["food.photo.expired"] = "Немає очікуваного запиту для фото. Надішли фото ще раз.",
+        ["food.photo.error"] = "Фуд-трекінг не налаштовано.",
+        ["food.photo.logged"] = "✅ Записано \"{0}\" ({1} ккал × {2}).",
+        ["food.photo.cancelled"] = "Запис з фото скасовано."
+    };
+
     public string Get(string key, string locale)
     {
         var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(locale);
@@ -1514,6 +1581,11 @@ public sealed class LocalizationService : ILocalizationService
             return value;
         }
 
+        if (TryGetSupplemental(normalizedLocale, key, out var supplemental))
+        {
+            return supplemental;
+        }
+
         if (English.TryGetValue(key, out var fallback))
         {
             if (!string.Equals(normalizedLocale, LocalizationConstants.EnglishLocale, StringComparison.Ordinal))
@@ -1527,6 +1599,19 @@ public sealed class LocalizationService : ILocalizationService
             return fallback;
         }
 
+        if (SupplementalEnglish.TryGetValue(key, out var supplementalFallback))
+        {
+            if (!string.Equals(normalizedLocale, LocalizationConstants.EnglishLocale, StringComparison.Ordinal))
+            {
+                _logger?.LogDebug(
+                    "Localization key '{Key}' missing for locale '{Locale}', using supplemental 'en' fallback.",
+                    key,
+                    normalizedLocale);
+            }
+
+            return supplementalFallback;
+        }
+
         _logger?.LogWarning(
             "Localization key '{Key}' missing for all locales including 'en'. Returning placeholder.",
             key);
@@ -1535,4 +1620,19 @@ public sealed class LocalizationService : ILocalizationService
 
     public string GetLocaleForUser(string? telegramLanguageCode)
         => LocalizationConstants.NormalizeLocaleCode(telegramLanguageCode);
+
+    private static bool TryGetSupplemental(string normalizedLocale, string key, out string value)
+    {
+        value = string.Empty;
+
+        if (string.Equals(normalizedLocale, LocalizationConstants.UkrainianLocale, StringComparison.Ordinal)
+            && SupplementalUkrainian.TryGetValue(key, out var localized)
+            && !string.IsNullOrWhiteSpace(localized))
+        {
+            value = localized;
+            return true;
+        }
+
+        return false;
+    }
 }

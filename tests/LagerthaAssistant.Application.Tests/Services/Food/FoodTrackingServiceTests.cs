@@ -122,7 +122,9 @@ public sealed class FoodTrackingServiceTests
         Assert.True(repo.AllItems[1].IsBought);
         Assert.False(repo.AllItems[2].IsBought);
         Assert.Equal(FoodSyncStatus.Pending, repo.AllItems[0].NotionSyncStatus);
-        Assert.Equal(1, uow.SaveCount);
+        Assert.Equal(0, uow.SaveCount);
+        Assert.Equal([1, 2], repo.LastMarkedItemIds);
+        Assert.NotNull(repo.LastMarkedUpdatedAtUtc);
     }
 
     [Fact]
@@ -959,6 +961,8 @@ public sealed class FoodTrackingServiceTests
         public List<GroceryListItem> ActiveItems { get; init; } = [];
         public List<GroceryListItem> AllItems { get; init; } = [];
         public List<GroceryListItem> AddedItems { get; } = [];
+        public IReadOnlyCollection<int> LastMarkedItemIds { get; private set; } = [];
+        public DateTime? LastMarkedUpdatedAtUtc { get; private set; }
         public int MarkAllBoughtResult { get; init; }
         public int DeleteBoughtResult { get; init; }
 
@@ -981,6 +985,23 @@ public sealed class FoodTrackingServiceTests
         {
             AddedItems.Add(item);
             return Task.CompletedTask;
+        }
+
+        public Task<int> MarkBoughtByIdsAsync(IReadOnlyCollection<int> itemIds, DateTime updatedAtUtc, CancellationToken cancellationToken = default)
+        {
+            LastMarkedItemIds = itemIds.ToArray();
+            LastMarkedUpdatedAtUtc = updatedAtUtc;
+
+            var count = 0;
+            foreach (var item in AllItems.Where(x => itemIds.Contains(x.Id) && !x.IsBought))
+            {
+                item.IsBought = true;
+                item.NotionSyncStatus = FoodSyncStatus.Pending;
+                item.NotionUpdatedAt = updatedAtUtc;
+                count++;
+            }
+
+            return Task.FromResult(count);
         }
 
         public Task<int> MarkAllBoughtAsync(CancellationToken cancellationToken = default)

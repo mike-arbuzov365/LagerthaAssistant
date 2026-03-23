@@ -7,6 +7,7 @@ using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Food;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Food;
+using LagerthaAssistant.Application.Services.Food;
 
 /// <summary>
 /// Handles food/shopping/meal callback actions triggered by Telegram inline keyboard buttons.
@@ -55,7 +56,7 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         {
             var idStr = input[CallbackDataConstants.Inventory.CartPrefix.Length..];
             return int.TryParse(idStr, out var itemId)
-                ? await HandleInventoryCartAsync(itemId, cancellationToken)
+                ? await HandleInventoryCartAsync(itemId, locale, cancellationToken)
                 : Result("inventory.cart.invalid", "Invalid inventory item.");
         }
 
@@ -72,6 +73,9 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
             CallbackDataConstants.Weekly.Create => HandleMealCreatePrompt(locale),
             CallbackDataConstants.Weekly.DailyGoal => await HandleDailyGoalAsync(locale, cancellationToken),
             CallbackDataConstants.Weekly.Diversity => await HandleDietDiversityAsync(locale, cancellationToken),
+            CallbackDataConstants.Inventory.List => await HandleInventoryListAsync(locale, cancellationToken),
+            CallbackDataConstants.Inventory.Search => HandleInventorySearchPrompt(locale),
+            CallbackDataConstants.Inventory.Suggest => await HandleInventorySuggestAsync(locale, cancellationToken),
             _ => Result("food.unknown", _loc.Get("food.unknown", locale))
         };
     }
@@ -298,6 +302,66 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         return Result("food.weekly.diversity", sb.ToString().TrimEnd());
     }
 
+    internal async Task<ConversationAgentResult> HandleInventoryListAsync(string locale, CancellationToken cancellationToken)
+    {
+        var items = await _foodService.GetAllInventoryAsync(50, cancellationToken);
+        if (items.Count == 0)
+        {
+            return Result("inventory.list.empty", _loc.Get("inventory.empty", locale));
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"{_loc.Get("menu.inventory.title", locale)} ({items.Count} items):");
+        sb.AppendLine();
+        foreach (var item in items)
+        {
+            var qty = item.Quantity is not null ? $" [{item.Quantity}]" : string.Empty;
+            var cat = item.Category is not null ? $" — {item.Category}" : string.Empty;
+            sb.AppendLine($"  [{item.Id}] {item.Name}{qty}{cat}");
+        }
+
+        return Result("inventory.list", sb.ToString().TrimEnd());
+    }
+
+    internal ConversationAgentResult HandleInventorySearchPrompt(string locale)
+        => Result("inventory.search.prompt", _loc.Get("inventory.search.prompt", locale));
+
+    internal async Task<ConversationAgentResult> HandleInventorySuggestAsync(string locale, CancellationToken cancellationToken)
+    {
+        var items = await _foodService.GetLowStockItemsAsync(cancellationToken);
+        if (items.Count == 0)
+        {
+            return Result("inventory.suggest.empty", _loc.Get("inventory.suggest.empty", locale));
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Low stock — {items.Count} item(s) to reorder:");
+        sb.AppendLine();
+        foreach (var item in items)
+        {
+            var cur = item.CurrentQuantity.HasValue ? $"{item.CurrentQuantity.Value:G}" : "?";
+            sb.AppendLine($"  ⚠️ {item.Name} — {cur} (needs restock)");
+        }
+
+        return Result("inventory.suggest", sb.ToString().TrimEnd());
+    }
+
+    internal async Task<ConversationAgentResult> HandleInventoryCartAsync(
+        int foodItemId,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var item = await _foodService.AddToShoppingFromInventoryAsync(foodItemId, quantity: null, store: null, cancellationToken);
+            return Result("inventory.cart.added", string.Format(_loc.Get("inventory.cart.added", locale), item.Name));
+        }
+        catch (InvalidOperationException)
+        {
+            return Result("inventory.cart.not_found", _loc.Get("inventory.cart.not_found", locale));
+        }
+    }
+
     private static string BuildProgressBar(decimal percent)
     {
         var filled = (int)(percent / 10);
@@ -307,18 +371,31 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
 
     internal async Task<ConversationAgentResult> AddItemFromTextAsync(string input, string locale, CancellationToken cancellationToken)
     {
-        var parts = input.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var name = parts[0];
-        var quantity = parts.Length >= 2 ? parts[1] : null;
-        var store = parts.Length >= 3 ? string.Join(" ", parts.Skip(2)) : null;
-
-        var item = await _foodService.AddGroceryItemAsync(name, quantity, store, cancellationToken);
+        var parsed = ShoppingTextInputParser.Parse(input);
+        var name = string.IsNullOrWhiteSpace(parsed.ProductName) ? input.Trim() : parsed.ProductName;
+        var item = await _foodService.AddGroceryItemAsync(name, parsed.Quantity, parsed.Store, cancellationToken);
 
         var qty = item.Quantity is not null ? $" × {item.Quantity}" : string.Empty;
         var st = item.Store is not null ? $" at {item.Store}" : string.Empty;
 
         return Result("food.shop.added", string.Format(_loc.Get("food.shop.added", locale), item.Name, qty, st));
     }
+
+    // Backward-compatible overloads for tests and older call sites.
+    internal Task<ConversationAgentResult> HandleInventoryListAsync(CancellationToken cancellationToken)
+        => HandleInventoryListAsync("en", cancellationToken);
+
+    internal static ConversationAgentResult HandleInventorySearchPrompt()
+        => Result("inventory.search.prompt", "Type the item name to search the inventory:");
+
+    internal Task<ConversationAgentResult> HandleInventorySuggestAsync(CancellationToken cancellationToken)
+        => HandleInventorySuggestAsync("en", cancellationToken);
+
+    internal Task<ConversationAgentResult> HandleInventoryCartAsync(int foodItemId, CancellationToken cancellationToken)
+        => HandleInventoryCartAsync(foodItemId, "en", cancellationToken);
+
+    internal Task<ConversationAgentResult> AddItemFromTextAsync(string input, CancellationToken cancellationToken)
+        => AddItemFromTextAsync(input, "en", cancellationToken);
 
     private static ConversationAgentResult Result(string intent, string message)
         => ConversationAgentResult.Empty("food-tracking-agent", intent, message);

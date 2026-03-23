@@ -1,9 +1,12 @@
 using LagerthaAssistant.Application.Constants;
+using System.Text.RegularExpressions;
 
 namespace LagerthaAssistant.Application.Navigation;
 
 public sealed class NavigationRouter
 {
+    private static readonly Regex LeadingDecorationRegex = new("^[^\\p{L}\\p{N}]+", RegexOptions.Compiled);
+
     public NavigationRoute Resolve(NavigationRouteInput input, MainMenuLabels labels)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -20,27 +23,27 @@ public sealed class NavigationRouter
             return new NavigationRoute(NavigationRouteKind.Start);
         }
 
-        if (string.Equals(normalizedText, labels.Chat, StringComparison.Ordinal))
+        if (IsLabelMatch(normalizedText, labels.Chat))
         {
             return new NavigationRoute(NavigationRouteKind.MainChatButton);
         }
 
-        if (string.Equals(normalizedText, labels.Vocabulary, StringComparison.Ordinal))
+        if (IsLabelMatch(normalizedText, labels.Vocabulary))
         {
             return new NavigationRoute(NavigationRouteKind.MainVocabularyButton);
         }
 
-        if (string.Equals(normalizedText, labels.Shopping, StringComparison.Ordinal))
+        if (IsLabelMatch(normalizedText, labels.Shopping))
         {
             return new NavigationRoute(NavigationRouteKind.MainShoppingButton);
         }
 
-        if (string.Equals(normalizedText, labels.WeeklyMenu, StringComparison.Ordinal))
+        if (IsLabelMatch(normalizedText, labels.WeeklyMenu))
         {
             return new NavigationRoute(NavigationRouteKind.MainWeeklyMenuButton);
         }
 
-        if (string.Equals(normalizedText, labels.Settings, StringComparison.Ordinal))
+        if (IsLabelMatch(normalizedText, labels.Settings))
         {
             return new NavigationRoute(NavigationRouteKind.MainSettingsButton);
         }
@@ -57,6 +60,38 @@ public sealed class NavigationRouter
             NavigationSections.LanguageOnboarding => new NavigationRoute(NavigationRouteKind.LanguageOnboardingText),
             _ => new NavigationRoute(NavigationRouteKind.DefaultText)
         };
+    }
+
+    private static bool IsLabelMatch(string? text, string label)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        if (string.Equals(text, label, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var plainLabel = StripLeadingDecorations(label);
+        if (string.Equals(text, plainLabel, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var plainText = StripLeadingDecorations(text);
+        return string.Equals(plainText, plainLabel, StringComparison.Ordinal);
+    }
+
+    private static string StripLeadingDecorations(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return LeadingDecorationRegex.Replace(value.Trim(), string.Empty).Trim();
     }
 }
 

@@ -168,7 +168,7 @@ public sealed class FoodSyncServiceTests
     [InlineData("2026-01-15T10:30:00Z")]       // explicit UTC
     [InlineData("2026-01-15T10:30:00+00:00")]  // explicit offset
     [InlineData("2026-01-15T10:30:00")]         // no timezone — was previously Unspecified
-    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForFoodItemNotionUpdatedAt(string lastEditedTime)
+    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForFoodItemNotionUpdatedAt_Legacy(string lastEditedTime)
     {
         var notion = new FakeNotionFoodClient
         {
@@ -186,7 +186,7 @@ public sealed class FoodSyncServiceTests
     [Theory]
     [InlineData("2026-01-15T10:30:00Z")]
     [InlineData("2026-01-15T10:30:00")]
-    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForGroceryItemNotionUpdatedAt(string lastEditedTime)
+    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForGroceryItemNotionUpdatedAt_Legacy(string lastEditedTime)
     {
         var notion = new FakeNotionFoodClient
         {
@@ -205,7 +205,7 @@ public sealed class FoodSyncServiceTests
     [Theory]
     [InlineData("2026-01-15T10:30:00Z")]
     [InlineData("2026-01-15T10:30:00")]
-    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForMealNotionUpdatedAt(string lastEditedTime)
+    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForMealNotionUpdatedAt_Legacy(string lastEditedTime)
     {
         var notion = new FakeNotionFoodClient
         {
@@ -446,6 +446,57 @@ public sealed class FoodSyncServiceTests
         Assert.Equal(FoodSyncStatus.Synced, item2.NotionSyncStatus);
     }
 
+    [Fact]
+    public async Task SyncGroceryChangesToNotionAsync_ShouldCreateNotionPage_WhenPageIdIsLocal()
+    {
+        var pendingItem = new GroceryListItem
+        {
+            Id = 10,
+            NotionPageId = "local:abc",
+            Name = "Milk",
+            Quantity = "2L",
+            Store = "ATB",
+            IsBought = true,
+            NotionSyncStatus = FoodSyncStatus.Pending
+        };
+        var groceryRepo = new FakeGroceryListRepository { PendingItems = [pendingItem] };
+        var notion = new FakeNotionFoodClient { CreatedPageId = "notion-real-10" };
+        var sut = CreateSut(notion: notion, groceryRepo: groceryRepo);
+
+        var synced = await sut.SyncGroceryChangesToNotionAsync(take: 10);
+
+        Assert.Equal(1, synced);
+        Assert.Equal("notion-real-10", pendingItem.NotionPageId);
+        Assert.Equal(FoodSyncStatus.Synced, pendingItem.NotionSyncStatus);
+        Assert.Equal("notion-real-10", notion.LastBoughtPageId);
+        Assert.Equal("Milk", notion.LastCreatedName);
+        Assert.Equal("2L", notion.LastCreatedQuantity);
+        Assert.Equal("ATB", notion.LastCreatedStore);
+    }
+
+    [Fact]
+    public async Task SyncGroceryChangesToNotionAsync_ShouldMarkFailed_WhenCreateFromLocalIdFails()
+    {
+        var pendingItem = new GroceryListItem
+        {
+            Id = 11,
+            NotionPageId = "local:def",
+            Name = "Bread",
+            IsBought = true,
+            NotionSyncStatus = FoodSyncStatus.Pending
+        };
+        var groceryRepo = new FakeGroceryListRepository { PendingItems = [pendingItem] };
+        var notion = new FakeNotionFoodClient { ShouldThrowOnCreate = true };
+        var sut = CreateSut(notion: notion, groceryRepo: groceryRepo);
+
+        var synced = await sut.SyncGroceryChangesToNotionAsync(take: 10);
+
+        Assert.Equal(0, synced);
+        Assert.Equal(FoodSyncStatus.Failed, pendingItem.NotionSyncStatus);
+        Assert.NotNull(pendingItem.NotionLastError);
+        Assert.StartsWith("local:", pendingItem.NotionPageId, StringComparison.Ordinal);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static FoodSyncService CreateSut(
@@ -492,12 +543,17 @@ public sealed class FoodSyncServiceTests
         public IReadOnlyList<NotionPage> InventoryPages { get; init; } = [];
         public IReadOnlyList<NotionPage> MealPages { get; init; } = [];
         public IReadOnlyList<NotionPage> GroceryPages { get; init; } = [];
+        public string CreatedPageId { get; init; } = "notion-created-id";
         public bool ShouldThrowOnInventory { get; init; }
         public bool ShouldThrowOnMarkBought { get; init; }
+        public bool ShouldThrowOnCreate { get; init; }
         public string? FailPageId { get; init; }
 
         public string? LastBoughtPageId { get; private set; }
         public bool LastBoughtValue { get; private set; }
+        public string? LastCreatedName { get; private set; }
+        public string? LastCreatedQuantity { get; private set; }
+        public string? LastCreatedStore { get; private set; }
 
         public Task<IReadOnlyList<NotionPage>> GetInventoryAsync(CancellationToken cancellationToken = default)
         {
@@ -521,7 +577,17 @@ public sealed class FoodSyncServiceTests
         }
 
         public Task<string> CreateGroceryItemAsync(string name, string? quantity, string? store, CancellationToken cancellationToken = default)
-            => Task.FromResult("notion-created-id");
+        {
+            if (ShouldThrowOnCreate)
+            {
+                throw new HttpRequestException("Notion create failed");
+            }
+
+            LastCreatedName = name;
+            LastCreatedQuantity = quantity;
+            LastCreatedStore = store;
+            return Task.FromResult(CreatedPageId);
+        }
     }
 
     private sealed class FakeFoodItemRepository : IFoodItemRepository
@@ -607,6 +673,9 @@ public sealed class FoodSyncServiceTests
             Added.Add(item);
             return Task.CompletedTask;
         }
+
+        public Task<int> MarkBoughtByIdsAsync(IReadOnlyCollection<int> itemIds, DateTime updatedAtUtc, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
 
         public Task<int> MarkAllBoughtAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<int> DeleteBoughtAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);

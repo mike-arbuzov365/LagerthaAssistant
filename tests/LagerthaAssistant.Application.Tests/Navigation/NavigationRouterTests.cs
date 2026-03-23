@@ -53,6 +53,22 @@ public sealed class NavigationRouterTests
     }
 
     [Theory]
+    [InlineData("Chat", NavigationRouteKind.MainChatButton)]
+    [InlineData("Vocabulary", NavigationRouteKind.MainVocabularyButton)]
+    [InlineData("Shopping", NavigationRouteKind.MainShoppingButton)]
+    [InlineData("Menu", NavigationRouteKind.MainWeeklyMenuButton)]
+    [InlineData("Settings", NavigationRouteKind.MainSettingsButton)]
+    public void Resolve_ShouldRouteMainButtons_WhenLabelsHaveLeadingEmoji(string text, NavigationRouteKind expectedKind)
+    {
+        var sut = new NavigationRouter();
+        var decoratedLabels = new MainMenuLabels("🗣 Chat", "📚 Vocabulary", "🛒 Shopping", "🍽 Menu", "⚙️ Settings");
+
+        var route = sut.Resolve(new NavigationRouteInput(text, null, NavigationSections.Main), decoratedLabels);
+
+        Assert.Equal(expectedKind, route.Kind);
+    }
+
+    [Theory]
     [InlineData("ChatUk", NavigationRouteKind.MainChatButton)]
     [InlineData("VocabularyUk", NavigationRouteKind.MainVocabularyButton)]
     [InlineData("ShoppingUk", NavigationRouteKind.MainShoppingButton)]
