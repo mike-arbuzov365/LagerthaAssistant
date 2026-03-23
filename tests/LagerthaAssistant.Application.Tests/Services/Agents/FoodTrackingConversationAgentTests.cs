@@ -464,8 +464,8 @@ public sealed class FoodTrackingConversationAgentTests
         {
             InventoryItems =
             [
-                new FoodItemDto(1, "Eggs", null, null, null, null) { CurrentQuantity = 2m },
-                new FoodItemDto(2, "Milk", null, null, null, null) { CurrentQuantity = 0.5m }
+                new FoodItemDto(1, "Eggs", null, null, null, null) { CurrentQuantity = 2m, MinQuantity = 6m },
+                new FoodItemDto(2, "Milk", null, null, null, null) { CurrentQuantity = 0.5m, MinQuantity = 2m }
             ]
         };
         var sut = CreateSut(service);
@@ -617,6 +617,6 @@ public sealed class FoodTrackingConversationAgentTests
 
         public Task<IReadOnlyList<FoodItemDto>> GetLowStockItemsAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<FoodItemDto>>(
-                InventoryItems.Where(x => x.CurrentQuantity.HasValue).ToList());
+                InventoryItems.Where(x => x.MinQuantity.HasValue && x.CurrentQuantity.HasValue && x.CurrentQuantity.Value < x.MinQuantity.Value).ToList());
     }
 }

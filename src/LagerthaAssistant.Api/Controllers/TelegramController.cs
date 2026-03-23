@@ -3608,7 +3608,7 @@ public sealed class TelegramController : ControllerBase
         }
 
         // food:menu — go back to food menu
-        await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Shopping, cancellationToken);
+        await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Main, cancellationToken);
         return new TelegramRouteResponse(
             "nav.food",
             _navigationPresenter.GetText("menu.food.title", locale),
@@ -3736,7 +3736,7 @@ public sealed class TelegramController : ControllerBase
         ConversationScope scope,
         CancellationToken cancellationToken)
     {
-        if (_foodTrackingService is null)
+        if (_foodTrackingService is null || string.IsNullOrWhiteSpace(text))
         {
             return new TelegramRouteResponse(
                 "inventory.text",
