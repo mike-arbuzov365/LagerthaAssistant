@@ -4,7 +4,8 @@ public sealed record ConversationAgentContext(
     string Input,
     IReadOnlyList<string> BatchItems,
     ConversationScope Scope,
-    ConversationCommandIntent? ResolvedIntent = null)
+    ConversationCommandIntent? ResolvedIntent = null,
+    string Locale = "en")
 {
     public ConversationAgentContext(string input, IReadOnlyList<string> batchItems)
         : this(input, batchItems, ConversationScope.Default, null)
