@@ -47,12 +47,6 @@ public interface ITelegramNavigationPresenter
 
     TelegramInlineKeyboardMarkup BuildNotionKeyboard(string locale);
 
-    TelegramInlineKeyboardMarkup BuildFoodMenuKeyboard(string locale);
-
-    TelegramInlineKeyboardMarkup BuildInventoryKeyboard(string locale);
-
-    TelegramInlineKeyboardMarkup BuildInventoryItemKeyboard(string locale, int foodItemId);
-
     TelegramInlineKeyboardMarkup BuildMealCreateConfirmKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildFoodPhotoConfirmKeyboard(string locale);

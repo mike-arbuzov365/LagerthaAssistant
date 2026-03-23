@@ -35,7 +35,7 @@ public sealed class FoodSyncService : IFoodSyncService
 
     public async Task<FoodSyncSummary> SyncFromNotionAsync(CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting Notion → Postgres food sync");
+        _logger.LogInformation("Starting Notion → DB food sync");
 
         var inventoryUpserted = 0;
         var mealsUpserted = 0;
@@ -47,7 +47,7 @@ public sealed class FoodSyncService : IFoodSyncService
         {
             // ── 1. Inventory → FoodItems ──────────────────────────────────
             var inventoryPages = await _notionClient.GetInventoryAsync(cancellationToken);
-            _logger.LogDebug("Fetched {Count} inventory pages from Notion", inventoryPages.Count);
+            _logger.LogInformation("Fetched {Count} inventory pages from Notion", inventoryPages.Count);
 
             // Build a Notion page ID → local FoodItem ID map for later relation linking.
             var notionIdToFoodItemId = new Dictionary<string, int>(inventoryPages.Count);
@@ -84,7 +84,7 @@ public sealed class FoodSyncService : IFoodSyncService
 
             // ── 2. Meal Plans → Meals + MealIngredients ───────────────────
             var mealPages = await _notionClient.GetMealPlansAsync(cancellationToken);
-            _logger.LogDebug("Fetched {Count} meal plan pages from Notion", mealPages.Count);
+            _logger.LogInformation("Fetched {Count} meal plan pages from Notion", mealPages.Count);
 
             foreach (var page in mealPages)
             {
@@ -126,8 +126,17 @@ public sealed class FoodSyncService : IFoodSyncService
 
             // ── 3. Grocery List → GroceryListItems ────────────────────────
             var groceryPages = await _notionClient.GetGroceryListAsync(cancellationToken);
-            _logger.LogDebug("Fetched {Count} grocery list pages from Notion", groceryPages.Count);
+            _logger.LogInformation("Fetched {Count} grocery list pages from Notion", groceryPages.Count);
 
+            if (groceryPages.Count > 0)
+            {
+                var firstPage = groceryPages[0];
+                _logger.LogInformation(
+                    "First grocery page properties: [{PropertyKeys}]",
+                    string.Join(", ", firstPage.Properties.Keys));
+            }
+
+            var grocerySkipped = 0;
             foreach (var page in groceryPages)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -138,6 +147,11 @@ public sealed class FoodSyncService : IFoodSyncService
                 if (existing is null)
                 {
                     var groceryItem = MapToGroceryListItem(page, notionUpdatedAt, notionIdToFoodItemId);
+                    _logger.LogDebug(
+                        "Adding grocery item: Name={Name}, IsBought={IsBought}, NotionPageId={PageId}",
+                        groceryItem.Name,
+                        groceryItem.IsBought,
+                        groceryItem.NotionPageId);
                     await _groceryRepo.AddAsync(groceryItem, cancellationToken);
                     await _unitOfWork.SaveChangesAsync(cancellationToken);
                     groceryUpserted++;
@@ -145,12 +159,24 @@ public sealed class FoodSyncService : IFoodSyncService
                 else if (notionUpdatedAt > existing.NotionUpdatedAt)
                 {
                     UpdateGroceryListItem(existing, page, notionUpdatedAt, notionIdToFoodItemId);
+                    _logger.LogDebug(
+                        "Updated grocery item: Name={Name}, IsBought={IsBought}, NotionPageId={PageId}",
+                        existing.Name,
+                        existing.IsBought,
+                        existing.NotionPageId);
                     await _unitOfWork.SaveChangesAsync(cancellationToken);
                     groceryUpserted++;
                 }
+                else
+                {
+                    grocerySkipped++;
+                }
             }
 
-            _logger.LogInformation("Grocery list sync complete: {Count} upserted", groceryUpserted);
+            _logger.LogInformation(
+                "Grocery list sync complete: {Upserted} upserted, {Skipped} unchanged",
+                groceryUpserted,
+                grocerySkipped);
         }
         catch (OperationCanceledException)
         {
@@ -158,7 +184,12 @@ public sealed class FoodSyncService : IFoodSyncService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Food sync from Notion failed");
+            _logger.LogError(
+                ex,
+                "Food sync from Notion failed. Inventory={Inventory}, Meals={Meals}, Grocery={Grocery}",
+                inventoryUpserted,
+                mealsUpserted,
+                groceryUpserted);
             lastError = ex.Message;
         }
 

@@ -27,7 +27,6 @@ public sealed class LocaleDetectionTests
         Assert.Equal(expectedLocale, result.Locale);
         var stored = Assert.Single(memoryRepo.Entries);
         Assert.Equal(expectedLocale, stored.Value);
-        Assert.NotEqual("ru", stored.Value);
     }
 
     [Theory]
@@ -96,21 +95,14 @@ public sealed class LocaleDetectionTests
 
         public string GetLocaleForUser(string? telegramLanguageCode)
         {
-            if (telegramLanguageCode?.StartsWith("ru", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                return LocalizationConstants.UkrainianLocale;
-            }
-
-            if (telegramLanguageCode?.StartsWith(LocalizationConstants.UkrainianLocale, StringComparison.OrdinalIgnoreCase) == true)
+            if (telegramLanguageCode?.StartsWith("ru", StringComparison.OrdinalIgnoreCase) == true
+                || telegramLanguageCode?.StartsWith(LocalizationConstants.UkrainianLocale, StringComparison.OrdinalIgnoreCase) == true)
             {
                 return LocalizationConstants.UkrainianLocale;
             }
 
             return LocalizationConstants.EnglishLocale;
         }
-
-        public bool IsRussian(string? languageCode)
-            => languageCode?.StartsWith("ru", StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private sealed class TestUserMemoryRepository : IUserMemoryRepository

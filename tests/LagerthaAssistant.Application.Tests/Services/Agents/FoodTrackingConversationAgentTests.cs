@@ -1,6 +1,7 @@
 namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
 using LagerthaAssistant.Application.Constants;
+using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Interfaces.Food;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Food;
@@ -54,7 +55,7 @@ public sealed class FoodTrackingConversationAgentTests
 
         var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Shop.List, []));
 
-        Assert.Equal("food.shop.list", result.Intent);
+        Assert.Equal("food.shop.list.empty", result.Intent);
         Assert.Contains("empty", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -101,7 +102,7 @@ public sealed class FoodTrackingConversationAgentTests
 
         var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Shop.Delete, []));
 
-        Assert.Equal("food.shop.clear", result.Intent);
+        Assert.Equal("food.shop.clear.done", result.Intent);
         Assert.Contains("3", result.Message);
     }
 
@@ -113,7 +114,7 @@ public sealed class FoodTrackingConversationAgentTests
 
         var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Shop.Delete, []));
 
-        Assert.Equal("food.shop.clear", result.Intent);
+        Assert.Equal("food.shop.clear.none", result.Intent);
         Assert.Contains("No bought", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -125,7 +126,7 @@ public sealed class FoodTrackingConversationAgentTests
 
         var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.View, []));
 
-        Assert.Equal("food.weekly.view", result.Intent);
+        Assert.Equal("food.weekly.view.empty", result.Intent);
         Assert.Contains("No meals", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -158,7 +159,7 @@ public sealed class FoodTrackingConversationAgentTests
 
         var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Plan, []));
 
-        Assert.Equal("food.weekly.cookable", result.Intent);
+        Assert.Equal("food.weekly.cookable.empty", result.Intent);
         Assert.Contains("No meals can", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -185,7 +186,7 @@ public sealed class FoodTrackingConversationAgentTests
 
         var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Calories, []));
 
-        Assert.Equal("food.weekly.calories", result.Intent);
+        Assert.Equal("food.weekly.calories.empty", result.Intent);
         Assert.Contains("No calorie data", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -223,7 +224,7 @@ public sealed class FoodTrackingConversationAgentTests
 
         var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Favourites, []));
 
-        Assert.Equal("food.weekly.favourites", result.Intent);
+        Assert.Equal("food.weekly.favourites.empty", result.Intent);
         Assert.Contains("No meal history", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -256,7 +257,7 @@ public sealed class FoodTrackingConversationAgentTests
 
         var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Log, []));
 
-        Assert.Equal("food.weekly.log.prompt", result.Intent);
+        Assert.Equal("food.weekly.log.empty", result.Intent);
         Assert.Contains("No meals found", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -543,7 +544,56 @@ public sealed class FoodTrackingConversationAgentTests
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static FoodTrackingConversationAgent CreateSut(FakeFoodTrackingService? service = null)
-        => new(service ?? new FakeFoodTrackingService());
+        => new(service ?? new FakeFoodTrackingService(), new FakeLocalizationService());
+
+    private sealed class FakeLocalizationService : ILocalizationService
+    {
+        private static readonly IReadOnlyDictionary<string, string> Dict = new Dictionary<string, string>
+        {
+            ["food.shop.list.empty"] = "Shopping list is empty.",
+            ["food.shop.list.title"] = "Shopping list ({0} items):",
+            ["food.shop.list.no_store"] = "No store",
+            ["food.shop.list.store"] = "📍 {0}",
+            ["food.shop.list.item"] = "  • {0}{1}{2}",
+            ["food.shop.add.prompt"] = "What would you like to add to the shopping list?",
+            ["food.shop.clear.none"] = "No bought items to clear.",
+            ["food.shop.clear.done"] = "Cleared {0} bought item(s) from the list.",
+            ["food.shop.added"] = "Added \"{0}\"{1}{2} to your shopping list.",
+            ["food.weekly.view.empty"] = "No meals found. Add some meals to Notion Meal Plans first.",
+            ["food.weekly.view.title"] = "Meal plans ({0} meals):",
+            ["food.weekly.view.ingredients"] = "  Ingredients: {0}{1}",
+            ["food.weekly.cookable.empty"] = "No meals can be prepared with the current inventory.",
+            ["food.weekly.cookable.title"] = "You can cook right now ({0} options):",
+            ["food.weekly.calories.empty"] = "No calorie data for the past 7 days.",
+            ["food.weekly.calories.title"] = "📊 Calories — last 7 days ({0} – {1})",
+            ["food.weekly.calories.total"] = "Total:   {0} kcal",
+            ["food.weekly.calories.avg"] = "Average: {0:F0} kcal/day",
+            ["food.weekly.calories.protein"] = "Protein: {0:F0} g",
+            ["food.weekly.calories.carbs"] = "Carbs:   {0:F0} g",
+            ["food.weekly.calories.fat"] = "Fat:     {0:F0} g",
+            ["food.weekly.favourites.empty"] = "No meal history yet. Log your meals to build your favourites list.",
+            ["food.weekly.favourites.title"] = "⭐ Your top meals ({0}):",
+            ["food.weekly.log.empty"] = "No meals found. Add meals in Notion Meal Plans first, then sync.",
+            ["food.weekly.log.prompt"] = "Which meal did you eat? Reply with the meal ID and optional servings:",
+            ["food.weekly.create.prompt"] = "What meal would you like to create?",
+            ["food.weekly.goal.title"] = "🎯 Daily progress — {0}",
+            ["food.weekly.goal.consumed"] = "Consumed: {0} / {1} kcal",
+            ["food.weekly.goal.remaining"] = "Remaining: {0} kcal",
+            ["food.weekly.goal.meals"] = "Meals logged: {0}",
+            ["food.weekly.diversity.empty"] = "No meals logged in the past 7 days.",
+            ["food.weekly.diversity.title"] = "🥗 Diet diversity — last {0} days",
+            ["food.weekly.diversity.total"] = "Total meals: {0}",
+            ["food.weekly.diversity.unique"] = "Unique meals: {0}",
+            ["food.weekly.diversity.repeated"] = "Most repeated:",
+            ["food.weekly.diversity.score"] = "Diversity score: {0:F0}% unique",
+            ["food.unknown"] = "Use the buttons to navigate Shopping or Weekly Menu.",
+        };
+
+        public string Get(string key, string locale)
+            => Dict.TryGetValue(key, out var v) ? v : $"[{key}]";
+
+        public string GetLocaleForUser(string? telegramLanguageCode) => "en";
+    }
 
     private sealed class FakeFoodTrackingService : IFoodTrackingService
     {
@@ -596,27 +646,9 @@ public sealed class FoodTrackingConversationAgentTests
             => Task.FromResult(new DailyProgressDto(calorieGoal, 800, calorieGoal - 800, 40m, 3));
 
         public Task<DietDiversityDto> GetDietDiversityAsync(int days = 7, CancellationToken cancellationToken = default)
-            => Task.FromResult(DietDiversity);
+            => Task.FromResult(new DietDiversityDto(days, 4, 10, ["Oatmeal"], ["Oatmeal", "Salad", "Pasta", "Soup"]));
 
         public Task<PortionCalculationDto?> CalculatePortionsAsync(int mealId, int targetServings, CancellationToken cancellationToken = default)
             => Task.FromResult<PortionCalculationDto?>(new PortionCalculationDto("Test Meal", 2, targetServings, (decimal)targetServings / 2, []));
-
-        public Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 50, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<FoodItemDto>>(InventoryItems.Take(take).ToList());
-
-        public Task<IReadOnlyList<FoodItemDto>> SearchInventoryAsync(string query, int take = 10, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<FoodItemDto>>(
-                InventoryItems.Where(x => x.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).Take(take).ToList());
-
-        public Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default)
-        {
-            var item = InventoryItems.FirstOrDefault(x => x.Id == foodItemId)
-                ?? throw new InvalidOperationException($"Food item {foodItemId} not found.");
-            return Task.FromResult(new GroceryListItemDto(99, item.Name, quantity, null, store, false));
-        }
-
-        public Task<IReadOnlyList<FoodItemDto>> GetLowStockItemsAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<FoodItemDto>>(
-                InventoryItems.Where(x => x.MinQuantity.HasValue && x.CurrentQuantity.HasValue && x.CurrentQuantity.Value < x.MinQuantity.Value).ToList());
     }
 }

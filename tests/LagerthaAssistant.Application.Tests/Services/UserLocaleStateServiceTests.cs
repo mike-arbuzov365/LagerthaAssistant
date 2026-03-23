@@ -128,21 +128,14 @@ public sealed class UserLocaleStateServiceTests
 
         public string GetLocaleForUser(string? telegramLanguageCode)
         {
-            if (telegramLanguageCode?.StartsWith("ru", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                return LocalizationConstants.UkrainianLocale;
-            }
-
-            if (telegramLanguageCode?.StartsWith("uk", StringComparison.OrdinalIgnoreCase) == true)
+            if (telegramLanguageCode?.StartsWith("ru", StringComparison.OrdinalIgnoreCase) == true
+                || telegramLanguageCode?.StartsWith("uk", StringComparison.OrdinalIgnoreCase) == true)
             {
                 return LocalizationConstants.UkrainianLocale;
             }
 
             return LocalizationConstants.EnglishLocale;
         }
-
-        public bool IsRussian(string? languageCode)
-            => languageCode?.StartsWith("ru", StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private sealed class FakeUserMemoryRepository : IUserMemoryRepository

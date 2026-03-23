@@ -31,18 +31,6 @@ public sealed class LocalizationServiceTests
     }
 
     [Theory]
-    [InlineData("ru", true)]
-    [InlineData("ru-RU", true)]
-    [InlineData("uk", false)]
-    [InlineData("en", false)]
-    [InlineData(null, false)]
-    public void IsRussian_ShouldDetectExpectedCodes(string? languageCode, bool expected)
-    {
-        var sut = new LocalizationService();
-        Assert.Equal(expected, sut.IsRussian(languageCode));
-    }
-
-    [Theory]
     [InlineData("menu.main.title", "en", "What can I help you with?")]
     public void Get_ShouldReturnKnownLocalizedValues(string key, string locale, string expected)
     {
