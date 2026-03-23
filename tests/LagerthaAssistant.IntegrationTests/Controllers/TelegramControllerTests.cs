@@ -1539,7 +1539,6 @@ public sealed class TelegramControllerTests
         Assert.True(payload.Replied);
         Assert.Equal("onboarding.language.selected", payload.Intent);
         Assert.Equal(LocalizationConstants.UkrainianLocale, localeState.StoredLocale);
-        Assert.NotEqual("ru", localeState.StoredLocale);
     }
 
     [Fact]

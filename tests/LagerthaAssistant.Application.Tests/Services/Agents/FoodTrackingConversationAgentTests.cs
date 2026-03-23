@@ -348,8 +348,6 @@ public sealed class FoodTrackingConversationAgentTests
             => Dict.TryGetValue(key, out var v) ? v : $"[{key}]";
 
         public string GetLocaleForUser(string? telegramLanguageCode) => "en";
-
-        public bool IsRussian(string? languageCode) => false;
     }
 
     private sealed class FakeFoodTrackingService : IFoodTrackingService

@@ -1421,7 +1421,4 @@ public sealed class LocalizationService : ILocalizationService
 
     public string GetLocaleForUser(string? telegramLanguageCode)
         => LocalizationConstants.NormalizeLocaleCode(telegramLanguageCode);
-
-    public bool IsRussian(string? languageCode)
-        => languageCode?.StartsWith("ru", StringComparison.OrdinalIgnoreCase) == true;
 }

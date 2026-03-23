@@ -14,8 +14,6 @@ public sealed class LocalizationServiceTests
     [InlineData("en-US", LocalizationConstants.EnglishLocale)]
     [InlineData("uk", LocalizationConstants.UkrainianLocale)]
     [InlineData("uk-UA", LocalizationConstants.UkrainianLocale)]
-    [InlineData("ru", LocalizationConstants.UkrainianLocale)]
-    [InlineData("ru-RU", LocalizationConstants.UkrainianLocale)]
     [InlineData("be", LocalizationConstants.UkrainianLocale)]
     [InlineData("de", LocalizationConstants.GermanLocale)]
     [InlineData("fr", LocalizationConstants.FrenchLocale)]
@@ -28,18 +26,6 @@ public sealed class LocalizationServiceTests
         var locale = sut.GetLocaleForUser(languageCode);
 
         Assert.Equal(expected, locale);
-    }
-
-    [Theory]
-    [InlineData("ru", true)]
-    [InlineData("ru-RU", true)]
-    [InlineData("uk", false)]
-    [InlineData("en", false)]
-    [InlineData(null, false)]
-    public void IsRussian_ShouldDetectExpectedCodes(string? languageCode, bool expected)
-    {
-        var sut = new LocalizationService();
-        Assert.Equal(expected, sut.IsRussian(languageCode));
     }
 
     [Theory]
