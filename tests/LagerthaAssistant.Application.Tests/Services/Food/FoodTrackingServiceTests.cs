@@ -398,6 +398,298 @@ public sealed class FoodTrackingServiceTests
         Assert.Equal(to, historyRepo.LastTo);
     }
 
+    // ── LogQuickMealAsync ────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LogQuickMealAsync_ShouldCreateMealAndHistoryEntry()
+    {
+        var mealRepo = new FakeMealRepository();
+        var historyRepo = new FakeMealHistoryRepository();
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(mealRepo: mealRepo, historyRepo: historyRepo, unitOfWork: uow);
+
+        await sut.LogQuickMealAsync("Sandwich", 350, 1m);
+
+        Assert.Single(mealRepo.AllMeals);
+        Assert.Equal("Sandwich", mealRepo.AllMeals[0].Name);
+        Assert.Equal(350, mealRepo.AllMeals[0].CaloriesPerServing);
+        Assert.StartsWith("photo:", mealRepo.AllMeals[0].NotionPageId, StringComparison.Ordinal);
+
+        Assert.Single(historyRepo.AddedEntries);
+        Assert.Equal(350, historyRepo.AddedEntries[0].CaloriesConsumed);
+        Assert.Equal(1m, historyRepo.AddedEntries[0].Servings);
+        Assert.Equal("Photo log", historyRepo.AddedEntries[0].Notes);
+    }
+
+    [Fact]
+    public async Task LogQuickMealAsync_ShouldClampServingsTo05_WhenZeroOrNegative()
+    {
+        var mealRepo = new FakeMealRepository();
+        var historyRepo = new FakeMealHistoryRepository();
+        var sut = CreateSut(mealRepo: mealRepo, historyRepo: historyRepo);
+
+        await sut.LogQuickMealAsync("Snack", 200, 0m);
+
+        Assert.Equal(0.5m, historyRepo.AddedEntries[0].Servings);
+        Assert.Equal(100, historyRepo.AddedEntries[0].CaloriesConsumed);
+    }
+
+    [Fact]
+    public async Task LogQuickMealAsync_ShouldThrow_WhenNameIsEmpty()
+    {
+        var sut = CreateSut();
+        await Assert.ThrowsAsync<ArgumentException>(() => sut.LogQuickMealAsync("  ", 300, 1m));
+    }
+
+    [Fact]
+    public async Task LogQuickMealAsync_ShouldScaleCalories_ByServings()
+    {
+        var mealRepo = new FakeMealRepository();
+        var historyRepo = new FakeMealHistoryRepository();
+        var sut = CreateSut(mealRepo: mealRepo, historyRepo: historyRepo);
+
+        await sut.LogQuickMealAsync("Pasta", 400, 2.5m);
+
+        Assert.Equal(1000, historyRepo.AddedEntries[0].CaloriesConsumed); // 400 × 2.5
+    }
+
+    // ── GetDailyProgressAsync ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetDailyProgressAsync_ShouldComputeProgressFromSummary()
+    {
+        var summary = new CalorieSummary(DateTime.MinValue, DateTime.MaxValue, 1500, 214, 100, 180, 50);
+        var historyRepo = new FakeMealHistoryRepository
+        {
+            Summary = summary,
+            RangeEntries = [new MealHistory(), new MealHistory(), new MealHistory()]
+        };
+        var sut = CreateSut(historyRepo: historyRepo);
+
+        var result = await sut.GetDailyProgressAsync(calorieGoal: 2000);
+
+        Assert.Equal(2000, result.GoalCalories);
+        Assert.Equal(1500, result.ConsumedCalories);
+        Assert.Equal(500, result.RemainingCalories);
+        Assert.Equal(75m, result.PercentComplete);
+        Assert.Equal(3, result.MealsLogged);
+    }
+
+    [Fact]
+    public async Task GetDailyProgressAsync_ShouldReturnZeroProgress_WhenNoHistory()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.GetDailyProgressAsync(calorieGoal: 2000);
+
+        Assert.Equal(2000, result.GoalCalories);
+        Assert.Equal(0, result.ConsumedCalories);
+        Assert.Equal(2000, result.RemainingCalories);
+        Assert.Equal(0m, result.PercentComplete);
+        Assert.Equal(0, result.MealsLogged);
+    }
+
+    [Fact]
+    public async Task GetDailyProgressAsync_ShouldCapPercentAt100_WhenGoalExceeded()
+    {
+        var summary = new CalorieSummary(DateTime.MinValue, DateTime.MaxValue, 3000, 428, 200, 300, 100);
+        var historyRepo = new FakeMealHistoryRepository { Summary = summary };
+        var sut = CreateSut(historyRepo: historyRepo);
+
+        var result = await sut.GetDailyProgressAsync(calorieGoal: 2000);
+
+        Assert.Equal(100m, result.PercentComplete);
+        Assert.Equal(0, result.RemainingCalories); // clamped to 0
+    }
+
+    // ── GetDietDiversityAsync ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetDietDiversityAsync_ShouldReturnEmpty_WhenNoHistory()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.GetDietDiversityAsync(7);
+
+        Assert.Equal(0, result.UniqueMeals);
+        Assert.Equal(0, result.TotalMeals);
+        Assert.Empty(result.RepeatedMeals);
+    }
+
+    [Fact]
+    public async Task GetDietDiversityAsync_ShouldDetectRepeatedMeals()
+    {
+        var meal1 = new Meal { Id = 1, Name = "Pasta", NotionPageId = "n1" };
+        var meal2 = new Meal { Id = 2, Name = "Soup", NotionPageId = "n2" };
+        var historyRepo = new FakeMealHistoryRepository
+        {
+            RangeEntries =
+            [
+                new MealHistory { MealId = 1, Meal = meal1 },
+                new MealHistory { MealId = 1, Meal = meal1 }, // repeated
+                new MealHistory { MealId = 2, Meal = meal2 }
+            ]
+        };
+        var sut = CreateSut(historyRepo: historyRepo);
+
+        var result = await sut.GetDietDiversityAsync(7);
+
+        Assert.Equal(2, result.UniqueMeals);
+        Assert.Equal(3, result.TotalMeals);
+        Assert.Contains("Pasta", result.RepeatedMeals);
+        Assert.DoesNotContain("Soup", result.RepeatedMeals);
+    }
+
+    [Fact]
+    public async Task GetDietDiversityAsync_ShouldListAllUniqueNames()
+    {
+        var meal1 = new Meal { Id = 1, Name = "Eggs", NotionPageId = "n1" };
+        var meal2 = new Meal { Id = 2, Name = "Rice", NotionPageId = "n2" };
+        var historyRepo = new FakeMealHistoryRepository
+        {
+            RangeEntries =
+            [
+                new MealHistory { MealId = 1, Meal = meal1 },
+                new MealHistory { MealId = 2, Meal = meal2 }
+            ]
+        };
+        var sut = CreateSut(historyRepo: historyRepo);
+
+        var result = await sut.GetDietDiversityAsync(7);
+
+        Assert.Contains("Eggs", result.UniqueMealNames);
+        Assert.Contains("Rice", result.UniqueMealNames);
+    }
+
+    // ── CalculatePortionsAsync ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task CalculatePortionsAsync_ShouldReturnNull_WhenMealNotFound()
+    {
+        var sut = CreateSut();
+        var result = await sut.CalculatePortionsAsync(999, 4);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task CalculatePortionsAsync_ShouldScaleIngredients_ByTargetServings()
+    {
+        var foodItem = new FoodItem { Id = 1, Name = "Flour" };
+        var meal = new Meal
+        {
+            Id = 1,
+            Name = "Cake",
+            NotionPageId = "n1",
+            DefaultServings = 2,
+            Ingredients =
+            [
+                new MealIngredient { FoodItemId = 1, FoodItem = foodItem, Quantity = "200g" }
+            ]
+        };
+        var mealRepo = new FakeMealRepository { AllMeals = [meal] };
+        var sut = CreateSut(mealRepo: mealRepo);
+
+        var result = await sut.CalculatePortionsAsync(1, targetServings: 4);
+
+        Assert.NotNull(result);
+        Assert.Equal("Cake", result.MealName);
+        Assert.Equal(2, result.DefaultServings);
+        Assert.Equal(4, result.TargetServings);
+        Assert.Equal(2m, result.Multiplier);
+        Assert.Single(result.Ingredients);
+        Assert.Equal("Flour", result.Ingredients[0].Name);
+        Assert.Equal("200g", result.Ingredients[0].OriginalQuantity);
+        Assert.Equal("400g", result.Ingredients[0].ScaledQuantity);
+    }
+
+    [Fact]
+    public async Task CalculatePortionsAsync_ShouldLeaveScaledQuantityNull_WhenQuantityIsNull()
+    {
+        var meal = new Meal
+        {
+            Id = 1,
+            Name = "Dish",
+            NotionPageId = "n1",
+            DefaultServings = 1,
+            Ingredients = [new MealIngredient { FoodItemId = 1, Quantity = null }]
+        };
+        var mealRepo = new FakeMealRepository { AllMeals = [meal] };
+        var sut = CreateSut(mealRepo: mealRepo);
+
+        var result = await sut.CalculatePortionsAsync(1, targetServings: 2);
+
+        Assert.Null(result!.Ingredients[0].ScaledQuantity);
+    }
+
+    // ── CreateMealAsync ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateMealAsync_ShouldCreateMealWithNoIngredients()
+    {
+        var mealRepo = new FakeMealRepository();
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(mealRepo: mealRepo, unitOfWork: uow);
+
+        var result = await sut.CreateMealAsync("Salad", 300, 20m, 15m, 10m, 10, 2, []);
+
+        Assert.Equal("Salad", result.Name);
+        Assert.Equal(300, result.CaloriesPerServing);
+        Assert.Single(mealRepo.AllMeals);
+        Assert.StartsWith("local:", mealRepo.AllMeals[0].NotionPageId, StringComparison.Ordinal);
+        Assert.Empty(result.Ingredients);
+    }
+
+    [Fact]
+    public async Task CreateMealAsync_ShouldLinkExistingFoodItem_WhenFound()
+    {
+        var existingFood = new FoodItem { Id = 5, Name = "Tomato" };
+        var foodRepo = new FakeFoodItemRepository { AllItems = [existingFood] };
+        var mealRepo = new FakeMealRepository();
+        var sut = CreateSut(foodItemRepo: foodRepo, mealRepo: mealRepo);
+
+        await sut.CreateMealAsync("Salad", null, null, null, null, null, 2,
+            [("Tomato", "2 pcs")]);
+
+        Assert.Single(mealRepo.AllMeals[0].Ingredients);
+        Assert.Equal(5, mealRepo.AllMeals[0].Ingredients.First().FoodItemId);
+        Assert.Equal("2 pcs", mealRepo.AllMeals[0].Ingredients.First().Quantity);
+    }
+
+    [Fact]
+    public async Task CreateMealAsync_ShouldCreateNewFoodItem_WhenIngredientNotFound()
+    {
+        var foodRepo = new FakeFoodItemRepository();
+        var mealRepo = new FakeMealRepository();
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(foodItemRepo: foodRepo, mealRepo: mealRepo, unitOfWork: uow);
+
+        await sut.CreateMealAsync("Pasta", null, null, null, null, null, 2,
+            [("Garlic", "3 cloves")]);
+
+        Assert.Single(foodRepo.AllItems);
+        Assert.Equal("Garlic", foodRepo.AllItems[0].Name);
+        Assert.Equal(foodRepo.AllItems[0].Id, mealRepo.AllMeals[0].Ingredients.First().FoodItemId);
+    }
+
+    [Fact]
+    public async Task CreateMealAsync_ShouldThrow_WhenNameIsEmpty()
+    {
+        var sut = CreateSut();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            sut.CreateMealAsync("  ", null, null, null, null, null, 2, []));
+    }
+
+    [Fact]
+    public async Task CreateMealAsync_ShouldDefaultServingsTo2_WhenZeroPassed()
+    {
+        var mealRepo = new FakeMealRepository();
+        var sut = CreateSut(mealRepo: mealRepo);
+
+        await sut.CreateMealAsync("Rice", null, null, null, null, null, defaultServings: 0, []);
+
+        Assert.Equal(2, mealRepo.AllMeals[0].DefaultServings);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static FoodTrackingService CreateSut(
@@ -421,6 +713,7 @@ public sealed class FoodTrackingServiceTests
     private sealed class FakeFoodItemRepository : IFoodItemRepository
     {
         public List<FoodItem> AllItems { get; init; } = [];
+        private int _nextId;
 
         public Task<FoodItem?> GetByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default)
             => Task.FromResult<FoodItem?>(AllItems.FirstOrDefault(x => x.NotionPageId == notionPageId));
@@ -438,6 +731,7 @@ public sealed class FoodTrackingServiceTests
 
         public Task AddAsync(FoodItem item, CancellationToken cancellationToken = default)
         {
+            if (item.Id == 0) item.Id = ++_nextId;
             AllItems.Add(item);
             return Task.CompletedTask;
         }
@@ -530,6 +824,7 @@ public sealed class FoodTrackingServiceTests
     {
         public List<MealHistory> AddedEntries { get; } = [];
         public IReadOnlyList<MealFrequency> TopMeals { get; init; } = [];
+        public IReadOnlyList<MealHistory> RangeEntries { get; init; } = [];
         public CalorieSummary Summary { get; init; } = new(DateTime.MinValue, DateTime.MaxValue, 0, 0, 0, 0, 0);
         public DateTime LastFrom { get; private set; }
         public DateTime LastTo { get; private set; }
@@ -541,7 +836,7 @@ public sealed class FoodTrackingServiceTests
         }
 
         public Task<IReadOnlyList<MealHistory>> GetRangeAsync(DateTime from, DateTime to, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<MealHistory>>([]);
+            => Task.FromResult(RangeEntries);
 
         public Task<CalorieSummary> GetCalorieSummaryAsync(DateTime from, DateTime to, CancellationToken cancellationToken = default)
         {

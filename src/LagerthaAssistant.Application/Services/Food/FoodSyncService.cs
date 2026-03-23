@@ -383,7 +383,8 @@ public sealed class FoodSyncService : IFoodSyncService
     {
         if (page.Properties.TryGetValue(key, out var prop) && prop.Date is not null)
         {
-            return DateTime.TryParse(prop.Date.Start, out var dt) ? dt : null;
+            if (DateTime.TryParse(prop.Date.Start, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                return DateTime.SpecifyKind(dt.ToUniversalTime(), DateTimeKind.Utc);
         }
         return null;
     }
@@ -399,8 +400,8 @@ public sealed class FoodSyncService : IFoodSyncService
 
     private static DateTime ParseDateTime(string value)
     {
-        return DateTime.TryParse(value, out var dt)
-            ? dt.ToUniversalTime()
-            : DateTime.MinValue;
+        if (DateTime.TryParse(value, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+            return DateTime.SpecifyKind(dt.ToUniversalTime(), DateTimeKind.Utc);
+        return DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
     }
 }
