@@ -162,6 +162,64 @@ public sealed class FoodSyncServiceTests
         Assert.Empty(existingMeal.Ingredients); // cleared + relinked (no new ingredients in page)
     }
 
+    // ── DateTime UTC kind ────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("2026-01-15T10:30:00Z")]       // explicit UTC
+    [InlineData("2026-01-15T10:30:00+00:00")]  // explicit offset
+    [InlineData("2026-01-15T10:30:00")]         // no timezone — was previously Unspecified
+    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForFoodItemNotionUpdatedAt(string lastEditedTime)
+    {
+        var notion = new FakeNotionFoodClient
+        {
+            InventoryPages = [MakePage("page-1", lastEditedTime,
+                ("Item Name", Title("Apple")))]
+        };
+        var foodRepo = new FakeFoodItemRepository();
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        await sut.SyncFromNotionAsync();
+
+        Assert.Equal(DateTimeKind.Utc, foodRepo.Added[0].NotionUpdatedAt.Kind);
+    }
+
+    [Theory]
+    [InlineData("2026-01-15T10:30:00Z")]
+    [InlineData("2026-01-15T10:30:00")]
+    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForGroceryItemNotionUpdatedAt(string lastEditedTime)
+    {
+        var notion = new FakeNotionFoodClient
+        {
+            GroceryPages = [MakePage("grocery-1", lastEditedTime,
+                ("Item Name", Title("Milk")),
+                ("Bought?", Checkbox(false)))]
+        };
+        var groceryRepo = new FakeGroceryListRepository();
+        var sut = CreateSut(notion: notion, groceryRepo: groceryRepo);
+
+        await sut.SyncFromNotionAsync();
+
+        Assert.Equal(DateTimeKind.Utc, groceryRepo.Added[0].NotionUpdatedAt.Kind);
+    }
+
+    [Theory]
+    [InlineData("2026-01-15T10:30:00Z")]
+    [InlineData("2026-01-15T10:30:00")]
+    public async Task SyncFromNotionAsync_ShouldPersistUtcKind_ForMealNotionUpdatedAt(string lastEditedTime)
+    {
+        var notion = new FakeNotionFoodClient
+        {
+            MealPages = [MakePage("meal-1", lastEditedTime,
+                ("Meal Name", Title("Soup")))]
+        };
+        var mealRepo = new FakeMealRepository();
+        var sut = CreateSut(notion: notion, mealRepo: mealRepo);
+
+        await sut.SyncFromNotionAsync();
+
+        Assert.Equal(DateTimeKind.Utc, mealRepo.Added[0].NotionUpdatedAt.Kind);
+    }
+
     // ── SyncFromNotionAsync – Grocery List ───────────────────────────────────
 
     [Fact]
