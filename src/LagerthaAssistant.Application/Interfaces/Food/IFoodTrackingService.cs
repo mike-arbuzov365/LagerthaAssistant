@@ -27,6 +27,8 @@ public interface IFoodTrackingService
 
     Task<int> ClearBoughtItemsAsync(CancellationToken cancellationToken = default);
 
+    Task<int> DeleteItemsByIdsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default);
+
     // ── Meals ────────────────────────────────────────────────────────────────
 
     Task<IReadOnlyList<MealDto>> GetAllMealsAsync(CancellationToken cancellationToken = default);

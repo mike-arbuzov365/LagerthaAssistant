@@ -179,6 +179,25 @@ public sealed class FoodTrackingServiceTests
         Assert.Equal(3, count);
     }
 
+    [Fact]
+    public async Task DeleteItemsByIdsAsync_ShouldDeleteSelectedItems()
+    {
+        var repo = new FakeGroceryListRepository
+        {
+            ActiveItems =
+            [
+                new GroceryListItem { Id = 1, Name = "Milk", IsBought = false },
+                new GroceryListItem { Id = 2, Name = "Bread", IsBought = false }
+            ]
+        };
+        var sut = CreateSut(groceryRepo: repo);
+
+        var count = await sut.DeleteItemsByIdsAsync([1]);
+
+        Assert.Equal(1, count);
+        Assert.Equal([1], repo.LastDeletedItemIds);
+    }
+
     // ── GetAllMealsAsync ─────────────────────────────────────────────────────
 
     [Fact]
@@ -962,6 +981,7 @@ public sealed class FoodTrackingServiceTests
         public List<GroceryListItem> AllItems { get; init; } = [];
         public List<GroceryListItem> AddedItems { get; } = [];
         public IReadOnlyCollection<int> LastMarkedItemIds { get; private set; } = [];
+        public IReadOnlyCollection<int> LastDeletedItemIds { get; private set; } = [];
         public DateTime? LastMarkedUpdatedAtUtc { get; private set; }
         public int MarkAllBoughtResult { get; init; }
         public int DeleteBoughtResult { get; init; }
@@ -1009,6 +1029,20 @@ public sealed class FoodTrackingServiceTests
 
         public Task<int> DeleteBoughtAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(DeleteBoughtResult);
+
+        public Task<int> DeleteByIdsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default)
+        {
+            LastDeletedItemIds = itemIds.ToArray();
+
+            var ids = itemIds.ToHashSet();
+            var deletedCount = ActiveItems.RemoveAll(item => ids.Contains(item.Id));
+            if (AllItems.Count > 0)
+            {
+                AllItems.RemoveAll(item => ids.Contains(item.Id));
+            }
+
+            return Task.FromResult(deletedCount);
+        }
     }
 
     private sealed class FakeMealHistoryRepository : IMealHistoryRepository

@@ -54,6 +54,16 @@ internal sealed record PendingFoodPhotoLog(
     int EstimatedCalories,
     decimal Servings);
 
+internal sealed record PendingShoppingDeleteSession(
+    IReadOnlyList<PendingShoppingDeleteCandidate> Candidates);
+
+internal sealed record PendingShoppingDeleteCandidate(
+    int Number,
+    int ItemId,
+    string Name,
+    string? Quantity,
+    string? Store);
+
 internal sealed record PendingMealCreation(
     string Name,
     int? CaloriesPerServing,

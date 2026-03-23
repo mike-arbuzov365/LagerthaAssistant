@@ -359,9 +359,13 @@ public sealed class FoodTrackingConversationAgentTests
     // ── AddItemFromTextAsync ──────────────────────────────────────────────────
 
     [Fact]
-    public async Task AddItemFromTextAsync_ShouldParseSingleWordName()
+    public async Task AddItemFromTextAsync_ShouldAddFromInventory_WhenSingleWordMatches()
     {
-        var sut = CreateSut();
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems = [new FoodItemDto(1, "Milk", null, null, null, null)]
+        };
+        var sut = CreateSut(service);
 
         var result = await sut.AddItemFromTextAsync("Milk", CancellationToken.None);
 
@@ -370,9 +374,13 @@ public sealed class FoodTrackingConversationAgentTests
     }
 
     [Fact]
-    public async Task AddItemFromTextAsync_ShouldParseNameAndQuantity()
+    public async Task AddItemFromTextAsync_ShouldParseNameAndQuantity_WhenInventoryMatches()
     {
-        var sut = CreateSut();
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems = [new FoodItemDto(1, "Milk", null, null, null, null)]
+        };
+        var sut = CreateSut(service);
 
         var result = await sut.AddItemFromTextAsync("Milk 2L", CancellationToken.None);
 
@@ -382,9 +390,13 @@ public sealed class FoodTrackingConversationAgentTests
     }
 
     [Fact]
-    public async Task AddItemFromTextAsync_ShouldParseNameQuantityAndStore()
+    public async Task AddItemFromTextAsync_ShouldParseNameQuantityAndStore_WhenInventoryMatches()
     {
-        var sut = CreateSut();
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems = [new FoodItemDto(1, "Milk", null, null, null, null)]
+        };
+        var sut = CreateSut(service);
 
         var result = await sut.AddItemFromTextAsync("Milk | qty:2L | store:SuperMart", CancellationToken.None);
 
@@ -395,9 +407,13 @@ public sealed class FoodTrackingConversationAgentTests
     }
 
     [Fact]
-    public async Task AddItemFromTextAsync_ShouldJoinMultiWordStore()
+    public async Task AddItemFromTextAsync_ShouldJoinMultiWordStore_WhenInventoryMatches()
     {
-        var sut = CreateSut();
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems = [new FoodItemDto(2, "Eggs", null, null, null, null)]
+        };
+        var sut = CreateSut(service);
 
         var result = await sut.AddItemFromTextAsync("Eggs | qty:12pcs | store:Whole Foods Market", CancellationToken.None);
 
@@ -406,14 +422,40 @@ public sealed class FoodTrackingConversationAgentTests
     }
 
     [Fact]
-    public async Task AddItemFromTextAsync_ShouldFallbackToName_WhenInputIsAmbiguous()
+    public async Task AddItemFromTextAsync_ShouldReturnNotInInventory_WhenInputIsAmbiguous()
     {
         var sut = CreateSut();
 
         var result = await sut.AddItemFromTextAsync("Milk 2L SuperMart", CancellationToken.None);
 
-        Assert.Equal("food.shop.added", result.Intent);
-        Assert.Contains("Milk 2L SuperMart", result.Message);
+        Assert.Equal("shop.not_in_inventory", result.Intent);
+        Assert.Contains("not found in inventory", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AddItemFromTextAsync_ShouldRejectCyrillicNames()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.AddItemFromTextAsync("Молоко 2л", CancellationToken.None);
+
+        Assert.Equal("shop.only_english", result.Intent);
+        Assert.Contains("must be in English", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AddItemFromTextAsync_ShouldReturnNotInInventory_WhenNoInventoryMatch()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems = [new FoodItemDto(1, "Banana", null, null, null, null)]
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.AddItemFromTextAsync("Apple", CancellationToken.None);
+
+        Assert.Equal("shop.not_in_inventory", result.Intent);
+        Assert.Contains("Add this product to inventory first", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── Inventory handlers ───────────────────────────────────────────────────
@@ -570,6 +612,9 @@ public sealed class FoodTrackingConversationAgentTests
             ["food.shop.clear.none"] = "No bought items to clear.",
             ["food.shop.clear.done"] = "Cleared {0} bought item(s) from the list.",
             ["food.shop.added"] = "Added \"{0}\"{1}{2} to your shopping list.",
+            ["shop.not_in_inventory"] = "\"{0}\" was not found in inventory, so it was not added to shopping list.",
+            ["shop.only_english"] = "Product name must be in English. Shopping list accepts inventory items only.",
+            ["shop.add_inventory_first"] = "Add this product to inventory first (in English), then add it to shopping list.",
             ["food.weekly.view.empty"] = "No meals found. Add some meals to Notion Meal Plans first.",
             ["food.weekly.view.title"] = "Meal plans ({0} meals):",
             ["food.weekly.view.ingredients"] = "  Ingredients: {0}{1}",
@@ -667,6 +712,9 @@ public sealed class FoodTrackingConversationAgentTests
 
         public Task<int> ClearBoughtItemsAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(ClearedCount);
+
+        public Task<int> DeleteItemsByIdsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default)
+            => Task.FromResult(itemIds.Count);
 
         public Task<IReadOnlyList<MealDto>> GetAllMealsAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(Meals);

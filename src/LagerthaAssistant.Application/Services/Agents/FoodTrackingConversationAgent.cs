@@ -1,6 +1,7 @@
 namespace LagerthaAssistant.Application.Services.Agents;
 
 using System.Text;
+using System.Text.RegularExpressions;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Interfaces.Agents;
@@ -17,6 +18,8 @@ using LagerthaAssistant.Application.Services.Food;
 /// </summary>
 public sealed class FoodTrackingConversationAgent : IConversationAgent, IConversationAgentProfile
 {
+    private static readonly Regex CyrillicRegex = new("[\\u0400-\\u04FF]", RegexOptions.Compiled);
+
     private readonly IFoodTrackingService _foodService;
     private readonly ILocalizationService _loc;
 
@@ -105,7 +108,7 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
             sb.AppendLine(string.Format(_loc.Get("food.shop.list.store", locale), group.Key));
             foreach (var item in group)
             {
-                var qty = item.Quantity is not null ? $" — {item.Quantity}" : string.Empty;
+                var qty = item.Quantity is not null ? $" x {item.Quantity}" : string.Empty;
                 var cost = item.EstimatedCost.HasValue ? $" (~${item.EstimatedCost:F2})" : string.Empty;
                 sb.AppendLine(string.Format(_loc.Get("food.shop.list.item", locale), item.Name, qty, cost));
             }
@@ -373,9 +376,23 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
     {
         var parsed = ShoppingTextInputParser.Parse(input);
         var name = string.IsNullOrWhiteSpace(parsed.ProductName) ? input.Trim() : parsed.ProductName;
-        var item = await _foodService.AddGroceryItemAsync(name, parsed.Quantity, parsed.Store, cancellationToken);
+        if (CyrillicRegex.IsMatch(name))
+        {
+            return Result("shop.only_english", _loc.Get("shop.only_english", locale));
+        }
 
-        var qty = item.Quantity is not null ? $" × {item.Quantity}" : string.Empty;
+        var inventoryMatches = await _foodService.SearchInventoryAsync(name, 1, cancellationToken);
+        if (inventoryMatches.Count == 0)
+        {
+            return Result(
+                "shop.not_in_inventory",
+                $"{string.Format(_loc.Get("shop.not_in_inventory", locale), name)}\n{_loc.Get("shop.add_inventory_first", locale)}");
+        }
+
+        var matched = inventoryMatches[0];
+        var item = await _foodService.AddToShoppingFromInventoryAsync(matched.Id, parsed.Quantity, parsed.Store, cancellationToken);
+
+        var qty = item.Quantity is not null ? $" x {item.Quantity}" : string.Empty;
         var st = item.Store is not null ? $" at {item.Store}" : string.Empty;
 
         return Result("food.shop.added", string.Format(_loc.Get("food.shop.added", locale), item.Name, qty, st));
@@ -400,3 +417,4 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
     private static ConversationAgentResult Result(string intent, string message)
         => ConversationAgentResult.Empty("food-tracking-agent", intent, message);
 }
+

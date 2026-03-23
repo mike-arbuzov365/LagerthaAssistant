@@ -47,6 +47,7 @@ public sealed class TelegramController : ControllerBase
     private static readonly Regex LeadingDecorationRegex = new("^[^\\p{L}\\p{N}]+", RegexOptions.Compiled);
     private static readonly Regex SentenceSplitRegex = new("(?<=[\\.!\\?])\\s+", RegexOptions.Compiled);
     private static readonly Regex LeadingWordSeparatorRegex = new("^[\\s:;,.!\\-–—]+", RegexOptions.Compiled);
+    private static readonly Regex CyrillicRegex = new("[\\u0400-\\u04FF]", RegexOptions.Compiled);
     private static readonly string[] PrimaryPartOfSpeechMarkers = ["n", "v", "pv", "iv", "adv", "prep"];
     private static readonly string[] UrlSelectionPosOrder = ["n", "v", "adj"];
     private static readonly string AutomaticReleaseVersionToken = "auto";
@@ -362,6 +363,7 @@ public sealed class TelegramController : ControllerBase
             case NavigationRouteKind.MainChatButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Chat, cancellationToken);
                 _pendingStateStore.ChatActions.TryRemove(BuildPendingChatActionKey(scope), out _);
+                _pendingStateStore.ShoppingDeleteSessions.TryRemove(BuildPendingShoppingDeleteKey(scope), out _);
                 return new TelegramRouteResponse(
                     "nav.main.chat",
                     _navigationPresenter.GetText("menu.chat.title", locale),
@@ -437,10 +439,12 @@ public sealed class TelegramController : ControllerBase
 
             case NavigationRouteKind.MainVocabularyButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Vocabulary, cancellationToken);
+                _pendingStateStore.ShoppingDeleteSessions.TryRemove(BuildPendingShoppingDeleteKey(scope), out _);
                 return await BuildVocabularySectionResponseAsync(locale, cancellationToken);
 
             case NavigationRouteKind.MainShoppingButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Shopping, cancellationToken);
+                _pendingStateStore.ShoppingDeleteSessions.TryRemove(BuildPendingShoppingDeleteKey(scope), out _);
                 return new TelegramRouteResponse(
                     "nav.food",
                     _navigationPresenter.GetText("menu.food.title", locale),
@@ -448,6 +452,7 @@ public sealed class TelegramController : ControllerBase
 
             case NavigationRouteKind.MainWeeklyMenuButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.WeeklyMenu, cancellationToken);
+                _pendingStateStore.ShoppingDeleteSessions.TryRemove(BuildPendingShoppingDeleteKey(scope), out _);
                 return new TelegramRouteResponse(
                     "nav.weekly",
                     _navigationPresenter.GetText("menu.weekly.title", locale),
@@ -455,6 +460,7 @@ public sealed class TelegramController : ControllerBase
 
             case NavigationRouteKind.MainSettingsButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
+                _pendingStateStore.ShoppingDeleteSessions.TryRemove(BuildPendingShoppingDeleteKey(scope), out _);
                 return await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken);
 
             case NavigationRouteKind.Callback:
@@ -483,7 +489,7 @@ public sealed class TelegramController : ControllerBase
                 }
 
             case NavigationRouteKind.ShoppingText:
-                return await HandleShoppingTextAsync(inbound.Text, locale, cancellationToken);
+                return await HandleShoppingTextAsync(inbound.Text, locale, scope, cancellationToken);
 
             case NavigationRouteKind.InventoryText:
                 return await HandleInventoryTextAsync(inbound.Text, locale, scope, cancellationToken);
@@ -961,6 +967,7 @@ public sealed class TelegramController : ControllerBase
             await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Main, cancellationToken);
             _pendingStateStore.VocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
             _pendingStateStore.ChatActions.TryRemove(BuildPendingChatActionKey(scope), out _);
+            _pendingStateStore.ShoppingDeleteSessions.TryRemove(BuildPendingShoppingDeleteKey(scope), out _);
             return new TelegramRouteResponse(
                 "nav.main",
                 _navigationPresenter.GetText("menu.main.title", locale),
@@ -3583,6 +3590,9 @@ public sealed class TelegramController : ControllerBase
     private static string BuildPendingUrlSessionKey(ConversationScope scope)
         => string.Concat(scope.Channel, ":", scope.UserId, ":", scope.ConversationId);
 
+    private static string BuildPendingShoppingDeleteKey(ConversationScope scope)
+        => string.Concat(scope.Channel, ":", scope.UserId, ":", scope.ConversationId);
+
     private sealed record ConfiguredDeckTarget(
         string Marker,
         string DeckFileName);
@@ -3852,6 +3862,16 @@ public sealed class TelegramController : ControllerBase
             return HandlePhotoLogCancel(scope, locale);
         }
 
+        if (string.Equals(callbackData, CallbackDataConstants.Shop.Delete, StringComparison.Ordinal))
+        {
+            return await HandleShoppingDeleteStartAsync(locale, scope, cancellationToken);
+        }
+
+        if (callbackData.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal))
+        {
+            _pendingStateStore.ShoppingDeleteSessions.TryRemove(BuildPendingShoppingDeleteKey(scope), out _);
+        }
+
         var result = await _orchestrator.ProcessAsync(
             callbackData,
             TelegramChannel,
@@ -3876,6 +3896,7 @@ public sealed class TelegramController : ControllerBase
     private async Task<TelegramRouteResponse> HandleShoppingTextAsync(
         string text,
         string locale,
+        ConversationScope scope,
         CancellationToken cancellationToken)
     {
         if (_foodTrackingService is null || string.IsNullOrWhiteSpace(text))
@@ -3884,6 +3905,17 @@ public sealed class TelegramController : ControllerBase
                 "shopping.text",
                 _navigationPresenter.GetText("stub.wip", locale),
                 InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+        }
+
+        var pendingDeleteKey = BuildPendingShoppingDeleteKey(scope);
+        if (_pendingStateStore.ShoppingDeleteSessions.TryGetValue(pendingDeleteKey, out var pendingDeleteSession))
+        {
+            return await HandleShoppingDeleteSelectionAsync(
+                text,
+                locale,
+                pendingDeleteKey,
+                pendingDeleteSession,
+                cancellationToken);
         }
 
         var parsed = ShoppingTextInputParser.Parse(text);
@@ -3896,6 +3928,14 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "food.shop.add.prompt",
                 _navigationPresenter.GetText("food.shop.add.prompt", locale),
+                InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+        }
+
+        if (CyrillicRegex.IsMatch(name))
+        {
+            return new TelegramRouteResponse(
+                "shop.only_english",
+                _navigationPresenter.GetText("shop.only_english", locale),
                 InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
         }
 
@@ -3914,15 +3954,174 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
         }
 
-        // No inventory match — add as free-text item
-        var item = await _foodTrackingService.AddGroceryItemAsync(name, quantity, store, cancellationToken);
-        var itemQty = BuildShoppingQuantitySuffix(item.Quantity, locale);
-        var itemSt = BuildShoppingStoreSuffix(item.Store, locale);
+        // No inventory match — do not add free-text items to shopping.
         var warning = _navigationPresenter.GetText("shop.not_in_inventory", locale, name);
+        var englishHint = _navigationPresenter.GetText("shop.add_inventory_first", locale);
         return new TelegramRouteResponse(
-            "food.shop.added",
-            $"{_navigationPresenter.GetText("food.shop.added", locale, item.Name, itemQty, itemSt)}\n{warning}",
+            "shop.not_in_inventory",
+            $"{warning}\n{englishHint}",
             InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandleShoppingDeleteStartAsync(
+        string locale,
+        ConversationScope scope,
+        CancellationToken cancellationToken)
+    {
+        if (_foodTrackingService is null)
+        {
+            return new TelegramRouteResponse(
+                "shopping.text",
+                _navigationPresenter.GetText("stub.wip", locale),
+                InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+        }
+
+        var items = await _foodTrackingService.GetActiveGroceryListAsync(cancellationToken);
+        if (items.Count == 0)
+        {
+            _pendingStateStore.ShoppingDeleteSessions.TryRemove(BuildPendingShoppingDeleteKey(scope), out _);
+            return new TelegramRouteResponse(
+                "food.shop.list.empty",
+                _navigationPresenter.GetText("food.shop.list.empty", locale),
+                InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+        }
+
+        var candidates = items
+            .Select((item, index) => new PendingShoppingDeleteCandidate(
+                index + 1,
+                item.Id,
+                item.Name,
+                item.Quantity,
+                item.Store))
+            .ToList();
+
+        _pendingStateStore.ShoppingDeleteSessions[BuildPendingShoppingDeleteKey(scope)] = new PendingShoppingDeleteSession(candidates);
+
+        var sb = new StringBuilder();
+        sb.AppendLine(_navigationPresenter.GetText("food.shop.delete.prompt.title", locale, candidates.Count));
+        sb.AppendLine();
+
+        foreach (var candidate in candidates)
+        {
+            var qty = string.IsNullOrWhiteSpace(candidate.Quantity) ? string.Empty : $" x {candidate.Quantity}";
+            var store = string.IsNullOrWhiteSpace(candidate.Store) ? string.Empty : $" ({candidate.Store})";
+            sb.AppendLine(_navigationPresenter.GetText(
+                "food.shop.delete.prompt.item",
+                locale,
+                candidate.Number,
+                $"{candidate.Name}{qty}{store}"));
+        }
+
+        sb.AppendLine();
+        sb.AppendLine(_navigationPresenter.GetText("food.shop.delete.prompt.hint", locale));
+
+        return new TelegramRouteResponse(
+            "food.shop.delete.prompt",
+            sb.ToString().TrimEnd(),
+            InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandleShoppingDeleteSelectionAsync(
+        string text,
+        string locale,
+        string pendingDeleteKey,
+        PendingShoppingDeleteSession pendingDeleteSession,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return new TelegramRouteResponse(
+                "food.shop.delete.invalid",
+                _navigationPresenter.GetText("food.shop.delete.invalid", locale),
+                InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+        }
+
+        var normalized = text.Trim();
+        if (normalized.Equals("/cancel", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("cancel", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("скасувати", StringComparison.OrdinalIgnoreCase))
+        {
+            _pendingStateStore.ShoppingDeleteSessions.TryRemove(pendingDeleteKey, out _);
+            return new TelegramRouteResponse(
+                "food.shop.delete.cancelled",
+                _navigationPresenter.GetText("food.shop.delete.cancelled", locale),
+                InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+        }
+
+        var selectedIds = ResolveShoppingDeleteSelection(pendingDeleteSession.Candidates, normalized);
+        if (selectedIds.Count == 0)
+        {
+            return new TelegramRouteResponse(
+                "food.shop.delete.no_match",
+                _navigationPresenter.GetText("food.shop.delete.no_match", locale),
+                InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+        }
+
+        var deleted = await _foodTrackingService!.DeleteItemsByIdsAsync(selectedIds, cancellationToken);
+        _pendingStateStore.ShoppingDeleteSessions.TryRemove(pendingDeleteKey, out _);
+
+        return new TelegramRouteResponse(
+            "food.shop.delete.done",
+            _navigationPresenter.GetText("food.shop.delete.done", locale, deleted),
+            InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+    }
+
+    private static IReadOnlyCollection<int> ResolveShoppingDeleteSelection(
+        IReadOnlyList<PendingShoppingDeleteCandidate> candidates,
+        string input)
+    {
+        var selected = new HashSet<int>();
+
+        var tokens = input
+            .Split([',', ';', '\n'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(token => token.Trim())
+            .Where(token => token.Length > 0)
+            .ToList();
+
+        if (tokens.Count == 0)
+        {
+            return [];
+        }
+
+        foreach (var token in tokens)
+        {
+            if (int.TryParse(token, out var number))
+            {
+                var numericMatch = candidates.FirstOrDefault(candidate => candidate.Number == number);
+                if (numericMatch is not null)
+                {
+                    selected.Add(numericMatch.ItemId);
+                }
+
+                continue;
+            }
+
+            var exactMatches = candidates
+                .Where(candidate => string.Equals(candidate.Name, token, StringComparison.OrdinalIgnoreCase))
+                .Select(candidate => candidate.ItemId)
+                .ToList();
+            if (exactMatches.Count > 0)
+            {
+                foreach (var id in exactMatches)
+                {
+                    selected.Add(id);
+                }
+
+                continue;
+            }
+
+            var containsMatches = candidates
+                .Where(candidate => candidate.Name.Contains(token, StringComparison.OrdinalIgnoreCase))
+                .Select(candidate => candidate.ItemId)
+                .ToList();
+
+            foreach (var id in containsMatches)
+            {
+                selected.Add(id);
+            }
+        }
+
+        return selected.ToList();
     }
 
     private async Task<TelegramRouteResponse> HandleWeeklyMenuTextAsync(

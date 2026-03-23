@@ -679,6 +679,7 @@ public sealed class FoodSyncServiceTests
 
         public Task<int> MarkAllBoughtAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<int> DeleteBoughtAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+        public Task<int> DeleteByIdsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

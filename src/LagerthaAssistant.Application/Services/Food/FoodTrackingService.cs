@@ -174,6 +174,15 @@ public sealed class FoodTrackingService : IFoodTrackingService
         return deleted;
     }
 
+    public async Task<int> DeleteItemsByIdsAsync(
+        IReadOnlyCollection<int> itemIds,
+        CancellationToken cancellationToken = default)
+    {
+        var deleted = await _groceryRepo.DeleteByIdsAsync(itemIds, cancellationToken);
+        _logger.LogInformation("Deleted {Count} selected grocery items", deleted);
+        return deleted;
+    }
+
     // ── Meals ─────────────────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<MealDto>> GetAllMealsAsync(CancellationToken cancellationToken = default)
