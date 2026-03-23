@@ -12,6 +12,8 @@ using Xunit;
 public sealed class LocaleDetectionTests
 {
     [Theory]
+    [InlineData("ru", "Привет", LocalizationConstants.UkrainianLocale)]
+    [InlineData("ru-RU", "Привет", LocalizationConstants.UkrainianLocale)]
     [InlineData("uk", "Привіт", LocalizationConstants.UkrainianLocale)]
     [InlineData("en", "Hello", LocalizationConstants.EnglishLocale)]
     [InlineData(null, "Hello", LocalizationConstants.EnglishLocale)]
@@ -93,7 +95,8 @@ public sealed class LocaleDetectionTests
 
         public string GetLocaleForUser(string? telegramLanguageCode)
         {
-            if (telegramLanguageCode?.StartsWith(LocalizationConstants.UkrainianLocale, StringComparison.OrdinalIgnoreCase) == true)
+            if (telegramLanguageCode?.StartsWith("ru", StringComparison.OrdinalIgnoreCase) == true
+                || telegramLanguageCode?.StartsWith(LocalizationConstants.UkrainianLocale, StringComparison.OrdinalIgnoreCase) == true)
             {
                 return LocalizationConstants.UkrainianLocale;
             }

@@ -19,7 +19,8 @@ public static class LocalizationConstants
             return EnglishLocale;
         }
 
-        if (normalized.StartsWith("be", StringComparison.Ordinal)
+        if (normalized.StartsWith("ru", StringComparison.Ordinal)
+            || normalized.StartsWith("be", StringComparison.Ordinal)
             || normalized.StartsWith(UkrainianLocale, StringComparison.Ordinal))
         {
             return UkrainianLocale;

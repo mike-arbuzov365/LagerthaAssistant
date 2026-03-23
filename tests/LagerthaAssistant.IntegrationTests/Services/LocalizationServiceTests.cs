@@ -14,6 +14,8 @@ public sealed class LocalizationServiceTests
     [InlineData("en-US", LocalizationConstants.EnglishLocale)]
     [InlineData("uk", LocalizationConstants.UkrainianLocale)]
     [InlineData("uk-UA", LocalizationConstants.UkrainianLocale)]
+    [InlineData("ru", LocalizationConstants.UkrainianLocale)]
+    [InlineData("ru-RU", LocalizationConstants.UkrainianLocale)]
     [InlineData("be", LocalizationConstants.UkrainianLocale)]
     [InlineData("de", LocalizationConstants.GermanLocale)]
     [InlineData("fr", LocalizationConstants.FrenchLocale)]

@@ -21,7 +21,7 @@ public sealed class UserLocaleStateServiceTests
             new FakeLocalizationService(),
             new FakeClock());
 
-        var result = await sut.EnsureLocaleAsync("telegram", "user-1", "uk", "привіт");
+        var result = await sut.EnsureLocaleAsync("telegram", "user-1", "ru", "hello");
 
         Assert.True(result.IsInitialized);
         Assert.Equal(LocalizationConstants.UkrainianLocale, result.Locale);
@@ -111,7 +111,7 @@ public sealed class UserLocaleStateServiceTests
             new FakeLocalizationService(),
             new FakeClock());
 
-        var locale = await sut.SetLocaleAsync("telegram", "user-1", "uk", selectedManually: true);
+        var locale = await sut.SetLocaleAsync("telegram", "user-1", "ru", selectedManually: true);
 
         Assert.Equal(LocalizationConstants.UkrainianLocale, locale);
 
@@ -128,7 +128,8 @@ public sealed class UserLocaleStateServiceTests
 
         public string GetLocaleForUser(string? telegramLanguageCode)
         {
-            if (telegramLanguageCode?.StartsWith("uk", StringComparison.OrdinalIgnoreCase) == true)
+            if (telegramLanguageCode?.StartsWith("ru", StringComparison.OrdinalIgnoreCase) == true
+                || telegramLanguageCode?.StartsWith("uk", StringComparison.OrdinalIgnoreCase) == true)
             {
                 return LocalizationConstants.UkrainianLocale;
             }
