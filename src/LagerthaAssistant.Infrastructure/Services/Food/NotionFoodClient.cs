@@ -140,7 +140,11 @@ public sealed class NotionFoodClient : INotionFoodClient
             };
             AddHeaders(request);
 
-            _logger.LogDebug("Querying Notion database {Label} cursor={Cursor}", label, cursor ?? "start");
+            _logger.LogInformation(
+                "Querying Notion database {Label} (id={DatabaseId}) cursor={Cursor}",
+                label,
+                databaseId,
+                cursor ?? "start");
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
@@ -166,7 +170,7 @@ public sealed class NotionFoodClient : INotionFoodClient
 
         } while (cursor is not null);
 
-        _logger.LogDebug("Fetched {Count} pages from Notion database {Label}", allPages.Count, label);
+        _logger.LogInformation("Fetched total {Count} pages from Notion database {Label}", allPages.Count, label);
         return allPages;
     }
 
