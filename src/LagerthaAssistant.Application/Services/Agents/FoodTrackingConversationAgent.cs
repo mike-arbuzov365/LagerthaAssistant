@@ -2,6 +2,7 @@ namespace LagerthaAssistant.Application.Services.Agents;
 
 using System.Text;
 using LagerthaAssistant.Application.Constants;
+using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Food;
 using LagerthaAssistant.Application.Models.Agents;
@@ -16,10 +17,12 @@ using LagerthaAssistant.Application.Models.Food;
 public sealed class FoodTrackingConversationAgent : IConversationAgent, IConversationAgentProfile
 {
     private readonly IFoodTrackingService _foodService;
+    private readonly ILocalizationService _loc;
 
-    public FoodTrackingConversationAgent(IFoodTrackingService foodService)
+    public FoodTrackingConversationAgent(IFoodTrackingService foodService, ILocalizationService loc)
     {
         _foodService = foodService;
+        _loc = loc;
     }
 
     public string Name => "food-tracking-agent";
@@ -45,84 +48,85 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         CancellationToken cancellationToken = default)
     {
         var input = context.Input.Trim();
+        var locale = context.Locale;
 
         return input switch
         {
-            CallbackDataConstants.Shop.List => await HandleShopListAsync(cancellationToken),
-            CallbackDataConstants.Shop.Add => HandleShopAddPrompt(),
-            CallbackDataConstants.Shop.Delete => await HandleShopClearAsync(cancellationToken),
-            CallbackDataConstants.Weekly.View => await HandleWeeklyViewAsync(cancellationToken),
-            CallbackDataConstants.Weekly.Plan => await HandleCookableNowAsync(cancellationToken),
-            CallbackDataConstants.Weekly.Calories => await HandleWeeklyCaloriesAsync(cancellationToken),
-            CallbackDataConstants.Weekly.Favourites => await HandleFavouriteMealsAsync(cancellationToken),
-            CallbackDataConstants.Weekly.Log => await HandleLogMealPromptAsync(cancellationToken),
-            CallbackDataConstants.Weekly.Create => HandleMealCreatePrompt(),
-            CallbackDataConstants.Weekly.DailyGoal => await HandleDailyGoalAsync(cancellationToken),
-            CallbackDataConstants.Weekly.Diversity => await HandleDietDiversityAsync(cancellationToken),
-            _ => Result("food.unknown", "Use the buttons to navigate Shopping or Weekly Menu.")
+            CallbackDataConstants.Shop.List => await HandleShopListAsync(locale, cancellationToken),
+            CallbackDataConstants.Shop.Add => HandleShopAddPrompt(locale),
+            CallbackDataConstants.Shop.Delete => await HandleShopClearAsync(locale, cancellationToken),
+            CallbackDataConstants.Weekly.View => await HandleWeeklyViewAsync(locale, cancellationToken),
+            CallbackDataConstants.Weekly.Plan => await HandleCookableNowAsync(locale, cancellationToken),
+            CallbackDataConstants.Weekly.Calories => await HandleWeeklyCaloriesAsync(locale, cancellationToken),
+            CallbackDataConstants.Weekly.Favourites => await HandleFavouriteMealsAsync(locale, cancellationToken),
+            CallbackDataConstants.Weekly.Log => await HandleLogMealPromptAsync(locale, cancellationToken),
+            CallbackDataConstants.Weekly.Create => HandleMealCreatePrompt(locale),
+            CallbackDataConstants.Weekly.DailyGoal => await HandleDailyGoalAsync(locale, cancellationToken),
+            CallbackDataConstants.Weekly.Diversity => await HandleDietDiversityAsync(locale, cancellationToken),
+            _ => Result("food.unknown", _loc.Get("food.unknown", locale))
         };
     }
 
     // ── Handlers ─────────────────────────────────────────────────────────────
 
-    internal async Task<ConversationAgentResult> HandleShopListAsync(CancellationToken cancellationToken)
+    internal async Task<ConversationAgentResult> HandleShopListAsync(string locale, CancellationToken cancellationToken)
     {
         var items = await _foodService.GetActiveGroceryListAsync(cancellationToken);
 
         if (items.Count == 0)
         {
-            return Result("food.shop.list", "Shopping list is empty.");
+            return Result("food.shop.list.empty", _loc.Get("food.shop.list.empty", locale));
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"Shopping list ({items.Count} items):");
+        sb.AppendLine(string.Format(_loc.Get("food.shop.list.title", locale), items.Count));
         sb.AppendLine();
 
+        var noStore = _loc.Get("food.shop.list.no_store", locale);
         var byStore = items
-            .GroupBy(x => x.Store ?? "No store")
+            .GroupBy(x => x.Store ?? noStore)
             .OrderBy(g => g.Key);
 
         foreach (var group in byStore)
         {
-            sb.AppendLine($"📍 {group.Key}");
+            sb.AppendLine(string.Format(_loc.Get("food.shop.list.store", locale), group.Key));
             foreach (var item in group)
             {
                 var qty = item.Quantity is not null ? $" — {item.Quantity}" : string.Empty;
                 var cost = item.EstimatedCost.HasValue ? $" (~${item.EstimatedCost:F2})" : string.Empty;
-                sb.AppendLine($"  • {item.Name}{qty}{cost}");
+                sb.AppendLine(string.Format(_loc.Get("food.shop.list.item", locale), item.Name, qty, cost));
             }
+
             sb.AppendLine();
         }
 
         return Result("food.shop.list", sb.ToString().TrimEnd());
     }
 
-    internal static ConversationAgentResult HandleShopAddPrompt()
+    internal ConversationAgentResult HandleShopAddPrompt(string locale)
     {
-        return Result(
-            "food.shop.add.prompt",
-            "What would you like to add to the shopping list? Type the item name (and optionally quantity and store, e.g. \"Milk 2L SuperMart\").");
+        return Result("food.shop.add.prompt", _loc.Get("food.shop.add.prompt", locale));
     }
 
-    internal async Task<ConversationAgentResult> HandleShopClearAsync(CancellationToken cancellationToken)
+    internal async Task<ConversationAgentResult> HandleShopClearAsync(string locale, CancellationToken cancellationToken)
     {
         var deleted = await _foodService.ClearBoughtItemsAsync(cancellationToken);
         return deleted == 0
-            ? Result("food.shop.clear", "No bought items to clear.")
-            : Result("food.shop.clear", $"Cleared {deleted} bought item(s) from the list.");
+            ? Result("food.shop.clear.none", _loc.Get("food.shop.clear.none", locale))
+            : Result("food.shop.clear.done", string.Format(_loc.Get("food.shop.clear.done", locale), deleted));
     }
 
-    internal async Task<ConversationAgentResult> HandleWeeklyViewAsync(CancellationToken cancellationToken)
+    internal async Task<ConversationAgentResult> HandleWeeklyViewAsync(string locale, CancellationToken cancellationToken)
     {
         var meals = await _foodService.GetAllMealsAsync(cancellationToken);
 
         if (meals.Count == 0)
         {
-            return Result("food.weekly.view", "No meals found. Add some meals to Notion Meal Plans first.");
+            return Result("food.weekly.view.empty", _loc.Get("food.weekly.view.empty", locale));
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"Meal plans ({meals.Count} meals):");
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.view.title", locale), meals.Count));
         sb.AppendLine();
 
         foreach (var meal in meals)
@@ -134,26 +138,25 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
             if (meal.Ingredients.Count > 0)
             {
                 var ingredientNames = meal.Ingredients.Take(5).Select(i => i.Name);
-                sb.AppendLine($"  Ingredients: {string.Join(", ", ingredientNames)}{(meal.Ingredients.Count > 5 ? "..." : string.Empty)}");
+                var more = meal.Ingredients.Count > 5 ? "..." : string.Empty;
+                sb.AppendLine(string.Format(_loc.Get("food.weekly.view.ingredients", locale), string.Join(", ", ingredientNames), more));
             }
         }
 
         return Result("food.weekly.view", sb.ToString().TrimEnd());
     }
 
-    internal async Task<ConversationAgentResult> HandleCookableNowAsync(CancellationToken cancellationToken)
+    internal async Task<ConversationAgentResult> HandleCookableNowAsync(string locale, CancellationToken cancellationToken)
     {
         var meals = await _foodService.GetCookableNowAsync(cancellationToken);
 
         if (meals.Count == 0)
         {
-            return Result(
-                "food.weekly.cookable",
-                "No meals can be prepared with the current inventory. Try syncing from Notion or adding items to your inventory.");
+            return Result("food.weekly.cookable.empty", _loc.Get("food.weekly.cookable.empty", locale));
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"You can cook right now ({meals.Count} options):");
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.cookable.title", locale), meals.Count));
         sb.AppendLine();
 
         foreach (var meal in meals)
@@ -165,7 +168,7 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         return Result("food.weekly.cookable", sb.ToString().TrimEnd());
     }
 
-    internal async Task<ConversationAgentResult> HandleWeeklyCaloriesAsync(CancellationToken cancellationToken)
+    internal async Task<ConversationAgentResult> HandleWeeklyCaloriesAsync(string locale, CancellationToken cancellationToken)
     {
         var to = DateTime.UtcNow;
         var from = to.AddDays(-7).Date;
@@ -173,35 +176,33 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
 
         if (summary.TotalCalories == 0)
         {
-            return Result(
-                "food.weekly.calories",
-                "No calorie data for the past 7 days. Use /meal log to record what you eat.");
+            return Result("food.weekly.calories.empty", _loc.Get("food.weekly.calories.empty", locale));
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"📊 Calories — last 7 days ({from:MMM d} – {to:MMM d})");
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.calories.title", locale), from.ToString("MMM d"), to.ToString("MMM d")));
         sb.AppendLine();
-        sb.AppendLine($"Total:   {summary.TotalCalories} kcal");
-        sb.AppendLine($"Average: {summary.AvgCaloriesPerDay:F0} kcal/day");
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.calories.total", locale), summary.TotalCalories));
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.calories.avg", locale), summary.AvgCaloriesPerDay));
         sb.AppendLine();
-        sb.AppendLine($"Protein: {summary.TotalProteinGrams:F0} g");
-        sb.AppendLine($"Carbs:   {summary.TotalCarbsGrams:F0} g");
-        sb.AppendLine($"Fat:     {summary.TotalFatGrams:F0} g");
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.calories.protein", locale), summary.TotalProteinGrams));
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.calories.carbs", locale), summary.TotalCarbsGrams));
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.calories.fat", locale), summary.TotalFatGrams));
 
         return Result("food.weekly.calories", sb.ToString().TrimEnd());
     }
 
-    internal async Task<ConversationAgentResult> HandleFavouriteMealsAsync(CancellationToken cancellationToken)
+    internal async Task<ConversationAgentResult> HandleFavouriteMealsAsync(string locale, CancellationToken cancellationToken)
     {
         var meals = await _foodService.GetFavouriteMealsAsync(take: 10, cancellationToken);
 
         if (meals.Count == 0)
         {
-            return Result("food.weekly.favourites", "No meal history yet. Log your meals to build your favourites list.");
+            return Result("food.weekly.favourites.empty", _loc.Get("food.weekly.favourites.empty", locale));
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"⭐ Your top meals ({meals.Count}):");
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.favourites.title", locale), meals.Count));
         sb.AppendLine();
 
         for (var i = 0; i < meals.Count; i++)
@@ -214,18 +215,17 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         return Result("food.weekly.favourites", sb.ToString().TrimEnd());
     }
 
-    internal async Task<ConversationAgentResult> HandleLogMealPromptAsync(CancellationToken cancellationToken)
+    internal async Task<ConversationAgentResult> HandleLogMealPromptAsync(string locale, CancellationToken cancellationToken)
     {
         var meals = await _foodService.GetAllMealsAsync(cancellationToken);
 
         if (meals.Count == 0)
         {
-            return Result("food.weekly.log.prompt", "No meals found. Add meals in Notion Meal Plans first, then sync.");
+            return Result("food.weekly.log.empty", _loc.Get("food.weekly.log.empty", locale));
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine("Which meal did you eat? Reply with the meal ID and optional servings:");
-        sb.AppendLine("  Format: <id>  or  <id> <servings>  (e.g. \"5\" or \"5 2.5\")");
+        sb.AppendLine(_loc.Get("food.weekly.log.prompt", locale));
         sb.AppendLine();
 
         foreach (var meal in meals)
@@ -237,54 +237,54 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         return Result("food.weekly.log.prompt", sb.ToString().TrimEnd());
     }
 
-    internal static ConversationAgentResult HandleMealCreatePrompt()
+    internal ConversationAgentResult HandleMealCreatePrompt(string locale)
     {
-        return Result(
-            "food.weekly.create.prompt",
-            "What meal would you like to create? Type the name (e.g. \"Chicken Curry\" or \"Pasta Carbonara\").");
+        return Result("food.weekly.create.prompt", _loc.Get("food.weekly.create.prompt", locale));
     }
 
-    internal async Task<ConversationAgentResult> HandleDailyGoalAsync(CancellationToken cancellationToken)
+    internal async Task<ConversationAgentResult> HandleDailyGoalAsync(string locale, CancellationToken cancellationToken)
     {
         const int defaultGoal = 2000;
         var progress = await _foodService.GetDailyProgressAsync(defaultGoal, cancellationToken);
 
         var sb = new StringBuilder();
-        sb.AppendLine($"Daily progress \u2014 {DateTime.UtcNow:MMM d}");
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.goal.title", locale), DateTime.UtcNow.ToString("MMM d")));
         sb.AppendLine();
         var bar = BuildProgressBar(progress.PercentComplete);
         sb.AppendLine($"{bar} {progress.PercentComplete:F0}%");
-        sb.AppendLine($"Consumed: {progress.ConsumedCalories} / {progress.GoalCalories} kcal");
-        sb.AppendLine($"Remaining: {progress.RemainingCalories} kcal");
-        sb.AppendLine($"Meals logged: {progress.MealsLogged}");
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.goal.consumed", locale), progress.ConsumedCalories, progress.GoalCalories));
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.goal.remaining", locale), progress.RemainingCalories));
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.goal.meals", locale), progress.MealsLogged));
 
         return Result("food.weekly.goal", sb.ToString().TrimEnd());
     }
 
-    internal async Task<ConversationAgentResult> HandleDietDiversityAsync(CancellationToken cancellationToken)
+    internal async Task<ConversationAgentResult> HandleDietDiversityAsync(string locale, CancellationToken cancellationToken)
     {
         var div = await _foodService.GetDietDiversityAsync(7, cancellationToken);
 
         if (div.TotalMeals == 0)
-            return Result("food.weekly.diversity", "No meals logged in the past 7 days.");
+        {
+            return Result("food.weekly.diversity.empty", _loc.Get("food.weekly.diversity.empty", locale));
+        }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"Diet diversity \u2014 last {div.DaysAnalyzed} days");
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.diversity.title", locale), div.DaysAnalyzed));
         sb.AppendLine();
-        sb.AppendLine($"Total meals: {div.TotalMeals}");
-        sb.AppendLine($"Unique meals: {div.UniqueMeals}");
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.diversity.total", locale), div.TotalMeals));
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.diversity.unique", locale), div.UniqueMeals));
 
         if (div.RepeatedMeals.Count > 0)
         {
             sb.AppendLine();
-            sb.AppendLine("Most repeated:");
+            sb.AppendLine(_loc.Get("food.weekly.diversity.repeated", locale));
             foreach (var name in div.RepeatedMeals.Take(5))
                 sb.AppendLine($"  \U0001f501 {name}");
         }
 
         var ratio = div.TotalMeals > 0 ? (decimal)div.UniqueMeals / div.TotalMeals * 100 : 0;
         sb.AppendLine();
-        sb.AppendLine($"Diversity score: {ratio:F0}% unique");
+        sb.AppendLine(string.Format(_loc.Get("food.weekly.diversity.score", locale), ratio));
 
         return Result("food.weekly.diversity", sb.ToString().TrimEnd());
     }
@@ -296,9 +296,8 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         return new string('\u2588', Math.Min(filled, 10)) + new string('\u2591', Math.Max(empty, 0));
     }
 
-    internal async Task<ConversationAgentResult> AddItemFromTextAsync(string input, CancellationToken cancellationToken)
+    internal async Task<ConversationAgentResult> AddItemFromTextAsync(string input, string locale, CancellationToken cancellationToken)
     {
-        // Simple parsing: "Milk 2L SuperMart" → name=Milk, qty=2L, store=SuperMart
         var parts = input.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var name = parts[0];
         var quantity = parts.Length >= 2 ? parts[1] : null;
@@ -309,7 +308,7 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         var qty = item.Quantity is not null ? $" × {item.Quantity}" : string.Empty;
         var st = item.Store is not null ? $" at {item.Store}" : string.Empty;
 
-        return Result("food.shop.added", $"Added \"{item.Name}\"{qty}{st} to your shopping list.");
+        return Result("food.shop.added", string.Format(_loc.Get("food.shop.added", locale), item.Name, qty, st));
     }
 
     private static ConversationAgentResult Result(string intent, string message)

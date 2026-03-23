@@ -3597,7 +3597,7 @@ public sealed class TelegramController : ControllerBase
             return HandlePhotoLogCancel(scope, locale);
         }
 
-        var result = await _orchestrator.ProcessAsync(callbackData, TelegramChannel, cancellationToken);
+        var result = await _orchestrator.ProcessAsync(callbackData, TelegramChannel, locale, cancellationToken);
 
         // If this was a create prompt, set pending action so next text input triggers meal creation
         if (string.Equals(callbackData, CallbackDataConstants.Weekly.Create, StringComparison.Ordinal))

@@ -44,14 +44,30 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         string input,
         string channel,
         CancellationToken cancellationToken = default)
-        => ProcessAsync(input, channel, null, null, cancellationToken);
+        => ProcessInternalAsync(input, channel, locale: "en", userId: null, conversationId: null, cancellationToken);
 
-    public async Task<ConversationAgentResult> ProcessAsync(
+    public Task<ConversationAgentResult> ProcessAsync(
+        string input,
+        string channel,
+        string locale,
+        CancellationToken cancellationToken)
+        => ProcessInternalAsync(input, channel, locale, userId: null, conversationId: null, cancellationToken);
+
+    public Task<ConversationAgentResult> ProcessAsync(
         string input,
         string channel,
         string? userId,
         string? conversationId,
         CancellationToken cancellationToken = default)
+        => ProcessInternalAsync(input, channel, locale: "en", userId, conversationId, cancellationToken);
+
+    private async Task<ConversationAgentResult> ProcessInternalAsync(
+        string input,
+        string channel,
+        string locale,
+        string? userId,
+        string? conversationId,
+        CancellationToken cancellationToken)
     {
         var normalizedInput = input?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(normalizedInput))
@@ -69,7 +85,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         }
 
         _intentRouter.TryResolve(normalizedInput, out var resolvedIntent);
-        var context = new ConversationAgentContext(normalizedInput, parsedItems, scope, resolvedIntent);
+        var context = new ConversationAgentContext(normalizedInput, parsedItems, scope, resolvedIntent, locale);
 
         foreach (var agent in _agents)
         {

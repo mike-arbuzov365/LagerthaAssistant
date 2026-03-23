@@ -1539,7 +1539,6 @@ public sealed class TelegramControllerTests
         Assert.True(payload.Replied);
         Assert.Equal("onboarding.language.selected", payload.Intent);
         Assert.Equal(LocalizationConstants.UkrainianLocale, localeState.StoredLocale);
-        Assert.NotEqual("ru", localeState.StoredLocale);
     }
 
     [Fact]
@@ -2947,6 +2946,13 @@ public sealed class TelegramControllerTests
             string input,
             string channel,
             CancellationToken cancellationToken = default)
+            => ProcessAsync(input, channel, null, null, cancellationToken);
+
+        public Task<ConversationAgentResult> ProcessAsync(
+            string input,
+            string channel,
+            string locale,
+            CancellationToken cancellationToken)
             => ProcessAsync(input, channel, null, null, cancellationToken);
 
         public Task<ConversationAgentResult> ProcessAsync(
