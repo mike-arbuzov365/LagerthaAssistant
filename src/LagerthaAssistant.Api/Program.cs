@@ -33,7 +33,6 @@ builder.Services.Configure<VocabularySyncWorkerOptions>(builder.Configuration.Ge
 builder.Services.Configure<NotionSyncWorkerOptions>(builder.Configuration.GetSection("NotionSyncWorker"));
 builder.Services.Configure<FoodSyncWorkerOptions>(builder.Configuration.GetSection("FoodSyncWorker"));
 builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
-builder.Services.Configure<ReleaseAnnouncementOptions>(builder.Configuration.GetSection("ReleaseAnnouncement"));
 builder.Services.AddSingleton<IValidateOptions<TelegramOptions>, TelegramOptionsValidator>();
 builder.Services.AddHttpClient("telegram", client =>
 {

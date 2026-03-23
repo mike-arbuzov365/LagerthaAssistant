@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -18,6 +17,7 @@ using LagerthaAssistant.Application.Interfaces.Food;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
+using LagerthaAssistant.Application.Models.Food;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Navigation;
 using LagerthaAssistant.Application.Services.Food;
@@ -40,6 +40,7 @@ public sealed class TelegramController : ControllerBase
     private const string SectionSeparator = "--------------------";
     private const string BatchItemMarker = "🔹";
     private const string QuestionMarker = "❓";
+    private const string InfoMarker = "ℹ️";
     private static readonly string[] WarningMarkers = ["⚠️", "⚠"];
     private const int ManualSyncBatchSize = 25;
     private const int ManualSyncMaxPasses = 5;
@@ -51,20 +52,6 @@ public sealed class TelegramController : ControllerBase
     private static readonly Regex CyrillicRegex = new("[\\u0400-\\u04FF]", RegexOptions.Compiled);
     private static readonly string[] PrimaryPartOfSpeechMarkers = ["n", "v", "pv", "iv", "adv", "prep"];
     private static readonly string[] UrlSelectionPosOrder = ["n", "v", "adj"];
-    private static readonly string AutomaticReleaseVersionToken = "auto";
-    private static readonly string[] ReleaseVersionEnvironmentKeys =
-    [
-        "RELEASE_ANNOUNCEMENT_VERSION",
-        "RELEASE_VERSION",
-        "RAILWAY_GIT_COMMIT_SHA",
-        "RAILWAY_DEPLOYMENT_ID"
-    ];
-    private static readonly string[] ReleaseDateEnvironmentKeys =
-    [
-        "RELEASE_DATE",
-        "RAILWAY_DEPLOYMENT_CREATED_AT",
-        "RAILWAY_DEPLOYED_AT"
-    ];
     private static readonly HashSet<string> UrlSelectAllTokens = new(StringComparer.OrdinalIgnoreCase)
     {
         "all", "всі", "усі", "todo", "todos", "tous", "alle", "wszystkie"
@@ -102,7 +89,6 @@ public sealed class TelegramController : ControllerBase
     private readonly IFoodTrackingService? _foodTrackingService;
     private readonly IUserMemoryRepository? _userMemoryRepository;
     private readonly IUnitOfWork? _unitOfWork;
-    private readonly ReleaseAnnouncementOptions _releaseAnnouncementOptions;
     private readonly NotionOptions _notionOptions;
     private readonly NotionFoodOptions _notionFoodOptions;
     private readonly NotionSyncWorkerOptions _notionSyncWorkerOptions;
@@ -138,7 +124,6 @@ public sealed class TelegramController : ControllerBase
         ILogger<TelegramController> logger,
         IUserMemoryRepository? userMemoryRepository = null,
         IUnitOfWork? unitOfWork = null,
-        IOptions<ReleaseAnnouncementOptions>? releaseAnnouncementOptions = null,
         NotionOptions? notionOptions = null,
         NotionFoodOptions? notionFoodOptions = null,
         IOptions<NotionSyncWorkerOptions>? notionSyncWorkerOptions = null,
@@ -173,7 +158,6 @@ public sealed class TelegramController : ControllerBase
         _userMemoryRepository = userMemoryRepository;
         _unitOfWork = unitOfWork;
         _foodTrackingService = foodTrackingService;
-        _releaseAnnouncementOptions = releaseAnnouncementOptions?.Value ?? new ReleaseAnnouncementOptions();
         _notionOptions = notionOptions ?? new NotionOptions();
         _notionFoodOptions = notionFoodOptions ?? new NotionFoodOptions();
         _notionSyncWorkerOptions = notionSyncWorkerOptions?.Value ?? new NotionSyncWorkerOptions();
@@ -282,12 +266,6 @@ public sealed class TelegramController : ControllerBase
                 var switchedText = WebUtility.HtmlEncode(_navigationPresenter.GetText("locale.switched", localeState.Locale));
                 outboundText = string.Concat(switchedText, Environment.NewLine, Environment.NewLine, outboundText);
             }
-
-            outboundText = await PrependReleaseAnnouncementIfNeededAsync(
-                scope,
-                localeState.Locale,
-                outboundText,
-                cancellationToken);
 
             var sendResult = await _telegramBotSender.SendTextAsync(
                 inbound.ChatId,
@@ -3079,6 +3057,11 @@ public sealed class TelegramController : ControllerBase
         return $"{QuestionMarker} {value}";
     }
 
+    private static string GetWarningMarker()
+    {
+        return WarningMarkers[0];
+    }
+
     private async Task TrySendProgressMessageAsync(
         long chatId,
         int? messageThreadId,
@@ -3229,220 +3212,6 @@ public sealed class TelegramController : ControllerBase
         .Where(target => !string.IsNullOrWhiteSpace(target.DeckFileName))
         .Select(target => target with { DeckFileName = target.DeckFileName.Trim() })
         .ToList();
-    }
-
-    private async Task<string> PrependReleaseAnnouncementIfNeededAsync(
-        ConversationScope scope,
-        string locale,
-        string outboundText,
-        CancellationToken cancellationToken)
-    {
-        if (!_releaseAnnouncementOptions.Enabled)
-        {
-            return outboundText;
-        }
-
-        var version = ResolveReleaseAnnouncementVersion();
-        if (string.IsNullOrWhiteSpace(version))
-        {
-            _logger.LogDebug("Release announcement skipped: no resolved version.");
-            return outboundText;
-        }
-
-        if (_userMemoryRepository is null || _unitOfWork is null)
-        {
-            return outboundText;
-        }
-
-        try
-        {
-            var entry = await _userMemoryRepository.GetByKeyAsync(
-                UserPreferenceMemoryKeys.ReleaseLastNotifiedVersion,
-                scope.Channel,
-                scope.UserId,
-                cancellationToken);
-
-            var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(locale);
-            var resolvedNotes = ResolveReleaseAnnouncementNotes(normalizedLocale);
-            var releaseToken = BuildReleaseNotificationToken(version, normalizedLocale, resolvedNotes);
-
-            if (entry is not null)
-            {
-                var storedToken = entry.Value?.Trim() ?? string.Empty;
-                if (string.Equals(storedToken, releaseToken, StringComparison.Ordinal))
-                {
-                    return outboundText;
-                }
-
-                // Backward compatibility for entries that stored only the version.
-                if (string.Equals(storedToken, version, StringComparison.Ordinal)
-                    && string.Equals(normalizedLocale, LocalizationConstants.EnglishLocale, StringComparison.Ordinal))
-                {
-                    return outboundText;
-                }
-            }
-
-            if (entry is null)
-            {
-                await _userMemoryRepository.AddAsync(new UserMemoryEntry
-                {
-                    Key = UserPreferenceMemoryKeys.ReleaseLastNotifiedVersion,
-                    Value = releaseToken,
-                    Confidence = 1.0,
-                    IsActive = false,
-                    LastSeenAtUtc = DateTimeOffset.UtcNow,
-                    Channel = scope.Channel,
-                    UserId = scope.UserId
-                }, cancellationToken);
-            }
-            else
-            {
-                entry.Value = releaseToken;
-                entry.Confidence = 1.0;
-                entry.IsActive = false;
-                entry.LastSeenAtUtc = DateTimeOffset.UtcNow;
-            }
-
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            var releaseBlock = BuildReleaseAnnouncementBlock(locale, version, resolvedNotes);
-            _logger.LogInformation(
-                "Release announcement queued for user. Channel={Channel}; UserId={UserId}; Version={Version}",
-                scope.Channel,
-                scope.UserId,
-                version);
-            return string.Concat(releaseBlock, Environment.NewLine, Environment.NewLine, outboundText);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to append release announcement. Channel={Channel}; UserId={UserId}", scope.Channel, scope.UserId);
-            return outboundText;
-        }
-    }
-
-    private string? ResolveReleaseAnnouncementVersion()
-    {
-        var configured = _releaseAnnouncementOptions.Version?.Trim();
-        if (!string.IsNullOrWhiteSpace(configured)
-            && !string.Equals(configured, AutomaticReleaseVersionToken, StringComparison.OrdinalIgnoreCase))
-        {
-            return NormalizeReleaseVersion(configured);
-        }
-
-        foreach (var key in ReleaseVersionEnvironmentKeys)
-        {
-            var value = Environment.GetEnvironmentVariable(key)?.Trim();
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                return NormalizeReleaseVersion(value);
-            }
-        }
-
-        var informational = typeof(TelegramController)
-            .Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion
-            ?.Trim();
-
-        if (!string.IsNullOrWhiteSpace(informational))
-        {
-            return NormalizeReleaseVersion(informational);
-        }
-
-        return NormalizeReleaseVersion(typeof(TelegramController).Assembly.GetName().Version?.ToString());
-    }
-
-    private DateTimeOffset ResolveReleaseAnnouncementDate()
-    {
-        var configured = _releaseAnnouncementOptions.ReleaseDate?.Trim();
-        if (!string.IsNullOrWhiteSpace(configured)
-            && DateTimeOffset.TryParse(configured, out var configuredDate))
-        {
-            return configuredDate;
-        }
-
-        foreach (var key in ReleaseDateEnvironmentKeys)
-        {
-            var value = Environment.GetEnvironmentVariable(key)?.Trim();
-            if (!string.IsNullOrWhiteSpace(value)
-                && DateTimeOffset.TryParse(value, out var environmentDate))
-            {
-                return environmentDate;
-            }
-        }
-
-        return DateTimeOffset.UtcNow;
-    }
-
-    private static string? NormalizeReleaseVersion(string? rawVersion)
-    {
-        if (string.IsNullOrWhiteSpace(rawVersion))
-        {
-            return null;
-        }
-
-        var value = rawVersion.Trim();
-        var plusIndex = value.IndexOf('+', StringComparison.Ordinal);
-        if (plusIndex > 0)
-        {
-            value = value[..plusIndex];
-        }
-
-        if (Guid.TryParse(value, out _))
-        {
-            return $"build-{value[..8]}";
-        }
-
-        if (value.Length >= 12
-            && value.All(static c => char.IsAsciiHexDigit(c)))
-        {
-            return value[..8].ToLowerInvariant();
-        }
-
-        return value;
-    }
-
-    private static string BuildReleaseNotificationToken(string version, string locale, string notes)
-    {
-        var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(locale);
-        var notesHash = ComputeStableHash(notes);
-        return $"{version}|{normalizedLocale}|{notesHash}";
-    }
-
-    private static string ComputeStableHash(string value)
-    {
-        var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
-        var hash = SHA256.HashData(bytes);
-        return Convert.ToHexString(hash[..8]).ToLowerInvariant();
-    }
-
-    private string ResolveReleaseAnnouncementNotes(string locale)
-    {
-        var normalized = LocalizationConstants.NormalizeLocaleCode(locale);
-        var notes = _releaseAnnouncementOptions.ResolveNotes(normalized)?.Trim();
-        if (string.IsNullOrWhiteSpace(notes))
-        {
-            notes = _navigationPresenter.GetText("release.notes_default", normalized);
-        }
-
-        return notes;
-    }
-
-    private string BuildReleaseAnnouncementBlock(string locale, string version, string notes)
-    {
-        var normalized = LocalizationConstants.NormalizeLocaleCode(locale);
-        var encodedVersion = WebUtility.HtmlEncode(version);
-        var releaseDate = ResolveReleaseAnnouncementDate();
-        var dateText = releaseDate.ToString("yyyy-MM-dd");
-        var encodedDate = WebUtility.HtmlEncode(dateText);
-
-        var title = _navigationPresenter.GetText("release.title", normalized);
-        var versionLabel = _navigationPresenter.GetText("release.version", normalized);
-        var dateLabel = _navigationPresenter.GetText("release.date", normalized);
-        var whatsNewLabel = _navigationPresenter.GetText("release.whats_new", normalized);
-
-        var encodedNotes = WebUtility.HtmlEncode(notes);
-
-        return $"<b>{title}</b>{Environment.NewLine}{versionLabel}: <b>{encodedVersion}</b>{Environment.NewLine}{dateLabel}: {encodedDate}{Environment.NewLine}{whatsNewLabel}: {encodedNotes}";
     }
 
     private TelegramRouteResponse BuildOnboardingLanguagePickerResponse(string locale)
@@ -3598,7 +3367,7 @@ public sealed class TelegramController : ControllerBase
         string Marker,
         string DeckFileName);
 
-    // ── Food tracking helpers ─────────────────────────────────────────────────
+    // -- Food tracking helpers -------------------------------------------------
 
     private async Task<TelegramRouteResponse> HandleFoodMenuCallbackAsync(
         string callbackData,
@@ -3661,12 +3430,12 @@ public sealed class TelegramController : ControllerBase
             sb.AppendLine();
             foreach (var item in items)
             {
-                var qty = item.Quantity is not null ? $" [{item.Quantity}]" : string.Empty;
+                var qty = BuildInventoryQuantitySuffix(item);
                 var cat = item.Category is not null ? $" — {item.Category}" : string.Empty;
                 sb.AppendLine($"  [{item.Id}] {item.Name}{qty}{cat}");
             }
             sb.AppendLine();
-            sb.AppendLine(_navigationPresenter.GetText("inventory.add_to_cart_hint", locale));
+            sb.AppendLine($"{InfoMarker} {_navigationPresenter.GetText("inventory.add_to_cart_hint", locale)}");
 
             return new TelegramRouteResponse(
                 "inventory.list",
@@ -3680,7 +3449,7 @@ public sealed class TelegramController : ControllerBase
             _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventorySearch;
             return new TelegramRouteResponse(
                 "inventory.search.prompt",
-                _navigationPresenter.GetText("inventory.search.prompt", locale),
+                $"{QuestionMarker} {_navigationPresenter.GetText("inventory.search.prompt", locale)}",
                 InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
         }
 
@@ -3715,7 +3484,7 @@ public sealed class TelegramController : ControllerBase
             var pendingKey = BuildPendingChatActionKey(scope);
             _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventoryAdjustQuantity;
 
-            var prompt = $"{_navigationPresenter.GetText("inventory.adjust.prompt", locale)}\n{_navigationPresenter.GetText("inventory.adjust.hint", locale)}";
+            var prompt = $"{QuestionMarker} {_navigationPresenter.GetText("inventory.adjust.prompt", locale)}\n{InfoMarker} {_navigationPresenter.GetText("inventory.adjust.hint", locale)}";
             return new TelegramRouteResponse(
                 "inventory.adjust.prompt",
                 prompt,
@@ -3808,11 +3577,11 @@ public sealed class TelegramController : ControllerBase
             var sb = new StringBuilder();
             foreach (var item in results)
             {
-                var qty = item.Quantity is not null ? $" [{item.Quantity}]" : string.Empty;
+                var qty = BuildInventoryQuantitySuffix(item);
                 sb.AppendLine($"  [{item.Id}] {item.Name}{qty}");
             }
             sb.AppendLine();
-            sb.AppendLine(_navigationPresenter.GetText("inventory.add_to_cart_hint", locale));
+            sb.AppendLine($"{InfoMarker} {_navigationPresenter.GetText("inventory.add_to_cart_hint", locale)}");
 
             return new TelegramRouteResponse(
                 "inventory.search.results",
@@ -3827,7 +3596,7 @@ public sealed class TelegramController : ControllerBase
             {
                 return new TelegramRouteResponse(
                     "inventory.adjust.invalid",
-                    _navigationPresenter.GetText("inventory.adjust.invalid", locale),
+                    $"{GetWarningMarker()} {_navigationPresenter.GetText("inventory.adjust.invalid", locale)}",
                     InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
             }
 
@@ -3839,14 +3608,14 @@ public sealed class TelegramController : ControllerBase
                 var quantityText = updated.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
                 return new TelegramRouteResponse(
                     "inventory.adjust.done",
-                    _navigationPresenter.GetText("inventory.adjust.done", locale, updated.Name, quantityText),
+                    $"✅ {_navigationPresenter.GetText("inventory.adjust.done", locale, updated.Name, quantityText)}",
                     InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
             }
             catch (InvalidOperationException)
             {
                 return new TelegramRouteResponse(
                     "inventory.adjust.not_found",
-                    _navigationPresenter.GetText("inventory.adjust.not_found", locale, parsedItemId),
+                    $"{GetWarningMarker()} {_navigationPresenter.GetText("inventory.adjust.not_found", locale, parsedItemId)}",
                     InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
             }
         }
@@ -3884,11 +3653,11 @@ public sealed class TelegramController : ControllerBase
         var resultSb = new StringBuilder();
         foreach (var item in searchResults)
         {
-            var qty = item.Quantity is not null ? $" [{item.Quantity}]" : string.Empty;
+            var qty = BuildInventoryQuantitySuffix(item);
             resultSb.AppendLine($"  [{item.Id}] {item.Name}{qty}");
         }
         resultSb.AppendLine();
-        resultSb.AppendLine(_navigationPresenter.GetText("inventory.add_to_cart_hint", locale));
+        resultSb.AppendLine($"{InfoMarker} {_navigationPresenter.GetText("inventory.add_to_cart_hint", locale)}");
 
         return new TelegramRouteResponse(
             "inventory.search.results",
@@ -3989,7 +3758,7 @@ public sealed class TelegramController : ControllerBase
         {
             return new TelegramRouteResponse(
                 "food.shop.add.prompt",
-                _navigationPresenter.GetText("food.shop.add.prompt", locale),
+                $"{QuestionMarker} {_navigationPresenter.GetText("food.shop.add.prompt", locale)}",
                 InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
         }
 
@@ -4474,6 +4243,18 @@ public sealed class TelegramController : ControllerBase
             ? string.Empty
             : _navigationPresenter.GetText("food.shop.store_suffix", locale, store);
 
+    private static string BuildInventoryQuantitySuffix(FoodItemDto item)
+    {
+        if (item.CurrentQuantity.HasValue)
+        {
+            return $" [{item.CurrentQuantity.Value.ToString("0.###", CultureInfo.InvariantCulture)}]";
+        }
+
+        return string.IsNullOrWhiteSpace(item.Quantity)
+            ? string.Empty
+            : $" [{item.Quantity}]";
+    }
+
     private string BuildCaloriesPerServingSuffix(int? caloriesPerServing, string locale)
         => caloriesPerServing.HasValue
             ? _navigationPresenter.GetText("food.weekly.view.calories_suffix", locale, caloriesPerServing.Value)
@@ -4494,7 +4275,7 @@ public sealed class TelegramController : ControllerBase
 
         var match = Regex.Match(
             input.Trim(),
-            @"^(?<id>\d+)\s+(?<sign>[+-])\s*(?<value>\d+(?:[.,]\d+)?)$",
+            @"^(?<id>\d+)\s*(?<sign>[+-])\s*(?<value>\d+(?:[.,]\d+)?)$",
             RegexOptions.CultureInvariant);
 
         if (!match.Success)
@@ -4551,4 +4332,3 @@ public sealed class TelegramController : ControllerBase
         bool IsHtml = false,
         string? FollowUpMainKeyboardLocale = null);
 }
-
