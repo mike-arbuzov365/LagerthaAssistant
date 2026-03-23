@@ -12,6 +12,13 @@ public sealed record FoodItemDto(
     public decimal? MinQuantity { get; init; }
 }
 
+public sealed record InventoryStatsDto(
+    int TotalItems,
+    int WithCurrentQuantity,
+    int WithMinQuantity,
+    int LowStockItems,
+    decimal TotalCurrentQuantity);
+
 public sealed record GroceryListItemDto(
     int Id,
     string Name,

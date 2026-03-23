@@ -94,6 +94,8 @@ public static class CallbackDataConstants
         public const string List = "inventory:list";
         public const string Search = "inventory:search";
         public const string Add = "inventory:add";
+        public const string Stats = "inventory:stats";
+        public const string Adjust = "inventory:adjust";
         public const string Suggest = "inventory:suggest";
         public const string CartPrefix = "inventory:cart:";
     }

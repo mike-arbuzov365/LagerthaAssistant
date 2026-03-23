@@ -65,6 +65,46 @@ public sealed class FoodSyncServiceTests
     }
 
     [Fact]
+    public async Task SyncFromNotionAsync_ShouldMapCurrentAndMinQuantity_FromNotionProperties()
+    {
+        var notion = new FakeNotionFoodClient
+        {
+            InventoryPages = [MakePage("page-1", "2026-06-01T00:00:00Z",
+                ("Item Name", Title("Milk")),
+                ("Item Quantity", RichText("2.5L")),
+                ("Min Quantity", Number(1m)))]
+        };
+        var foodRepo = new FakeFoodItemRepository();
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        var summary = await sut.SyncFromNotionAsync();
+
+        Assert.Equal(1, summary.InventoryUpserted);
+        Assert.Single(foodRepo.Added);
+        Assert.Equal(2.5m, foodRepo.Added[0].CurrentQuantity);
+        Assert.Equal(1m, foodRepo.Added[0].MinQuantity);
+    }
+
+    [Fact]
+    public async Task SyncFromNotionAsync_ShouldKeepCurrentQuantityNull_WhenItemQuantityHasNoNumericPrefix()
+    {
+        var notion = new FakeNotionFoodClient
+        {
+            InventoryPages = [MakePage("page-1", "2026-06-01T00:00:00Z",
+                ("Item Name", Title("Flour")),
+                ("Item Quantity", RichText("pack")))]
+        };
+        var foodRepo = new FakeFoodItemRepository();
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        var summary = await sut.SyncFromNotionAsync();
+
+        Assert.Equal(1, summary.InventoryUpserted);
+        Assert.Single(foodRepo.Added);
+        Assert.Null(foodRepo.Added[0].CurrentQuantity);
+    }
+
+    [Fact]
     public async Task SyncFromNotionAsync_ShouldSkipFoodItem_WhenLocalIsNewer()
     {
         var existing = new FoodItem
@@ -533,6 +573,9 @@ public sealed class FoodSyncServiceTests
     private static NotionPropertyValue Relation(params string[] ids)
         => new("relation", null, null, null, null, null, null, ids.Select(id => new NotionRelationItem(id)).ToList());
 
+    private static NotionPropertyValue Number(decimal value)
+        => new("number", null, null, null, value, null, null, null);
+
     private static NotionPropertyValue DateProp(string date)
         => new("date", null, null, null, null, null, new NotionDateValue(date), null);
 
@@ -599,6 +642,10 @@ public sealed class FoodSyncServiceTests
 
         public Task<FoodItem?> GetByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default)
             => Task.FromResult(Existing?.NotionPageId == notionPageId ? Existing : null);
+
+        public Task<FoodItem?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
+            => Task.FromResult(
+                Added.Concat(Existing is null ? [] : [Existing]).FirstOrDefault(x => x.Id == id));
 
         public Task<IReadOnlyList<FoodItem>> GetAllAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<FoodItem>>(Added.Concat(Existing is null ? [] : [Existing]).ToList());

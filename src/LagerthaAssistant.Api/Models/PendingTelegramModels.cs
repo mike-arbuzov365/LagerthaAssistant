@@ -46,7 +46,8 @@ internal enum PendingChatActionKind
     VocabularyImport = 2,
     InventorySearch = 3,
     MealCreation = 4,
-    FoodPhotoLog = 5
+    FoodPhotoLog = 5,
+    InventoryAdjustQuantity = 6
 }
 
 internal sealed record PendingFoodPhotoLog(

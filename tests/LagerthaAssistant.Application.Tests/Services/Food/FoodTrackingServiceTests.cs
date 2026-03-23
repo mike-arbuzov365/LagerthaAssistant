@@ -881,6 +881,68 @@ public sealed class FoodTrackingServiceTests
         Assert.Equal(1m, result[0].MinQuantity);
     }
 
+    // —— Inventory stats + quantity adjustments —————————————————————————————————————————————————————————————————
+
+    [Fact]
+    public async Task GetInventoryStatsAsync_ShouldReturnAggregatedStats()
+    {
+        var repo = new FakeFoodItemRepository
+        {
+            AllItems =
+            [
+                new FoodItem { Id = 1, Name = "Milk", CurrentQuantity = 2m, MinQuantity = 3m },
+                new FoodItem { Id = 2, Name = "Eggs", CurrentQuantity = 10m, MinQuantity = 6m },
+                new FoodItem { Id = 3, Name = "Salt", CurrentQuantity = null, MinQuantity = null }
+            ]
+        };
+        var sut = CreateSut(foodItemRepo: repo);
+
+        var stats = await sut.GetInventoryStatsAsync();
+
+        Assert.Equal(3, stats.TotalItems);
+        Assert.Equal(2, stats.WithCurrentQuantity);
+        Assert.Equal(2, stats.WithMinQuantity);
+        Assert.Equal(1, stats.LowStockItems);
+        Assert.Equal(12m, stats.TotalCurrentQuantity);
+    }
+
+    [Fact]
+    public async Task AdjustInventoryQuantityAsync_ShouldUpdateCurrentQuantity_FromParsedTextWhenCurrentNull()
+    {
+        var item = new FoodItem { Id = 10, Name = "Milk", Quantity = "2.5L", CurrentQuantity = null };
+        var repo = new FakeFoodItemRepository { AllItems = [item] };
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(foodItemRepo: repo, unitOfWork: uow);
+
+        var updated = await sut.AdjustInventoryQuantityAsync(10, -1m);
+
+        Assert.Equal(1.5m, updated.CurrentQuantity);
+        Assert.Equal(FoodSyncStatus.Pending, item.NotionSyncStatus);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task AdjustInventoryQuantityAsync_ShouldClampToZero_WhenDeltaIsNegative()
+    {
+        var item = new FoodItem { Id = 11, Name = "Butter", CurrentQuantity = 0.5m };
+        var repo = new FakeFoodItemRepository { AllItems = [item] };
+        var sut = CreateSut(foodItemRepo: repo);
+
+        var updated = await sut.AdjustInventoryQuantityAsync(11, -2m);
+
+        Assert.Equal(0m, updated.CurrentQuantity);
+    }
+
+    [Fact]
+    public async Task AdjustInventoryQuantityAsync_ShouldThrow_WhenDeltaIsZero()
+    {
+        var item = new FoodItem { Id = 12, Name = "Flour", CurrentQuantity = 1m };
+        var repo = new FakeFoodItemRepository { AllItems = [item] };
+        var sut = CreateSut(foodItemRepo: repo);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => sut.AdjustInventoryQuantityAsync(12, 0m));
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static FoodTrackingService CreateSut(
@@ -908,6 +970,9 @@ public sealed class FoodTrackingServiceTests
 
         public Task<FoodItem?> GetByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default)
             => Task.FromResult<FoodItem?>(AllItems.FirstOrDefault(x => x.NotionPageId == notionPageId));
+
+        public Task<FoodItem?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
+            => Task.FromResult<FoodItem?>(AllItems.FirstOrDefault(x => x.Id == id));
 
         public Task<IReadOnlyList<FoodItem>> GetAllAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<FoodItem>>(AllItems);

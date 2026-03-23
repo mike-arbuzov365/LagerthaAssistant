@@ -1510,6 +1510,19 @@ public sealed class LocalizationService : ILocalizationService
     // Transitional fallback for newly introduced food/inventory keys until all locale dictionaries are fully synchronized.
     private static readonly IReadOnlyDictionary<string, string> SupplementalEnglish = new Dictionary<string, string>(StringComparer.Ordinal)
     {
+        ["menu.inventory.stats"] = "📊 Stock stats",
+        ["menu.inventory.adjust"] = "➕➖ Adjust quantity",
+        ["inventory.stats.title"] = "📊 Inventory stats",
+        ["inventory.stats.total_items"] = "• Total items: {0}",
+        ["inventory.stats.with_current"] = "• With current quantity: {0}",
+        ["inventory.stats.with_min"] = "• With min threshold: {0}",
+        ["inventory.stats.low_stock"] = "• Low stock items: {0}",
+        ["inventory.stats.total_current"] = "• Sum of current quantity: {0}",
+        ["inventory.adjust.prompt"] = "Send quantity change in format: <id> +/-<amount> (example: \"42 -1\" or \"42 +2.5\").",
+        ["inventory.adjust.hint"] = "Tip: use a sign (+/-) and a decimal number if needed.",
+        ["inventory.adjust.done"] = "✅ Updated \"{0}\". Current quantity: {1}.",
+        ["inventory.adjust.invalid"] = "⚠️ Invalid format. Use: <id> +/-<amount>, for example \"42 -1\".",
+        ["inventory.adjust.not_found"] = "⚠️ Inventory item with ID {0} was not found.",
         ["inventory.add_to_cart_hint"] = "To add to cart: reply with item ID, e.g. \"42\" or \"42 2kg\"",
         ["inventory.low_stock.title"] = "Low stock — {0} item(s) to reorder:",
         ["inventory.low_stock.item"] = "  ⚠️ {0} — {1} (needs restock)",
@@ -1543,6 +1556,19 @@ public sealed class LocalizationService : ILocalizationService
 
     private static readonly IReadOnlyDictionary<string, string> SupplementalUkrainian = new Dictionary<string, string>(StringComparer.Ordinal)
     {
+        ["menu.inventory.stats"] = "📊 Статистика",
+        ["menu.inventory.adjust"] = "➕➖ Змінити кількість",
+        ["inventory.stats.title"] = "📊 Статистика складу",
+        ["inventory.stats.total_items"] = "• Усього товарів: {0}",
+        ["inventory.stats.with_current"] = "• З поточною кількістю: {0}",
+        ["inventory.stats.with_min"] = "• З мінімальним порогом: {0}",
+        ["inventory.stats.low_stock"] = "• Товарів із низьким запасом: {0}",
+        ["inventory.stats.total_current"] = "• Сумарна поточна кількість: {0}",
+        ["inventory.adjust.prompt"] = "Надішли зміну кількості у форматі: <id> +/-<число> (приклад: \"42 -1\" або \"42 +2.5\").",
+        ["inventory.adjust.hint"] = "Порада: використовуй знак (+/-) та число, за потреби десяткове.",
+        ["inventory.adjust.done"] = "✅ Оновлено \"{0}\". Поточна кількість: {1}.",
+        ["inventory.adjust.invalid"] = "⚠️ Невірний формат. Використай: <id> +/-<число>, наприклад \"42 -1\".",
+        ["inventory.adjust.not_found"] = "⚠️ Товар зі складу з ID {0} не знайдено.",
         ["inventory.add_to_cart_hint"] = "Щоб додати у список покупок: надішли ID товару, наприклад \"42\" або \"42 2кг\"",
         ["inventory.low_stock.title"] = "Низькі запаси — позицій для докупівлі: {0}",
         ["inventory.low_stock.item"] = "  ⚠️ {0} — {1} (треба поповнити)",

@@ -532,6 +532,37 @@ public sealed class FoodTrackingConversationAgentTests
     }
 
     [Fact]
+    public async Task HandleInventoryStatsAsync_ShouldReturnStatsSummary()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(1, "Eggs", null, null, null, null),
+                new FoodItemDto(2, "Milk", null, null, null, null)
+            ]
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.HandleInventoryStatsAsync(CancellationToken.None);
+
+        Assert.Equal("inventory.stats", result.Intent);
+        Assert.Contains("Total items", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HandleInventoryAdjustPrompt_ShouldReturnPrompt()
+    {
+        var sut = CreateSut();
+
+        var result = sut.HandleInventoryAdjustPrompt("en");
+
+        Assert.Equal("inventory.adjust.prompt", result.Intent);
+        Assert.Contains("format", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task HandleInventoryCartAsync_ShouldReturnAdded_WhenItemExists()
     {
         var service = new FakeFoodTrackingService
@@ -572,6 +603,8 @@ public sealed class FoodTrackingConversationAgentTests
     [Theory]
     [InlineData(CallbackDataConstants.Inventory.List)]
     [InlineData(CallbackDataConstants.Inventory.Search)]
+    [InlineData(CallbackDataConstants.Inventory.Stats)]
+    [InlineData(CallbackDataConstants.Inventory.Adjust)]
     [InlineData(CallbackDataConstants.Inventory.Suggest)]
     [InlineData("inventory:cart:42")]
     public void CanHandle_ShouldReturnTrue_ForInventoryPrefixedInput(string input)
@@ -644,6 +677,16 @@ public sealed class FoodTrackingConversationAgentTests
             ["food.weekly.diversity.score"] = "Diversity score: {0:F0}% unique",
             ["inventory.cart.added"] = "Added \"{0}\" to your shopping list.",
             ["inventory.cart.not_found"] = "Item not found in inventory.",
+            ["inventory.low_stock.title"] = "Low stock — {0} item(s) to reorder:",
+            ["inventory.low_stock.item"] = "  ⚠️ {0} — {1} (needs restock)",
+            ["inventory.stats.title"] = "Inventory stats",
+            ["inventory.stats.total_items"] = "Total items: {0}",
+            ["inventory.stats.with_current"] = "With current quantity: {0}",
+            ["inventory.stats.with_min"] = "With min threshold: {0}",
+            ["inventory.stats.low_stock"] = "Low stock items: {0}",
+            ["inventory.stats.total_current"] = "Sum of current quantity: {0}",
+            ["inventory.adjust.prompt"] = "Use format: <id> +/-<amount>",
+            ["inventory.adjust.hint"] = "Example: 42 -1",
             ["food.unknown"] = "Use the buttons to navigate Shopping or Weekly Menu.",
         };
 
@@ -682,6 +725,17 @@ public sealed class FoodTrackingConversationAgentTests
                 .Take(take)
                 .ToList();
             return Task.FromResult<IReadOnlyList<FoodItemDto>>(matches);
+        }
+
+        public Task<InventoryStatsDto> GetInventoryStatsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new InventoryStatsDto(InventoryItems.Count, 0, 0, 0, 0m));
+
+        public Task<FoodItemDto> AdjustInventoryQuantityAsync(int foodItemId, decimal delta, CancellationToken cancellationToken = default)
+        {
+            var found = InventoryItems.FirstOrDefault(x => x.Id == foodItemId)
+                ?? throw new InvalidOperationException($"Food item {foodItemId} not found in inventory.");
+
+            return Task.FromResult(found with { CurrentQuantity = (found.CurrentQuantity ?? 0m) + delta });
         }
 
         public Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default)

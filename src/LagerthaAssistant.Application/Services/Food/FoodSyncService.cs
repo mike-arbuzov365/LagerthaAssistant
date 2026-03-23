@@ -269,6 +269,8 @@ public sealed class FoodSyncService : IFoodSyncService
             Store = GetSelect(page, "Store"),
             Price = GetNumber(page, "Price"),
             Quantity = GetRichText(page, "Item Quantity"),
+            CurrentQuantity = GetNumberOrRichTextNumber(page, "Item Quantity"),
+            MinQuantity = GetNumber(page, "Min Quantity"),
             LastAddedToCartAt = GetDate(page, "Added to Cart on"),
             NotionUpdatedAt = notionUpdatedAt,
             NotionSyncStatus = FoodSyncStatus.Synced
@@ -282,6 +284,8 @@ public sealed class FoodSyncService : IFoodSyncService
         item.Store = GetSelect(page, "Store");
         item.Price = GetNumber(page, "Price");
         item.Quantity = GetRichText(page, "Item Quantity");
+        item.CurrentQuantity = GetNumberOrRichTextNumber(page, "Item Quantity");
+        item.MinQuantity = GetNumber(page, "Min Quantity");
         item.LastAddedToCartAt = GetDate(page, "Added to Cart on");
         item.NotionUpdatedAt = notionUpdatedAt;
     }
@@ -420,6 +424,35 @@ public sealed class FoodSyncService : IFoodSyncService
             return prop.Number;
         }
         return null;
+    }
+
+    private static decimal? GetNumberOrRichTextNumber(NotionPage page, string key)
+    {
+        var numeric = GetNumber(page, key);
+        if (numeric.HasValue)
+        {
+            return numeric.Value;
+        }
+
+        var richText = GetRichText(page, key);
+        if (string.IsNullOrWhiteSpace(richText))
+        {
+            return null;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(richText.Trim(), @"^(\d+(?:[.,]\d+)?)");
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        return decimal.TryParse(
+            match.Groups[1].Value.Replace(',', '.'),
+            System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+            ? parsed
+            : null;
     }
 
     private static bool GetCheckbox(NotionPage page, string key)

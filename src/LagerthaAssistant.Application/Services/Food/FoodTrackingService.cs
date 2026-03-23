@@ -53,6 +53,65 @@ public sealed class FoodTrackingService : IFoodTrackingService
         return items.Select(MapFoodItemToDto).ToList();
     }
 
+    public async Task<InventoryStatsDto> GetInventoryStatsAsync(CancellationToken cancellationToken = default)
+    {
+        var items = await _foodItemRepo.GetAllAsync(cancellationToken);
+        if (items.Count == 0)
+        {
+            return new InventoryStatsDto(0, 0, 0, 0, 0m);
+        }
+
+        var withCurrentQuantity = items.Count(x => x.CurrentQuantity.HasValue);
+        var withMinQuantity = items.Count(x => x.MinQuantity.HasValue);
+        var lowStockItems = items.Count(x =>
+            x.CurrentQuantity.HasValue
+            && x.MinQuantity.HasValue
+            && x.CurrentQuantity.Value < x.MinQuantity.Value);
+
+        var totalCurrentQuantity = items
+            .Where(x => x.CurrentQuantity.HasValue)
+            .Sum(x => x.CurrentQuantity!.Value);
+
+        return new InventoryStatsDto(
+            TotalItems: items.Count,
+            WithCurrentQuantity: withCurrentQuantity,
+            WithMinQuantity: withMinQuantity,
+            LowStockItems: lowStockItems,
+            TotalCurrentQuantity: totalCurrentQuantity);
+    }
+
+    public async Task<FoodItemDto> AdjustInventoryQuantityAsync(
+        int foodItemId,
+        decimal delta,
+        CancellationToken cancellationToken = default)
+    {
+        if (delta == 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(delta), "Delta cannot be zero.");
+        }
+
+        var item = await _foodItemRepo.GetByIdAsync(foodItemId, cancellationToken)
+            ?? throw new InvalidOperationException($"Food item {foodItemId} not found in inventory.");
+
+        var current = item.CurrentQuantity ?? TryParseLeadingNumber(item.Quantity) ?? 0m;
+        var updated = Math.Max(0m, current + delta);
+
+        item.CurrentQuantity = Math.Round(updated, 3, MidpointRounding.AwayFromZero);
+        item.NotionSyncStatus = FoodSyncStatus.Pending;
+        item.NotionUpdatedAt = DateTime.UtcNow;
+        item.NotionLastError = null;
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Adjusted inventory quantity. FoodItemId={FoodItemId}; Delta={Delta}; CurrentQuantity={CurrentQuantity}",
+            item.Id,
+            delta,
+            item.CurrentQuantity);
+
+        return MapFoodItemToDto(item);
+    }
+
     public async Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(
         int foodItemId,
         string? quantity,
@@ -348,6 +407,28 @@ public sealed class FoodTrackingService : IFoodTrackingService
             return $"{scaled}{match.Groups[2].Value}";
         }
         return qty;
+    }
+
+    private static decimal? TryParseLeadingNumber(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(value.Trim(), @"^(\d+(?:[.,]\d+)?)");
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        return decimal.TryParse(
+            match.Groups[1].Value.Replace(',', '.'),
+            System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+            ? parsed
+            : null;
     }
 
     public async Task<MealDto> CreateMealAsync(

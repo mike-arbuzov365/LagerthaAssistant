@@ -78,6 +78,8 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
             CallbackDataConstants.Weekly.Diversity => await HandleDietDiversityAsync(locale, cancellationToken),
             CallbackDataConstants.Inventory.List => await HandleInventoryListAsync(locale, cancellationToken),
             CallbackDataConstants.Inventory.Search => HandleInventorySearchPrompt(locale),
+            CallbackDataConstants.Inventory.Stats => await HandleInventoryStatsAsync(locale, cancellationToken),
+            CallbackDataConstants.Inventory.Adjust => HandleInventoryAdjustPrompt(locale),
             CallbackDataConstants.Inventory.Suggest => await HandleInventorySuggestAsync(locale, cancellationToken),
             _ => Result("food.unknown", _loc.Get("food.unknown", locale))
         };
@@ -329,6 +331,23 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
     internal ConversationAgentResult HandleInventorySearchPrompt(string locale)
         => Result("inventory.search.prompt", _loc.Get("inventory.search.prompt", locale));
 
+    internal ConversationAgentResult HandleInventoryAdjustPrompt(string locale)
+        => Result("inventory.adjust.prompt", $"{_loc.Get("inventory.adjust.prompt", locale)}\n{_loc.Get("inventory.adjust.hint", locale)}");
+
+    internal async Task<ConversationAgentResult> HandleInventoryStatsAsync(string locale, CancellationToken cancellationToken)
+    {
+        var stats = await _foodService.GetInventoryStatsAsync(cancellationToken);
+        var sb = new StringBuilder();
+        sb.AppendLine(_loc.Get("inventory.stats.title", locale));
+        sb.AppendLine();
+        sb.AppendLine(string.Format(_loc.Get("inventory.stats.total_items", locale), stats.TotalItems));
+        sb.AppendLine(string.Format(_loc.Get("inventory.stats.with_current", locale), stats.WithCurrentQuantity));
+        sb.AppendLine(string.Format(_loc.Get("inventory.stats.with_min", locale), stats.WithMinQuantity));
+        sb.AppendLine(string.Format(_loc.Get("inventory.stats.low_stock", locale), stats.LowStockItems));
+        sb.AppendLine(string.Format(_loc.Get("inventory.stats.total_current", locale), stats.TotalCurrentQuantity));
+        return Result("inventory.stats", sb.ToString().TrimEnd());
+    }
+
     internal async Task<ConversationAgentResult> HandleInventorySuggestAsync(string locale, CancellationToken cancellationToken)
     {
         var items = await _foodService.GetLowStockItemsAsync(cancellationToken);
@@ -338,12 +357,12 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"Low stock — {items.Count} item(s) to reorder:");
+        sb.AppendLine(string.Format(_loc.Get("inventory.low_stock.title", locale), items.Count));
         sb.AppendLine();
         foreach (var item in items)
         {
             var cur = item.CurrentQuantity.HasValue ? $"{item.CurrentQuantity.Value:G}" : "?";
-            sb.AppendLine($"  ⚠️ {item.Name} — {cur} (needs restock)");
+            sb.AppendLine(string.Format(_loc.Get("inventory.low_stock.item", locale), item.Name, cur));
         }
 
         return Result("inventory.suggest", sb.ToString().TrimEnd());
@@ -407,6 +426,9 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
 
     internal Task<ConversationAgentResult> HandleInventorySuggestAsync(CancellationToken cancellationToken)
         => HandleInventorySuggestAsync("en", cancellationToken);
+
+    internal Task<ConversationAgentResult> HandleInventoryStatsAsync(CancellationToken cancellationToken)
+        => HandleInventoryStatsAsync("en", cancellationToken);
 
     internal Task<ConversationAgentResult> HandleInventoryCartAsync(int foodItemId, CancellationToken cancellationToken)
         => HandleInventoryCartAsync(foodItemId, "en", cancellationToken);

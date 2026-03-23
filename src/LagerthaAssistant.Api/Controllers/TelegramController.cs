@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Globalization;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Interfaces;
 using LagerthaAssistant.Api.Models;
@@ -3691,6 +3692,36 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
         }
 
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.Stats, StringComparison.Ordinal))
+        {
+            var stats = await _foodTrackingService.GetInventoryStatsAsync(cancellationToken);
+            var statsSb = new StringBuilder();
+            statsSb.AppendLine(_navigationPresenter.GetText("inventory.stats.title", locale));
+            statsSb.AppendLine();
+            statsSb.AppendLine(_navigationPresenter.GetText("inventory.stats.total_items", locale, stats.TotalItems));
+            statsSb.AppendLine(_navigationPresenter.GetText("inventory.stats.with_current", locale, stats.WithCurrentQuantity));
+            statsSb.AppendLine(_navigationPresenter.GetText("inventory.stats.with_min", locale, stats.WithMinQuantity));
+            statsSb.AppendLine(_navigationPresenter.GetText("inventory.stats.low_stock", locale, stats.LowStockItems));
+            statsSb.AppendLine(_navigationPresenter.GetText("inventory.stats.total_current", locale, stats.TotalCurrentQuantity));
+
+            return new TelegramRouteResponse(
+                "inventory.stats",
+                statsSb.ToString().TrimEnd(),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.Adjust, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventoryAdjustQuantity;
+
+            var prompt = $"{_navigationPresenter.GetText("inventory.adjust.prompt", locale)}\n{_navigationPresenter.GetText("inventory.adjust.hint", locale)}";
+            return new TelegramRouteResponse(
+                "inventory.adjust.prompt",
+                prompt,
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
         if (string.Equals(callbackData, CallbackDataConstants.Inventory.Suggest, StringComparison.Ordinal))
         {
             var lowStock = await _foodTrackingService.GetLowStockItemsAsync(cancellationToken);
@@ -3787,6 +3818,37 @@ public sealed class TelegramController : ControllerBase
                 "inventory.search.results",
                 sb.ToString().TrimEnd(),
                 InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        if (_pendingStateStore.ChatActions.TryGetValue(pendingKey, out pendingAction)
+            && pendingAction == PendingChatActionKind.InventoryAdjustQuantity)
+        {
+            if (!TryParseInventoryQuantityAdjustment(text, out var parsedItemId, out var delta))
+            {
+                return new TelegramRouteResponse(
+                    "inventory.adjust.invalid",
+                    _navigationPresenter.GetText("inventory.adjust.invalid", locale),
+                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+            }
+
+            try
+            {
+                var updated = await _foodTrackingService.AdjustInventoryQuantityAsync(parsedItemId, delta, cancellationToken);
+                _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+
+                var quantityText = updated.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
+                return new TelegramRouteResponse(
+                    "inventory.adjust.done",
+                    _navigationPresenter.GetText("inventory.adjust.done", locale, updated.Name, quantityText),
+                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+            }
+            catch (InvalidOperationException)
+            {
+                return new TelegramRouteResponse(
+                    "inventory.adjust.not_found",
+                    _navigationPresenter.GetText("inventory.adjust.not_found", locale, parsedItemId),
+                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+            }
         }
 
         var parts = text.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
@@ -4416,6 +4478,49 @@ public sealed class TelegramController : ControllerBase
         => caloriesPerServing.HasValue
             ? _navigationPresenter.GetText("food.weekly.view.calories_suffix", locale, caloriesPerServing.Value)
             : string.Empty;
+
+    private static bool TryParseInventoryQuantityAdjustment(
+        string input,
+        out int itemId,
+        out decimal delta)
+    {
+        itemId = 0;
+        delta = 0m;
+
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        var match = Regex.Match(
+            input.Trim(),
+            @"^(?<id>\d+)\s+(?<sign>[+-])\s*(?<value>\d+(?:[.,]\d+)?)$",
+            RegexOptions.CultureInvariant);
+
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        if (!int.TryParse(match.Groups["id"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out itemId))
+        {
+            return false;
+        }
+
+        var valueRaw = match.Groups["value"].Value.Replace(',', '.');
+        if (!decimal.TryParse(valueRaw, NumberStyles.Number, CultureInfo.InvariantCulture, out var value))
+        {
+            return false;
+        }
+
+        if (value <= 0m)
+        {
+            return false;
+        }
+
+        delta = match.Groups["sign"].Value == "-" ? -value : value;
+        return true;
+    }
 
     private sealed record VocabularyUrlSelectionResult(
         VocabularyUrlSelectionAction Action,

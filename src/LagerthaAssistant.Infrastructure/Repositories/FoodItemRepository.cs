@@ -34,6 +34,21 @@ public sealed class FoodItemRepository : IFoodItemRepository
         }
     }
 
+    public async Task<FoodItem?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Executing {Operation}; Id: {Id}", RepositoryOperations.GetByKey, id);
+            return await _context.FoodItems
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for Id {Id}", RepositoryOperations.GetByKey, id);
+            throw new RepositoryException(nameof(FoodItemRepository), RepositoryOperations.GetByKey, "Failed to load food item by ID", ex);
+        }
+    }
+
     public async Task<IReadOnlyList<FoodItem>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         try
