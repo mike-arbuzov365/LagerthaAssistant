@@ -40,7 +40,9 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         var input = context.Input;
 
         return input.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal)
-            || input.StartsWith(CallbackDataConstants.Weekly.Prefix, StringComparison.Ordinal);
+            || input.StartsWith(CallbackDataConstants.Weekly.Prefix, StringComparison.Ordinal)
+            || input.StartsWith(CallbackDataConstants.Food.Prefix, StringComparison.Ordinal)
+            || input.StartsWith(CallbackDataConstants.Inventory.Prefix, StringComparison.Ordinal);
     }
 
     public async Task<ConversationAgentResult> HandleAsync(
@@ -49,6 +51,14 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
     {
         var input = context.Input.Trim();
         var locale = context.Locale;
+
+        if (input.StartsWith(CallbackDataConstants.Inventory.CartPrefix, StringComparison.Ordinal))
+        {
+            var idStr = input[CallbackDataConstants.Inventory.CartPrefix.Length..];
+            return int.TryParse(idStr, out var itemId)
+                ? await HandleInventoryCartAsync(itemId, cancellationToken)
+                : Result("inventory.cart.invalid", "Invalid inventory item.");
+        }
 
         return input switch
         {

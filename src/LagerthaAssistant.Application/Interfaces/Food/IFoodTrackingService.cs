@@ -4,6 +4,17 @@ using LagerthaAssistant.Application.Models.Food;
 
 public interface IFoodTrackingService
 {
+    // ── Inventory ────────────────────────────────────────────────────────────
+
+    Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 50, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<FoodItemDto>> SearchInventoryAsync(string query, int take = 10, CancellationToken cancellationToken = default);
+
+    Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns inventory items where CurrentQuantity is below MinQuantity.</summary>
+    Task<IReadOnlyList<FoodItemDto>> GetLowStockItemsAsync(CancellationToken cancellationToken = default);
+
     // ── Shopping ────────────────────────────────────────────────────────────
 
     Task<IReadOnlyList<GroceryListItemDto>> GetActiveGroceryListAsync(CancellationToken cancellationToken = default);

@@ -283,6 +283,251 @@ public sealed class FoodTrackingConversationAgentTests
         Assert.Contains("Pasta", result.Message);
     }
 
+    // ── weekly:create ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task HandleAsync_WeeklyCreate_ShouldReturnCreatePrompt()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Create, []));
+
+        Assert.Equal("food.weekly.create.prompt", result.Intent);
+        Assert.Contains("What meal", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── weekly:goal ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task HandleAsync_WeeklyDailyGoal_ShouldShowConsumedAndGoal()
+    {
+        var sut = CreateSut(); // FakeFoodTrackingService returns (goal, 800, goal-800, 40%, 3)
+
+        var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.DailyGoal, []));
+
+        Assert.Equal("food.weekly.goal", result.Intent);
+        Assert.Contains("800", result.Message);
+        Assert.Contains("2000", result.Message);
+        Assert.Contains("3", result.Message); // meals logged
+    }
+
+    [Fact]
+    public async Task HandleAsync_WeeklyDailyGoal_ShouldContainProgressBar()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.DailyGoal, []));
+
+        // Progress bar uses █ (filled) and ░ (empty) characters
+        Assert.True(result.Message!.Contains('█') || result.Message.Contains('░'));
+    }
+
+    // ── weekly:diversity ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task HandleAsync_WeeklyDiversity_ShouldReturnNoMeals_WhenEmpty()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            DietDiversity = new DietDiversityDto(7, 0, 0, [], [])
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Diversity, []));
+
+        Assert.Equal("food.weekly.diversity", result.Intent);
+        Assert.Contains("No meals", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WeeklyDiversity_ShouldShowStats_WhenMealsExist()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            DietDiversity = new DietDiversityDto(7, 3, 5, ["Pasta"], ["Pasta", "Soup", "Salad"])
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.Diversity, []));
+
+        Assert.Equal("food.weekly.diversity", result.Intent);
+        Assert.Contains("5", result.Message);  // total meals
+        Assert.Contains("3", result.Message);  // unique meals
+        Assert.Contains("Pasta", result.Message); // repeated meal name
+    }
+
+    // ── AddItemFromTextAsync ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AddItemFromTextAsync_ShouldParseSingleWordName()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.AddItemFromTextAsync("Milk", CancellationToken.None);
+
+        Assert.Equal("food.shop.added", result.Intent);
+        Assert.Contains("Milk", result.Message);
+    }
+
+    [Fact]
+    public async Task AddItemFromTextAsync_ShouldParseNameAndQuantity()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.AddItemFromTextAsync("Milk 2L", CancellationToken.None);
+
+        Assert.Equal("food.shop.added", result.Intent);
+        Assert.Contains("Milk", result.Message);
+        Assert.Contains("2L", result.Message);
+    }
+
+    [Fact]
+    public async Task AddItemFromTextAsync_ShouldParseNameQuantityAndStore()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.AddItemFromTextAsync("Milk 2L SuperMart", CancellationToken.None);
+
+        Assert.Equal("food.shop.added", result.Intent);
+        Assert.Contains("Milk", result.Message);
+        Assert.Contains("2L", result.Message);
+        Assert.Contains("SuperMart", result.Message);
+    }
+
+    [Fact]
+    public async Task AddItemFromTextAsync_ShouldJoinMultiWordStore()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.AddItemFromTextAsync("Eggs 12pcs Whole Foods Market", CancellationToken.None);
+
+        Assert.Equal("food.shop.added", result.Intent);
+        Assert.Contains("Whole Foods Market", result.Message);
+    }
+
+    // ── Inventory handlers ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task HandleInventoryListAsync_ShouldReturnItemList_WhenItemsExist()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(1, "Milk", "Dairy", null, null, "2L"),
+                new FoodItemDto(2, "Eggs", null, null, null, null)
+            ]
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.HandleInventoryListAsync(CancellationToken.None);
+
+        Assert.Equal("inventory.list", result.Intent);
+        Assert.Contains("Milk", result.Message);
+        Assert.Contains("Eggs", result.Message);
+        Assert.Contains("[1]", result.Message);
+        Assert.Contains("[2]", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleInventoryListAsync_ShouldReturnEmpty_WhenNoItems()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.HandleInventoryListAsync(CancellationToken.None);
+
+        Assert.Equal("inventory.list.empty", result.Intent);
+    }
+
+    [Fact]
+    public void HandleInventorySearchPrompt_ShouldReturnSearchPrompt()
+    {
+        var result = FoodTrackingConversationAgent.HandleInventorySearchPrompt();
+
+        Assert.Equal("inventory.search.prompt", result.Intent);
+        Assert.NotNull(result.Message);
+    }
+
+    [Fact]
+    public async Task HandleInventorySuggestAsync_ShouldReturnEmpty_WhenNoLowStock()
+    {
+        var sut = CreateSut(); // empty inventory
+
+        var result = await sut.HandleInventorySuggestAsync(CancellationToken.None);
+
+        Assert.Equal("inventory.suggest.empty", result.Intent);
+    }
+
+    [Fact]
+    public async Task HandleInventorySuggestAsync_ShouldListLowStockItems()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(1, "Eggs", null, null, null, null) { CurrentQuantity = 2m, MinQuantity = 6m },
+                new FoodItemDto(2, "Milk", null, null, null, null) { CurrentQuantity = 0.5m, MinQuantity = 2m }
+            ]
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.HandleInventorySuggestAsync(CancellationToken.None);
+
+        Assert.Equal("inventory.suggest", result.Intent);
+        Assert.Contains("Eggs", result.Message);
+        Assert.Contains("Milk", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleInventoryCartAsync_ShouldReturnAdded_WhenItemExists()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems = [new FoodItemDto(5, "Butter", null, null, null, null)]
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.HandleInventoryCartAsync(5, CancellationToken.None);
+
+        Assert.Equal("inventory.cart.added", result.Intent);
+        Assert.Contains("Butter", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleInventoryCartAsync_ShouldReturnNotFound_WhenItemMissing()
+    {
+        var sut = CreateSut(); // empty inventory
+
+        var result = await sut.HandleInventoryCartAsync(999, CancellationToken.None);
+
+        Assert.Equal("inventory.cart.not_found", result.Intent);
+    }
+
+    // ── CanHandle — food: and inventory: prefixes ────────────────────────────
+
+    [Theory]
+    [InlineData(CallbackDataConstants.Food.Inventory)]
+    [InlineData(CallbackDataConstants.Food.Shopping)]
+    [InlineData(CallbackDataConstants.Food.Menu)]
+    public void CanHandle_ShouldReturnTrue_ForFoodPrefixedInput(string input)
+    {
+        var sut = CreateSut();
+        var ctx = new ConversationAgentContext(input, [input]);
+        Assert.True(sut.CanHandle(ctx));
+    }
+
+    [Theory]
+    [InlineData(CallbackDataConstants.Inventory.List)]
+    [InlineData(CallbackDataConstants.Inventory.Search)]
+    [InlineData(CallbackDataConstants.Inventory.Suggest)]
+    [InlineData("inventory:cart:42")]
+    public void CanHandle_ShouldReturnTrue_ForInventoryPrefixedInput(string input)
+    {
+        var sut = CreateSut();
+        var ctx = new ConversationAgentContext(input, [input]);
+        Assert.True(sut.CanHandle(ctx));
+    }
+
     // ── Profile ──────────────────────────────────────────────────────────────
 
     [Fact]
@@ -357,7 +602,9 @@ public sealed class FoodTrackingConversationAgentTests
         public IReadOnlyList<MealDto> CookableMeals { get; init; } = [];
         public IReadOnlyList<MealFrequency> FavouriteMeals { get; init; } = [];
         public CalorieSummary CalorieSummary { get; init; } = new(DateTime.MinValue, DateTime.MaxValue, 0, 0, 0, 0, 0);
+        public DietDiversityDto DietDiversity { get; init; } = new(7, 0, 0, [], []);
         public int ClearedCount { get; init; }
+        public IReadOnlyList<FoodItemDto> InventoryItems { get; init; } = [];
 
         public Task<IReadOnlyList<GroceryListItemDto>> GetActiveGroceryListAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(GroceryItems);
