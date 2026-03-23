@@ -10,6 +10,10 @@ public interface IFoodTrackingService
 
     Task<IReadOnlyList<FoodItemDto>> SearchInventoryAsync(string query, int take = 10, CancellationToken cancellationToken = default);
 
+    Task<InventoryStatsDto> GetInventoryStatsAsync(CancellationToken cancellationToken = default);
+
+    Task<FoodItemDto> AdjustInventoryQuantityAsync(int foodItemId, decimal delta, CancellationToken cancellationToken = default);
+
     Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default);
 
     /// <summary>Returns inventory items where CurrentQuantity is below MinQuantity.</summary>
@@ -26,6 +30,8 @@ public interface IFoodTrackingService
     Task<int> MarkAllBoughtAsync(CancellationToken cancellationToken = default);
 
     Task<int> ClearBoughtItemsAsync(CancellationToken cancellationToken = default);
+
+    Task<int> DeleteItemsByIdsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default);
 
     // ── Meals ────────────────────────────────────────────────────────────────
 

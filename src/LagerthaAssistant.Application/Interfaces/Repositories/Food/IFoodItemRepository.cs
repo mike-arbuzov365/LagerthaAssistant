@@ -6,6 +6,8 @@ public interface IFoodItemRepository
 {
     Task<FoodItem?> GetByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default);
 
+    Task<FoodItem?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<FoodItem>> GetAllAsync(CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<int>> GetAllIdsAsync(CancellationToken cancellationToken = default);

@@ -233,4 +233,29 @@ public sealed class GroceryListRepository : IGroceryListRepository
             throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Delete, "Failed to delete bought grocery items", ex);
         }
     }
+
+    public async Task<int> DeleteByIdsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default)
+    {
+        if (itemIds.Count == 0)
+        {
+            return 0;
+        }
+
+        try
+        {
+            _logger.LogDebug(
+                "Executing {Operation} for deleting selected grocery items; Count={Count}",
+                RepositoryOperations.Delete,
+                itemIds.Count);
+
+            return await _context.GroceryListItems
+                .Where(x => itemIds.Contains(x.Id) && !x.IsBought)
+                .ExecuteDeleteAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for deleting selected grocery items", RepositoryOperations.Delete);
+            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Delete, "Failed to delete selected grocery items", ex);
+        }
+    }
 }

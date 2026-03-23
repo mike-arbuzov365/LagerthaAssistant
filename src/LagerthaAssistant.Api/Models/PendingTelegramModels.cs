@@ -46,13 +46,24 @@ internal enum PendingChatActionKind
     VocabularyImport = 2,
     InventorySearch = 3,
     MealCreation = 4,
-    FoodPhotoLog = 5
+    FoodPhotoLog = 5,
+    InventoryAdjustQuantity = 6
 }
 
 internal sealed record PendingFoodPhotoLog(
     string MealName,
     int EstimatedCalories,
     decimal Servings);
+
+internal sealed record PendingShoppingDeleteSession(
+    IReadOnlyList<PendingShoppingDeleteCandidate> Candidates);
+
+internal sealed record PendingShoppingDeleteCandidate(
+    int Number,
+    int ItemId,
+    string Name,
+    string? Quantity,
+    string? Store);
 
 internal sealed record PendingMealCreation(
     string Name,

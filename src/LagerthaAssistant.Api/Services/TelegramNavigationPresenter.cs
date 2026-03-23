@@ -88,7 +88,8 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             InlineKeyboard:
             [
                 [Button("menu.inventory.list", locale, CallbackDataConstants.Inventory.List), Button("menu.inventory.search", locale, CallbackDataConstants.Inventory.Search)],
-                [Button("menu.inventory.add", locale, CallbackDataConstants.Inventory.Add), Button("menu.inventory.suggest", locale, CallbackDataConstants.Inventory.Suggest)],
+                [Button("menu.inventory.stats", locale, CallbackDataConstants.Inventory.Stats), Button("menu.inventory.suggest", locale, CallbackDataConstants.Inventory.Suggest)],
+                [Button("menu.inventory.adjust", locale, CallbackDataConstants.Inventory.Adjust)],
                 [Button("menu.inventory.back", locale, CallbackDataConstants.Food.Menu)]
             ]);
     }
