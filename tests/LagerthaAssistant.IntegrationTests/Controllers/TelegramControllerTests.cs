@@ -2925,6 +2925,8 @@ public sealed class TelegramControllerTests
 
         public string LastChannel { get; private set; } = string.Empty;
 
+        public string LastLocale { get; private set; } = "en";
+
         public string? LastUserId { get; private set; }
 
         public string? LastConversationId { get; private set; }
@@ -2953,7 +2955,19 @@ public sealed class TelegramControllerTests
             string channel,
             string locale,
             CancellationToken cancellationToken)
-            => ProcessAsync(input, channel, null, null, cancellationToken);
+            => ProcessAsync(input, channel, locale, null, null, cancellationToken);
+
+        public Task<ConversationAgentResult> ProcessAsync(
+            string input,
+            string channel,
+            string locale,
+            string? userId,
+            string? conversationId,
+            CancellationToken cancellationToken = default)
+        {
+            LastLocale = locale;
+            return ProcessAsync(input, channel, userId, conversationId, cancellationToken);
+        }
 
         public Task<ConversationAgentResult> ProcessAsync(
             string input,
@@ -3792,6 +3806,17 @@ public sealed class TelegramControllerTests
                 "vocab.url.no_pending" => "No pending URL/text import request.",
                 "vocab.url.select_all" => "Add all",
                 "vocab.url.cancel" => "Cancel",
+                "food.shop.add.prompt" => "What would you like to add to the shopping list?",
+                "food.shop.added" => "Added \"{0}\"{1}{2} to your shopping list.",
+                "food.shop.qty_suffix" => " × {0}",
+                "food.shop.store_suffix" => " at {0}",
+                "shop.not_in_inventory" => "\"{0}\" was not found in inventory.",
+                "food.weekly.view.empty" => "No meals found. Add some meals to Notion Meal Plans first.",
+                "food.weekly.view.title" => "Meal plans ({0} meals):",
+                "food.weekly.view.line" => "🍽 [{0}] {1}{2}",
+                "food.weekly.view.calories_suffix" => " — {0} kcal/serving",
+                "food.weekly.logged" => "✅ Logged meal #{0} × {1} serving(s).",
+                "food.weekly.log.not_found" => "⚠️ Meal with ID {0} not found.",
                 "vocab.stats.empty" => "Stats empty",
                 "vocab.stats.title" => "Vocabulary statistics",
                 "vocab.stats.total" => "Total indexed words: {0}",
@@ -3906,6 +3931,12 @@ public sealed class TelegramControllerTests
 
         public TelegramInlineKeyboardMarkup BuildVocabularyKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Add", "vocab:add")]]);
+
+        public TelegramInlineKeyboardMarkup BuildFoodMenuKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Food", CallbackDataConstants.Food.Menu)]]);
+
+        public TelegramInlineKeyboardMarkup BuildInventoryKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Inventory", CallbackDataConstants.Inventory.List)]]);
 
         public TelegramInlineKeyboardMarkup BuildShoppingKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Add", "shop:add")]]);
@@ -4506,6 +4537,7 @@ public sealed class TelegramControllerTests
 
     private sealed class FakeFoodTrackingService : IFoodTrackingService
     {
+        public IReadOnlyList<FoodItemDto> InventoryItems { get; init; } = [];
         public IReadOnlyList<GroceryListItemDto> GroceryItems { get; init; } = [];
         public IReadOnlyList<MealDto> Meals { get; init; } = [];
         public IReadOnlyList<MealDto> CookableMeals { get; init; } = [];
@@ -4517,6 +4549,40 @@ public sealed class TelegramControllerTests
 
         public int LastLoggedMealId { get; private set; }
         public decimal LastLoggedServings { get; private set; }
+
+        public Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 50, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<FoodItemDto>>(InventoryItems.Take(take).ToList());
+
+        public Task<IReadOnlyList<FoodItemDto>> SearchInventoryAsync(string query, int take = 10, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return GetAllInventoryAsync(take, cancellationToken);
+            }
+
+            var matches = InventoryItems
+                .Where(x => x.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Take(take)
+                .ToList();
+            return Task.FromResult<IReadOnlyList<FoodItemDto>>(matches);
+        }
+
+        public Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default)
+        {
+            var found = InventoryItems.FirstOrDefault(x => x.Id == foodItemId);
+            if (found is null)
+            {
+                throw new InvalidOperationException($"Food item {foodItemId} not found.");
+            }
+
+            return Task.FromResult(new GroceryListItemDto(100 + foodItemId, found.Name, quantity, null, store, false));
+        }
+
+        public Task<IReadOnlyList<FoodItemDto>> GetLowStockItemsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<FoodItemDto>>(
+                InventoryItems
+                    .Where(x => x.MinQuantity.HasValue && x.CurrentQuantity.HasValue && x.CurrentQuantity.Value < x.MinQuantity.Value)
+                    .ToList());
 
         public Task<IReadOnlyList<GroceryListItemDto>> GetActiveGroceryListAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(GroceryItems);

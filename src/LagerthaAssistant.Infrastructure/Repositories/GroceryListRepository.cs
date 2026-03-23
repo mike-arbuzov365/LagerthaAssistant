@@ -97,7 +97,7 @@ public sealed class GroceryListRepository : IGroceryListRepository
         {
             var candidateIds = await _context.GroceryListItems
                 .AsNoTracking()
-                .Where(x => x.NotionSyncStatus == FoodSyncStatus.Pending)
+                .Where(x => x.NotionSyncStatus == FoodSyncStatus.Pending || x.NotionSyncStatus == FoodSyncStatus.Failed)
                 .OrderBy(x => x.UpdatedAt)
                 .Select(x => x.Id)
                 .Take(take * 3)
@@ -117,7 +117,7 @@ public sealed class GroceryListRepository : IGroceryListRepository
                 }
 
                 var updated = await _context.GroceryListItems
-                    .Where(x => x.Id == id && x.NotionSyncStatus == FoodSyncStatus.Pending)
+                    .Where(x => x.Id == id && (x.NotionSyncStatus == FoodSyncStatus.Pending || x.NotionSyncStatus == FoodSyncStatus.Failed))
                     .ExecuteUpdateAsync(
                         s => s
                             .SetProperty(x => x.NotionSyncStatus, FoodSyncStatus.Processing)
@@ -181,6 +181,40 @@ public sealed class GroceryListRepository : IGroceryListRepository
         {
             _logger.LogError(ex, "Error in {Operation} for marking all grocery items bought", RepositoryOperations.Update);
             throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Update, "Failed to mark all grocery items as bought", ex);
+        }
+    }
+
+    public async Task<int> MarkBoughtByIdsAsync(
+        IReadOnlyCollection<int> itemIds,
+        DateTime updatedAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (itemIds.Count == 0)
+        {
+            return 0;
+        }
+
+        try
+        {
+            _logger.LogDebug(
+                "Executing {Operation} for marking selected grocery items bought; Count={Count}",
+                RepositoryOperations.Update,
+                itemIds.Count);
+
+            return await _context.GroceryListItems
+                .Where(x => itemIds.Contains(x.Id) && !x.IsBought)
+                .ExecuteUpdateAsync(
+                    s => s
+                        .SetProperty(x => x.IsBought, true)
+                        .SetProperty(x => x.NotionSyncStatus, FoodSyncStatus.Pending)
+                        .SetProperty(x => x.NotionUpdatedAt, updatedAtUtc)
+                        .SetProperty(x => x.NotionLastError, (string?)null),
+                    cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for marking selected grocery items bought", RepositoryOperations.Update);
+            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Update, "Failed to mark selected grocery items as bought", ex);
         }
     }
 

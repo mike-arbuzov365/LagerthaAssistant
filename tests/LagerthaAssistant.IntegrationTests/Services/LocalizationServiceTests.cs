@@ -147,6 +147,24 @@ public sealed class LocalizationServiceTests
         Assert.NotEqual(key, value); // not falling back to the raw key
     }
 
+    [Theory]
+    [InlineData("en", "food.weekly.logged", "Logged meal #5")]
+    [InlineData("uk", "food.weekly.logged", "Записано прийом #5")]
+    [InlineData("uk", "food.shop.store_suffix", " у Сільпо")]
+    public void Get_ShouldReturnSupplementalFoodLocalization_ForNewKeys(string locale, string key, string expectedPrefix)
+    {
+        var sut = new LocalizationService();
+        var value = sut.Get(key, locale);
+        var formatted = key switch
+        {
+            "food.shop.store_suffix" => string.Format(value, "Сільпо"),
+            _ => string.Format(value, 5, 1.5m, "Сільпо")
+        };
+
+        Assert.DoesNotContain("[?:", value, StringComparison.Ordinal);
+        Assert.Contains(expectedPrefix, formatted, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static IReadOnlyDictionary<string, string> GetDictionary(string fieldName)
     {
         var field = typeof(LocalizationService).GetField(fieldName, BindingFlags.Static | BindingFlags.NonPublic);

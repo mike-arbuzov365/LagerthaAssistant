@@ -139,6 +139,31 @@ public sealed class ConversationOrchestratorTests
     }
 
     [Fact]
+    public async Task ProcessAsync_CanonicalOverload_ShouldPropagateLocaleAndScopeIntoAgentContext()
+    {
+        var capturingAgent = new CapturingAgent();
+        var sut = new ConversationOrchestrator(
+            [capturingAgent],
+            NullLogger<ConversationOrchestrator>.Instance,
+            new FakeConversationScopeAccessor());
+
+        var result = await sut.ProcessAsync(
+            "void",
+            "telegram",
+            "uk",
+            "Mike",
+            "chat-42",
+            CancellationToken.None);
+
+        Assert.Equal("capturing-agent", result.AgentName);
+        Assert.NotNull(capturingAgent.LastContext);
+        Assert.Equal("uk", capturingAgent.LastContext!.Locale);
+        Assert.Equal("telegram", capturingAgent.LastContext.Scope.Channel);
+        Assert.Equal("mike", capturingAgent.LastContext.Scope.UserId);
+        Assert.Equal("chat-42", capturingAgent.LastContext.Scope.ConversationId);
+    }
+
+    [Fact]
     public async Task ProcessAsync_ShouldSkipVocabularyAgent_WhenCommandIntentDetectedByBoundaryPolicy()
     {
         var agents = new IConversationAgent[]
@@ -223,6 +248,23 @@ public sealed class ConversationOrchestratorTests
 
         public Task<ConversationAgentResult> HandleAsync(ConversationAgentContext context, CancellationToken cancellationToken = default)
             => Task.FromResult(ConversationAgentResult.Empty(Name, "command"));
+    }
+
+    private sealed class CapturingAgent : IConversationAgent
+    {
+        public string Name => "capturing-agent";
+
+        public int Order => 1;
+
+        public ConversationAgentContext? LastContext { get; private set; }
+
+        public bool CanHandle(ConversationAgentContext context) => true;
+
+        public Task<ConversationAgentResult> HandleAsync(ConversationAgentContext context, CancellationToken cancellationToken = default)
+        {
+            LastContext = context;
+            return Task.FromResult(ConversationAgentResult.Empty(Name, "captured"));
+        }
     }
 
     private sealed class FakeVocabularyWorkflowService : IVocabularyWorkflowService

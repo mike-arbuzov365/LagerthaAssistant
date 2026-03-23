@@ -157,22 +157,7 @@ public sealed class FoodTrackingService : IFoodTrackingService
         IReadOnlyCollection<int> itemIds,
         CancellationToken cancellationToken = default)
     {
-        if (itemIds.Count == 0)
-        {
-            return 0;
-        }
-
-        var all = await _groceryRepo.GetAllAsync(cancellationToken);
-        var toMark = all.Where(x => itemIds.Contains(x.Id) && !x.IsBought).ToList();
-
-        foreach (var item in toMark)
-        {
-            item.IsBought = true;
-            item.NotionSyncStatus = FoodSyncStatus.Pending;
-        }
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return toMark.Count;
+        return await _groceryRepo.MarkBoughtByIdsAsync(itemIds, DateTime.UtcNow, cancellationToken);
     }
 
     public async Task<int> MarkAllBoughtAsync(CancellationToken cancellationToken = default)

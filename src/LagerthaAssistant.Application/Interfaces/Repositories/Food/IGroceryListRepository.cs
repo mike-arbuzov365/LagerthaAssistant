@@ -16,6 +16,8 @@ public interface IGroceryListRepository
 
     Task AddAsync(GroceryListItem item, CancellationToken cancellationToken = default);
 
+    Task<int> MarkBoughtByIdsAsync(IReadOnlyCollection<int> itemIds, DateTime updatedAtUtc, CancellationToken cancellationToken = default);
+
     Task<int> MarkAllBoughtAsync(CancellationToken cancellationToken = default);
 
     Task<int> DeleteBoughtAsync(CancellationToken cancellationToken = default);

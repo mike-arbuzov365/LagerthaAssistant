@@ -72,6 +72,27 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             ]);
     }
 
+    public TelegramInlineKeyboardMarkup BuildFoodMenuKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("menu.food.inventory", locale, CallbackDataConstants.Food.Inventory), Button("menu.food.shopping", locale, CallbackDataConstants.Food.Shopping)],
+                [Button("menu.food.back", locale, CallbackDataConstants.Nav.Main)]
+            ]);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildInventoryKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("menu.inventory.list", locale, CallbackDataConstants.Inventory.List), Button("menu.inventory.search", locale, CallbackDataConstants.Inventory.Search)],
+                [Button("menu.inventory.add", locale, CallbackDataConstants.Inventory.Add), Button("menu.inventory.suggest", locale, CallbackDataConstants.Inventory.Suggest)],
+                [Button("menu.inventory.back", locale, CallbackDataConstants.Food.Menu)]
+            ]);
+    }
+
     public TelegramInlineKeyboardMarkup BuildShoppingKeyboard(string locale)
     {
         return new TelegramInlineKeyboardMarkup(
