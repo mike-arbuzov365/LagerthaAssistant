@@ -440,9 +440,9 @@ public sealed class TelegramController : ControllerBase
             case NavigationRouteKind.MainShoppingButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Shopping, cancellationToken);
                 return new TelegramRouteResponse(
-                    "nav.shopping",
-                    _navigationPresenter.GetText("menu.shopping.title", locale),
-                    InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+                    "nav.food",
+                    _navigationPresenter.GetText("menu.food.title", locale),
+                    InlineKeyboard(_navigationPresenter.BuildFoodMenuKeyboard(locale)));
 
             case NavigationRouteKind.MainWeeklyMenuButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.WeeklyMenu, cancellationToken);
@@ -481,6 +481,9 @@ public sealed class TelegramController : ControllerBase
 
             case NavigationRouteKind.ShoppingText:
                 return await HandleShoppingTextAsync(inbound.Text, locale, cancellationToken);
+
+            case NavigationRouteKind.InventoryText:
+                return await HandleInventoryTextAsync(inbound.Text, locale, scope, cancellationToken);
 
             case NavigationRouteKind.WeeklyMenuText:
                 if (!string.IsNullOrWhiteSpace(inbound.PhotoFileId))
@@ -1005,6 +1008,17 @@ public sealed class TelegramController : ControllerBase
                     _navigationPresenter.GetText("stub.wip", locale),
                     InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)))
             };
+        }
+
+        if (callbackData.StartsWith(CallbackDataConstants.Food.Prefix, StringComparison.Ordinal))
+        {
+            return await HandleFoodMenuCallbackAsync(callbackData, locale, scope, cancellationToken);
+        }
+
+        if (callbackData.StartsWith(CallbackDataConstants.Inventory.Prefix, StringComparison.Ordinal))
+        {
+            await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Inventory, cancellationToken);
+            return await HandleInventoryCallbackAsync(callbackData, locale, scope, cancellationToken);
         }
 
         if (callbackData.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal))
@@ -3569,6 +3583,244 @@ public sealed class TelegramController : ControllerBase
 
     // ── Food tracking helpers ─────────────────────────────────────────────────
 
+    private async Task<TelegramRouteResponse> HandleFoodMenuCallbackAsync(
+        string callbackData,
+        string locale,
+        ConversationScope scope,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(callbackData, CallbackDataConstants.Food.Inventory, StringComparison.Ordinal))
+        {
+            await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Inventory, cancellationToken);
+            return new TelegramRouteResponse(
+                "nav.inventory",
+                _navigationPresenter.GetText("menu.inventory.title", locale),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Food.Shopping, StringComparison.Ordinal))
+        {
+            await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Shopping, cancellationToken);
+            return new TelegramRouteResponse(
+                "nav.shopping",
+                _navigationPresenter.GetText("menu.shopping.title", locale),
+                InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+        }
+
+        // food:menu — go back to food menu
+        await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Shopping, cancellationToken);
+        return new TelegramRouteResponse(
+            "nav.food",
+            _navigationPresenter.GetText("menu.food.title", locale),
+            InlineKeyboard(_navigationPresenter.BuildFoodMenuKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandleInventoryCallbackAsync(
+        string callbackData,
+        string locale,
+        ConversationScope scope,
+        CancellationToken cancellationToken)
+    {
+        if (_foodTrackingService is null)
+        {
+            return new TelegramRouteResponse(
+                "inventory.unavailable",
+                _navigationPresenter.GetText("stub.wip", locale),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.List, StringComparison.Ordinal))
+        {
+            var items = await _foodTrackingService.GetAllInventoryAsync(50, cancellationToken);
+            if (items.Count == 0)
+            {
+                return new TelegramRouteResponse(
+                    "inventory.list.empty",
+                    _navigationPresenter.GetText("inventory.empty", locale),
+                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(_navigationPresenter.GetText("menu.inventory.title", locale));
+            sb.AppendLine();
+            foreach (var item in items)
+            {
+                var qty = item.Quantity is not null ? $" [{item.Quantity}]" : string.Empty;
+                var cat = item.Category is not null ? $" — {item.Category}" : string.Empty;
+                sb.AppendLine($"  [{item.Id}] {item.Name}{qty}{cat}");
+            }
+            sb.AppendLine();
+            sb.AppendLine("To add to cart: reply with item ID, e.g. \"42\" or \"42 2kg\"");
+
+            return new TelegramRouteResponse(
+                "inventory.list",
+                sb.ToString().TrimEnd(),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.Search, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventorySearch;
+            return new TelegramRouteResponse(
+                "inventory.search.prompt",
+                _navigationPresenter.GetText("inventory.search.prompt", locale),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.Add, StringComparison.Ordinal))
+        {
+            return new TelegramRouteResponse(
+                "inventory.add.prompt",
+                _navigationPresenter.GetText("stub.wip", locale),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.Suggest, StringComparison.Ordinal))
+        {
+            var lowStock = await _foodTrackingService.GetLowStockItemsAsync(cancellationToken);
+            if (lowStock.Count == 0)
+            {
+                return new TelegramRouteResponse(
+                    "inventory.suggest.empty",
+                    _navigationPresenter.GetText("inventory.suggest.empty", locale),
+                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Low stock — {lowStock.Count} item(s) to reorder:");
+            sb.AppendLine();
+            foreach (var item in lowStock)
+            {
+                var cur = item.CurrentQuantity.HasValue ? $"{item.CurrentQuantity.Value:G}" : "?";
+                sb.AppendLine($"  ⚠️ {item.Name} — {cur} (needs restock)");
+            }
+            return new TelegramRouteResponse(
+                "inventory.suggest",
+                sb.ToString().TrimEnd(),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        if (callbackData.StartsWith(CallbackDataConstants.Inventory.CartPrefix, StringComparison.Ordinal))
+        {
+            var idStr = callbackData[CallbackDataConstants.Inventory.CartPrefix.Length..];
+            if (int.TryParse(idStr, out var foodItemId))
+            {
+                try
+                {
+                    var added = await _foodTrackingService.AddToShoppingFromInventoryAsync(foodItemId, quantity: null, store: null, cancellationToken);
+                    return new TelegramRouteResponse(
+                        "inventory.cart.added",
+                        _navigationPresenter.GetText("inventory.cart.added", locale, added.Name),
+                        InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+                }
+                catch (InvalidOperationException)
+                {
+                    return new TelegramRouteResponse(
+                        "inventory.cart.not_found",
+                        _navigationPresenter.GetText("inventory.cart.not_found", locale),
+                        InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+                }
+            }
+        }
+
+        return new TelegramRouteResponse(
+            "inventory.unknown",
+            _navigationPresenter.GetText("stub.wip", locale),
+            InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> HandleInventoryTextAsync(
+        string text,
+        string locale,
+        ConversationScope scope,
+        CancellationToken cancellationToken)
+    {
+        if (_foodTrackingService is null)
+        {
+            return new TelegramRouteResponse(
+                "inventory.text",
+                _navigationPresenter.GetText("stub.wip", locale),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        var pendingKey = BuildPendingChatActionKey(scope);
+        if (_pendingStateStore.ChatActions.TryGetValue(pendingKey, out var pendingAction)
+            && pendingAction == PendingChatActionKind.InventorySearch)
+        {
+            _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+            var results = await _foodTrackingService.SearchInventoryAsync(text, take: 10, cancellationToken);
+
+            if (results.Count == 0)
+            {
+                return new TelegramRouteResponse(
+                    "inventory.search.empty",
+                    _navigationPresenter.GetText("inventory.empty", locale),
+                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+            }
+
+            var sb = new System.Text.StringBuilder();
+            foreach (var item in results)
+            {
+                var qty = item.Quantity is not null ? $" [{item.Quantity}]" : string.Empty;
+                sb.AppendLine($"  [{item.Id}] {item.Name}{qty}");
+            }
+            sb.AppendLine();
+            sb.AppendLine("To add to cart: reply with item ID, e.g. \"42\" or \"42 2kg\"");
+
+            return new TelegramRouteResponse(
+                "inventory.search.results",
+                sb.ToString().TrimEnd(),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        // If user types "N" or "N qty" — add item N to cart
+        var parts = text.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 1 && int.TryParse(parts[0], out var itemId) && itemId > 0)
+        {
+            var quantity = parts.Length >= 2 ? parts[1] : null;
+            try
+            {
+                var added = await _foodTrackingService.AddToShoppingFromInventoryAsync(itemId, quantity, store: null, cancellationToken);
+                return new TelegramRouteResponse(
+                    "inventory.cart.added",
+                    _navigationPresenter.GetText("inventory.cart.added", locale, added.Name),
+                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+            }
+            catch (InvalidOperationException)
+            {
+                return new TelegramRouteResponse(
+                    "inventory.cart.not_found",
+                    _navigationPresenter.GetText("inventory.cart.not_found", locale),
+                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+            }
+        }
+
+        // Otherwise search
+        var searchResults = await _foodTrackingService.SearchInventoryAsync(text, take: 10, cancellationToken);
+        if (searchResults.Count == 0)
+        {
+            return new TelegramRouteResponse(
+                "inventory.search.empty",
+                _navigationPresenter.GetText("inventory.empty", locale),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        var resultSb = new System.Text.StringBuilder();
+        foreach (var item in searchResults)
+        {
+            var qty = item.Quantity is not null ? $" [{item.Quantity}]" : string.Empty;
+            resultSb.AppendLine($"  [{item.Id}] {item.Name}{qty}");
+        }
+        resultSb.AppendLine();
+        resultSb.AppendLine("To add to cart: reply with item ID, e.g. \"42\" or \"42 2kg\"");
+
+        return new TelegramRouteResponse(
+            "inventory.search.results",
+            resultSb.ToString().TrimEnd(),
+            InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+    }
+
     private async Task<TelegramRouteResponse> HandleFoodCallbackAsync(
         string callbackData,
         string locale,
@@ -3625,19 +3877,35 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
         }
 
-        // Parse "Name Qty Store" from free text
+        // Parse: first token = name (strip trailing commas), second = qty, rest = store
         var parts = text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var name = parts[0];
+        var name = parts[0].TrimEnd(',');
         var quantity = parts.Length >= 2 ? parts[1] : null;
         var store = parts.Length >= 3 ? string.Join(" ", parts.Skip(2)) : null;
 
-        var item = await _foodTrackingService.AddGroceryItemAsync(name, quantity, store, cancellationToken);
-        var qty = item.Quantity is not null ? $" × {item.Quantity}" : string.Empty;
-        var st = item.Store is not null ? $" at {item.Store}" : string.Empty;
+        // Inventory-first: try to match name against inventory, link if found
+        var inventoryMatches = await _foodTrackingService.SearchInventoryAsync(name, take: 1, cancellationToken);
+        if (inventoryMatches.Count > 0)
+        {
+            var match = inventoryMatches[0];
+            var added = await _foodTrackingService.AddToShoppingFromInventoryAsync(match.Id, quantity, store, cancellationToken);
+            var qty = added.Quantity is not null ? $" × {added.Quantity}" : string.Empty;
+            var st = added.Store is not null ? $" at {added.Store}" : string.Empty;
+            var matchNote = _navigationPresenter.GetText("shop.matched_inventory", locale, match.Name);
+            return new TelegramRouteResponse(
+                "food.shop.added",
+                $"Added \"{added.Name}\"{qty}{st} to your shopping list.\n{matchNote}",
+                InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
+        }
 
+        // No inventory match — add as free-text item
+        var item = await _foodTrackingService.AddGroceryItemAsync(name, quantity, store, cancellationToken);
+        var itemQty = item.Quantity is not null ? $" × {item.Quantity}" : string.Empty;
+        var itemSt = item.Store is not null ? $" at {item.Store}" : string.Empty;
+        var warning = _navigationPresenter.GetText("shop.not_in_inventory", locale, name);
         return new TelegramRouteResponse(
             "food.shop.added",
-            $"Added \"{item.Name}\"{qty}{st} to your shopping list.",
+            $"Added \"{item.Name}\"{itemQty}{itemSt} to your shopping list.\n{warning}",
             InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale)));
     }
 

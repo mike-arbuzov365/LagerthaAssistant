@@ -6,6 +6,7 @@ public static class NavigationSections
     public const string Chat = "chat";
     public const string Vocabulary = "vocabulary";
     public const string Shopping = "shopping";
+    public const string Inventory = "inventory";
     public const string WeeklyMenu = "weekly_menu";
     public const string Settings = "settings";
     public const string LanguageOnboarding = "language_onboarding";
@@ -21,6 +22,7 @@ public static class NavigationSections
             || section.Equals(Chat, StringComparison.OrdinalIgnoreCase)
             || section.Equals(Vocabulary, StringComparison.OrdinalIgnoreCase)
             || section.Equals(Shopping, StringComparison.OrdinalIgnoreCase)
+            || section.Equals(Inventory, StringComparison.OrdinalIgnoreCase)
             || section.Equals(WeeklyMenu, StringComparison.OrdinalIgnoreCase)
             || section.Equals(Settings, StringComparison.OrdinalIgnoreCase)
             || section.Equals(LanguageOnboarding, StringComparison.OrdinalIgnoreCase);

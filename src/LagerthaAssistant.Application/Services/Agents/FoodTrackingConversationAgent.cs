@@ -37,7 +37,9 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         var input = context.Input;
 
         return input.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal)
-            || input.StartsWith(CallbackDataConstants.Weekly.Prefix, StringComparison.Ordinal);
+            || input.StartsWith(CallbackDataConstants.Weekly.Prefix, StringComparison.Ordinal)
+            || input.StartsWith(CallbackDataConstants.Food.Prefix, StringComparison.Ordinal)
+            || input.StartsWith(CallbackDataConstants.Inventory.Prefix, StringComparison.Ordinal);
     }
 
     public async Task<ConversationAgentResult> HandleAsync(
@@ -45,6 +47,14 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         CancellationToken cancellationToken = default)
     {
         var input = context.Input.Trim();
+
+        if (input.StartsWith(CallbackDataConstants.Inventory.CartPrefix, StringComparison.Ordinal))
+        {
+            var idStr = input[CallbackDataConstants.Inventory.CartPrefix.Length..];
+            return int.TryParse(idStr, out var itemId)
+                ? await HandleInventoryCartAsync(itemId, cancellationToken)
+                : Result("inventory.cart.invalid", "Invalid inventory item.");
+        }
 
         return input switch
         {
@@ -59,7 +69,10 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
             CallbackDataConstants.Weekly.Create => HandleMealCreatePrompt(),
             CallbackDataConstants.Weekly.DailyGoal => await HandleDailyGoalAsync(cancellationToken),
             CallbackDataConstants.Weekly.Diversity => await HandleDietDiversityAsync(cancellationToken),
-            _ => Result("food.unknown", "Use the buttons to navigate Shopping or Weekly Menu.")
+            CallbackDataConstants.Inventory.List => await HandleInventoryListAsync(cancellationToken),
+            CallbackDataConstants.Inventory.Search => HandleInventorySearchPrompt(),
+            CallbackDataConstants.Inventory.Suggest => await HandleInventorySuggestAsync(cancellationToken),
+            _ => Result("food.unknown", "Use the buttons to navigate.")
         };
     }
 
@@ -287,6 +300,61 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         sb.AppendLine($"Diversity score: {ratio:F0}% unique");
 
         return Result("food.weekly.diversity", sb.ToString().TrimEnd());
+    }
+
+    internal async Task<ConversationAgentResult> HandleInventoryListAsync(CancellationToken cancellationToken)
+    {
+        var items = await _foodService.GetAllInventoryAsync(50, cancellationToken);
+
+        if (items.Count == 0)
+            return Result("inventory.list.empty", "Inventory is empty.");
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Inventory ({items.Count} items):");
+        sb.AppendLine();
+        foreach (var item in items)
+        {
+            var qty = item.Quantity is not null ? $" [{item.Quantity}]" : string.Empty;
+            var cat = item.Category is not null ? $" — {item.Category}" : string.Empty;
+            sb.AppendLine($"  [{item.Id}] {item.Name}{qty}{cat}");
+        }
+
+        return Result("inventory.list", sb.ToString().TrimEnd());
+    }
+
+    internal static ConversationAgentResult HandleInventorySearchPrompt()
+        => Result("inventory.search.prompt", "Type the item name to search the inventory:");
+
+    internal async Task<ConversationAgentResult> HandleInventorySuggestAsync(CancellationToken cancellationToken)
+    {
+        var items = await _foodService.GetLowStockItemsAsync(cancellationToken);
+
+        if (items.Count == 0)
+            return Result("inventory.suggest.empty", "No purchase suggestions — inventory has no items with minimum quantity set.");
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Low stock — {items.Count} item(s) to reorder:");
+        sb.AppendLine();
+        foreach (var item in items)
+        {
+            var cur = item.CurrentQuantity.HasValue ? $"{item.CurrentQuantity.Value:G}" : "?";
+            sb.AppendLine($"  ⚠️ {item.Name} — {cur} (needs restock)");
+        }
+
+        return Result("inventory.suggest", sb.ToString().TrimEnd());
+    }
+
+    internal async Task<ConversationAgentResult> HandleInventoryCartAsync(int foodItemId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var item = await _foodService.AddToShoppingFromInventoryAsync(foodItemId, quantity: null, store: null, cancellationToken);
+            return Result("inventory.cart.added", $"Added \"{item.Name}\" to your shopping list.");
+        }
+        catch (InvalidOperationException)
+        {
+            return Result("inventory.cart.not_found", "Item not found in inventory.");
+        }
     }
 
     private static string BuildProgressBar(decimal percent)

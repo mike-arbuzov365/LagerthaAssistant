@@ -690,6 +690,176 @@ public sealed class FoodTrackingServiceTests
         Assert.Equal(2, mealRepo.AllMeals[0].DefaultServings);
     }
 
+    // ── GetAllInventoryAsync ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetAllInventoryAsync_ShouldReturnMappedDtos()
+    {
+        var repo = new FakeFoodItemRepository
+        {
+            AllItems =
+            [
+                new FoodItem { Id = 1, Name = "Milk", Category = "Dairy", Quantity = "2L" },
+                new FoodItem { Id = 2, Name = "Eggs" }
+            ]
+        };
+        var sut = CreateSut(foodItemRepo: repo);
+
+        var result = await sut.GetAllInventoryAsync();
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal(1, result[0].Id);
+        Assert.Equal("Milk", result[0].Name);
+        Assert.Equal("Dairy", result[0].Category);
+        Assert.Equal("2L", result[0].Quantity);
+        Assert.Equal("Eggs", result[1].Name);
+    }
+
+    [Fact]
+    public async Task GetAllInventoryAsync_ShouldApplyTakeLimit()
+    {
+        var repo = new FakeFoodItemRepository
+        {
+            AllItems = Enumerable.Range(1, 10)
+                .Select(i => new FoodItem { Id = i, Name = $"Item{i}" })
+                .ToList()
+        };
+        var sut = CreateSut(foodItemRepo: repo);
+
+        var result = await sut.GetAllInventoryAsync(take: 3);
+
+        Assert.Equal(3, result.Count);
+    }
+
+    // ── SearchInventoryAsync ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SearchInventoryAsync_ShouldReturnMatchingItems()
+    {
+        var repo = new FakeFoodItemRepository
+        {
+            AllItems =
+            [
+                new FoodItem { Id = 1, Name = "Whole Milk" },
+                new FoodItem { Id = 2, Name = "Oat Milk" },
+                new FoodItem { Id = 3, Name = "Eggs" }
+            ]
+        };
+        var sut = CreateSut(foodItemRepo: repo);
+
+        var result = await sut.SearchInventoryAsync("milk");
+
+        Assert.Equal(2, result.Count);
+        Assert.All(result, x => Assert.Contains("Milk", x.Name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task SearchInventoryAsync_ShouldReturnAll_WhenQueryIsEmpty()
+    {
+        var repo = new FakeFoodItemRepository
+        {
+            AllItems =
+            [
+                new FoodItem { Id = 1, Name = "Milk" },
+                new FoodItem { Id = 2, Name = "Eggs" }
+            ]
+        };
+        var sut = CreateSut(foodItemRepo: repo);
+
+        var result = await sut.SearchInventoryAsync("  ");
+
+        Assert.Equal(2, result.Count);
+    }
+
+    // ── AddToShoppingFromInventoryAsync ──────────────────────────────────────
+
+    [Fact]
+    public async Task AddToShoppingFromInventoryAsync_ShouldLinkFoodItemId()
+    {
+        var foodRepo = new FakeFoodItemRepository
+        {
+            AllItems = [new FoodItem { Id = 7, Name = "Butter", Store = "Costco" }]
+        };
+        var groceryRepo = new FakeGroceryListRepository();
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(foodItemRepo: foodRepo, groceryRepo: groceryRepo, unitOfWork: uow);
+
+        var result = await sut.AddToShoppingFromInventoryAsync(7, "200g", store: null);
+
+        Assert.Equal("Butter", result.Name);
+        Assert.Equal("200g", result.Quantity);
+        Assert.Single(groceryRepo.AddedItems);
+        Assert.Equal(7, groceryRepo.AddedItems[0].FoodItemId);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task AddToShoppingFromInventoryAsync_ShouldThrow_WhenFoodItemNotFound()
+    {
+        var sut = CreateSut();
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.AddToShoppingFromInventoryAsync(999, null, null));
+    }
+
+    // ── GetLowStockItemsAsync ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetLowStockItemsAsync_ShouldReturnItemsBelowMinQuantity()
+    {
+        var repo = new FakeFoodItemRepository
+        {
+            AllItems =
+            [
+                new FoodItem { Id = 1, Name = "Eggs", CurrentQuantity = 2m, MinQuantity = 6m },
+                new FoodItem { Id = 2, Name = "Milk", CurrentQuantity = 1m, MinQuantity = 2m },
+                new FoodItem { Id = 3, Name = "Flour", CurrentQuantity = 5m, MinQuantity = 3m } // above min — NOT low
+            ]
+        };
+        var sut = CreateSut(foodItemRepo: repo);
+
+        var result = await sut.GetLowStockItemsAsync();
+
+        Assert.Equal(2, result.Count);
+        Assert.All(result, x => Assert.True(x.CurrentQuantity < x.MinQuantity));
+    }
+
+    [Fact]
+    public async Task GetLowStockItemsAsync_ShouldExcludeItems_WithNoMinQuantity()
+    {
+        var repo = new FakeFoodItemRepository
+        {
+            AllItems =
+            [
+                new FoodItem { Id = 1, Name = "Salt", CurrentQuantity = 0m, MinQuantity = null },
+                new FoodItem { Id = 2, Name = "Eggs", CurrentQuantity = null, MinQuantity = 6m }
+            ]
+        };
+        var sut = CreateSut(foodItemRepo: repo);
+
+        var result = await sut.GetLowStockItemsAsync();
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetLowStockItemsAsync_ShouldMapCurrentAndMinQuantity()
+    {
+        var repo = new FakeFoodItemRepository
+        {
+            AllItems =
+            [
+                new FoodItem { Id = 1, Name = "Butter", CurrentQuantity = 0.5m, MinQuantity = 1m }
+            ]
+        };
+        var sut = CreateSut(foodItemRepo: repo);
+
+        var result = await sut.GetLowStockItemsAsync();
+
+        Assert.Single(result);
+        Assert.Equal(0.5m, result[0].CurrentQuantity);
+        Assert.Equal(1m, result[0].MinQuantity);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static FoodTrackingService CreateSut(

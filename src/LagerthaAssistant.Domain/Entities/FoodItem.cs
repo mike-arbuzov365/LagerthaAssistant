@@ -20,6 +20,10 @@ public sealed class FoodItem : AuditableEntity
 
     public string? Quantity { get; set; }
 
+    public decimal? CurrentQuantity { get; set; }
+
+    public decimal? MinQuantity { get; set; }
+
     public DateTime? LastAddedToCartAt { get; set; }
 
     public FoodSyncStatus NotionSyncStatus { get; set; } = FoodSyncStatus.Synced;

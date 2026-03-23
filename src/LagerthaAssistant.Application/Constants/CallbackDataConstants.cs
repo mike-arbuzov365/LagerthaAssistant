@@ -80,6 +80,24 @@ public static class CallbackDataConstants
         public const string SaveBatchNo = "vocab:save_batch:no";
     }
 
+    public static class Food
+    {
+        public const string Prefix = "food:";
+        public const string Menu = "food:menu";
+        public const string Inventory = "food:inventory";
+        public const string Shopping = "food:shopping";
+    }
+
+    public static class Inventory
+    {
+        public const string Prefix = "inventory:";
+        public const string List = "inventory:list";
+        public const string Search = "inventory:search";
+        public const string Add = "inventory:add";
+        public const string Suggest = "inventory:suggest";
+        public const string CartPrefix = "inventory:cart:";
+    }
+
     public static class Shop
     {
         public const string Prefix = "shop:";

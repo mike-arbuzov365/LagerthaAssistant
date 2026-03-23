@@ -1,5 +1,17 @@
 namespace LagerthaAssistant.Application.Models.Food;
 
+public sealed record FoodItemDto(
+    int Id,
+    string Name,
+    string? Category,
+    string? Store,
+    decimal? Price,
+    string? Quantity)
+{
+    public decimal? CurrentQuantity { get; init; }
+    public decimal? MinQuantity { get; init; }
+}
+
 public sealed record GroceryListItemDto(
     int Id,
     string Name,

@@ -404,6 +404,129 @@ public sealed class FoodTrackingConversationAgentTests
         Assert.Contains("Whole Foods Market", result.Message);
     }
 
+    // ── Inventory handlers ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task HandleInventoryListAsync_ShouldReturnItemList_WhenItemsExist()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(1, "Milk", "Dairy", null, null, "2L"),
+                new FoodItemDto(2, "Eggs", null, null, null, null)
+            ]
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.HandleInventoryListAsync(CancellationToken.None);
+
+        Assert.Equal("inventory.list", result.Intent);
+        Assert.Contains("Milk", result.Message);
+        Assert.Contains("Eggs", result.Message);
+        Assert.Contains("[1]", result.Message);
+        Assert.Contains("[2]", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleInventoryListAsync_ShouldReturnEmpty_WhenNoItems()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.HandleInventoryListAsync(CancellationToken.None);
+
+        Assert.Equal("inventory.list.empty", result.Intent);
+    }
+
+    [Fact]
+    public void HandleInventorySearchPrompt_ShouldReturnSearchPrompt()
+    {
+        var result = FoodTrackingConversationAgent.HandleInventorySearchPrompt();
+
+        Assert.Equal("inventory.search.prompt", result.Intent);
+        Assert.NotNull(result.Message);
+    }
+
+    [Fact]
+    public async Task HandleInventorySuggestAsync_ShouldReturnEmpty_WhenNoLowStock()
+    {
+        var sut = CreateSut(); // empty inventory
+
+        var result = await sut.HandleInventorySuggestAsync(CancellationToken.None);
+
+        Assert.Equal("inventory.suggest.empty", result.Intent);
+    }
+
+    [Fact]
+    public async Task HandleInventorySuggestAsync_ShouldListLowStockItems()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(1, "Eggs", null, null, null, null) { CurrentQuantity = 2m },
+                new FoodItemDto(2, "Milk", null, null, null, null) { CurrentQuantity = 0.5m }
+            ]
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.HandleInventorySuggestAsync(CancellationToken.None);
+
+        Assert.Equal("inventory.suggest", result.Intent);
+        Assert.Contains("Eggs", result.Message);
+        Assert.Contains("Milk", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleInventoryCartAsync_ShouldReturnAdded_WhenItemExists()
+    {
+        var service = new FakeFoodTrackingService
+        {
+            InventoryItems = [new FoodItemDto(5, "Butter", null, null, null, null)]
+        };
+        var sut = CreateSut(service);
+
+        var result = await sut.HandleInventoryCartAsync(5, CancellationToken.None);
+
+        Assert.Equal("inventory.cart.added", result.Intent);
+        Assert.Contains("Butter", result.Message);
+    }
+
+    [Fact]
+    public async Task HandleInventoryCartAsync_ShouldReturnNotFound_WhenItemMissing()
+    {
+        var sut = CreateSut(); // empty inventory
+
+        var result = await sut.HandleInventoryCartAsync(999, CancellationToken.None);
+
+        Assert.Equal("inventory.cart.not_found", result.Intent);
+    }
+
+    // ── CanHandle — food: and inventory: prefixes ────────────────────────────
+
+    [Theory]
+    [InlineData(CallbackDataConstants.Food.Inventory)]
+    [InlineData(CallbackDataConstants.Food.Shopping)]
+    [InlineData(CallbackDataConstants.Food.Menu)]
+    public void CanHandle_ShouldReturnTrue_ForFoodPrefixedInput(string input)
+    {
+        var sut = CreateSut();
+        var ctx = new ConversationAgentContext(input, [input]);
+        Assert.True(sut.CanHandle(ctx));
+    }
+
+    [Theory]
+    [InlineData(CallbackDataConstants.Inventory.List)]
+    [InlineData(CallbackDataConstants.Inventory.Search)]
+    [InlineData(CallbackDataConstants.Inventory.Suggest)]
+    [InlineData("inventory:cart:42")]
+    public void CanHandle_ShouldReturnTrue_ForInventoryPrefixedInput(string input)
+    {
+        var sut = CreateSut();
+        var ctx = new ConversationAgentContext(input, [input]);
+        Assert.True(sut.CanHandle(ctx));
+    }
+
     // ── Profile ──────────────────────────────────────────────────────────────
 
     [Fact]
@@ -431,6 +554,7 @@ public sealed class FoodTrackingConversationAgentTests
         public CalorieSummary CalorieSummary { get; init; } = new(DateTime.MinValue, DateTime.MaxValue, 0, 0, 0, 0, 0);
         public DietDiversityDto DietDiversity { get; init; } = new(7, 0, 0, [], []);
         public int ClearedCount { get; init; }
+        public IReadOnlyList<FoodItemDto> InventoryItems { get; init; } = [];
 
         public Task<IReadOnlyList<GroceryListItemDto>> GetActiveGroceryListAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(GroceryItems);
@@ -476,5 +600,23 @@ public sealed class FoodTrackingConversationAgentTests
 
         public Task<PortionCalculationDto?> CalculatePortionsAsync(int mealId, int targetServings, CancellationToken cancellationToken = default)
             => Task.FromResult<PortionCalculationDto?>(new PortionCalculationDto("Test Meal", 2, targetServings, (decimal)targetServings / 2, []));
+
+        public Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 50, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<FoodItemDto>>(InventoryItems.Take(take).ToList());
+
+        public Task<IReadOnlyList<FoodItemDto>> SearchInventoryAsync(string query, int take = 10, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<FoodItemDto>>(
+                InventoryItems.Where(x => x.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).Take(take).ToList());
+
+        public Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default)
+        {
+            var item = InventoryItems.FirstOrDefault(x => x.Id == foodItemId)
+                ?? throw new InvalidOperationException($"Food item {foodItemId} not found.");
+            return Task.FromResult(new GroceryListItemDto(99, item.Name, quantity, null, store, false));
+        }
+
+        public Task<IReadOnlyList<FoodItemDto>> GetLowStockItemsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<FoodItemDto>>(
+                InventoryItems.Where(x => x.CurrentQuantity.HasValue).ToList());
     }
 }
