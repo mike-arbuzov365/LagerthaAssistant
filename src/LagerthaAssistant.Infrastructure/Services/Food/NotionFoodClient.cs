@@ -67,9 +67,10 @@ public sealed class NotionFoodClient : INotionFoodClient
         }
     }
 
-    public async Task UpdateInventoryItemQuantityAsync(
+    public async Task UpdateInventoryItemAsync(
         string notionPageId,
         string? quantityText,
+        decimal? minQuantity,
         CancellationToken cancellationToken = default)
     {
         var url = $"{_options.ApiBaseUrl}/pages/{notionPageId}";
@@ -80,16 +81,15 @@ public sealed class NotionFoodClient : INotionFoodClient
 
         var properties = new Dictionary<string, object>
         {
-            ["Item Quantity"] = new
-            {
-                rich_text = richText
-            }
+            ["Item Quantity"] = new { rich_text = richText }
         };
 
-        var body = JsonSerializer.Serialize(new
+        if (minQuantity.HasValue)
         {
-            properties
-        });
+            properties["Min Quantity"] = new { number = (object)minQuantity.Value };
+        }
+
+        var body = JsonSerializer.Serialize(new { properties });
 
         using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
         {

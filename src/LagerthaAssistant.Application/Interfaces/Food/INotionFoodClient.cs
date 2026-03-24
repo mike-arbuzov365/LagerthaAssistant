@@ -16,9 +16,9 @@ public interface INotionFoodClient
     Task MarkGroceryItemBoughtAsync(string notionPageId, bool bought, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Updates Inventory "Item Quantity" rich-text value in Notion.
+    /// Updates Inventory "Item Quantity" (rich-text) and optionally "Min Quantity" (number) in Notion.
     /// </summary>
-    Task UpdateInventoryItemQuantityAsync(string notionPageId, string? quantityText, CancellationToken cancellationToken = default);
+    Task UpdateInventoryItemAsync(string notionPageId, string? quantityText, decimal? minQuantity, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Archives a Notion page (soft delete in Notion UI).

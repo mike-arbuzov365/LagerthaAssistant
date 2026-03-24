@@ -1233,9 +1233,10 @@ public sealed class FoodTrackingServiceTests
         public Task MarkGroceryItemBoughtAsync(string notionPageId, bool bought, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
-        public Task UpdateInventoryItemQuantityAsync(
+        public Task UpdateInventoryItemAsync(
             string notionPageId,
             string? quantityText,
+            decimal? minQuantity,
             CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 

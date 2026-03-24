@@ -331,7 +331,7 @@ public sealed class FoodSyncService : IFoodSyncService
                 }
 
                 var quantityText = item.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture);
-                await _notionClient.UpdateInventoryItemQuantityAsync(item.NotionPageId, quantityText, cancellationToken);
+                await _notionClient.UpdateInventoryItemAsync(item.NotionPageId, quantityText, item.MinQuantity, cancellationToken);
 
                 item.NotionSyncStatus = FoodSyncStatus.Synced;
                 item.NotionSyncedAt = DateTime.UtcNow;
@@ -352,6 +352,64 @@ public sealed class FoodSyncService : IFoodSyncService
         }
 
         return synced;
+    }
+
+    public async Task<int> ReconcileNotionGroceryOrphansAsync(
+        TimeSpan? gracePeriod = null,
+        CancellationToken cancellationToken = default)
+    {
+        var cutoff = DateTime.UtcNow - (gracePeriod ?? TimeSpan.FromHours(1));
+        _logger.LogInformation("Starting grocery orphan reconciliation (grace cutoff={Cutoff:u})", cutoff);
+
+        var groceryPages = await _notionClient.GetGroceryListAsync(cancellationToken);
+        var archived = 0;
+
+        foreach (var page in groceryPages)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Skip already-bought items; they are handled by normal sync flow.
+            if (GetCheckbox(page, "Bought?"))
+                continue;
+
+            // Skip items that were recently edited — they may be in-flight local→Notion operations.
+            var lastEdited = ParseDateTime(page.LastEditedTime);
+            if (lastEdited > cutoff)
+            {
+                _logger.LogDebug(
+                    "Reconcile: skipping recently edited grocery page {PageId} (LastEdited={LastEdited:u})",
+                    page.Id,
+                    lastEdited);
+                continue;
+            }
+
+            // If there is a local record for this page, it is not an orphan.
+            var existing = await _groceryRepo.GetByNotionPageIdAsync(page.Id, cancellationToken);
+            if (existing is not null)
+                continue;
+
+            try
+            {
+                await _notionClient.ArchivePageAsync(page.Id, cancellationToken);
+                archived++;
+                _logger.LogInformation(
+                    "Reconcile: archived orphaned Notion grocery page {PageId} (Name={Name})",
+                    page.Id,
+                    GetTitle(page, "Item Name"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Reconcile: failed to archive orphaned Notion grocery page {PageId}", page.Id);
+            }
+        }
+
+        _logger.LogInformation(
+            "Grocery orphan reconciliation complete. Archived={Archived} of {Total} pages fetched",
+            archived,
+            groceryPages.Count);
+
+        return archived;
     }
 
     // ── Mapping helpers ──────────────────────────────────────────────────────
