@@ -560,6 +560,7 @@ public sealed class FoodTrackingConversationAgentTests
 
         Assert.Equal("inventory.adjust.prompt", result.Intent);
         Assert.Contains("format", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\n\n", result.Message, StringComparison.Ordinal);
     }
 
     [Fact]

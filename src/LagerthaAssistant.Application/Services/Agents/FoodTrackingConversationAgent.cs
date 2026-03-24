@@ -339,7 +339,7 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         => Result("inventory.search.prompt", $"{QuestionMarker} {_loc.Get("inventory.search.prompt", locale)}");
 
     internal ConversationAgentResult HandleInventoryAdjustPrompt(string locale)
-        => Result("inventory.adjust.prompt", $"{QuestionMarker} {_loc.Get("inventory.adjust.prompt", locale)}\n{InfoMarker} {_loc.Get("inventory.adjust.hint", locale)}");
+        => Result("inventory.adjust.prompt", $"{QuestionMarker} {_loc.Get("inventory.adjust.prompt", locale)}\n\n{InfoMarker} {_loc.Get("inventory.adjust.hint", locale)}");
 
     internal async Task<ConversationAgentResult> HandleInventoryStatsAsync(string locale, CancellationToken cancellationToken)
     {
