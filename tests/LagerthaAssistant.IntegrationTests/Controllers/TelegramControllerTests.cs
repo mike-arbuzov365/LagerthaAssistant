@@ -4806,6 +4806,90 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldSetInventoryQuantity_WhenPendingAdjustAndEqualsFormatProvided()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(20, "Apple", "Produce", null, null, null) { CurrentQuantity = 1m }
+            ]
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Inventory };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        _ = await sut.Webhook(BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.Adjust, null, updateId: 925), CancellationToken.None);
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "20 = 5", null, updateId: 926), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("inventory.adjust.done", payload.Intent);
+        Assert.Equal(20, foodService.LastSetCurrentInventoryItemId);
+        Assert.Equal(5m, foodService.LastSetCurrentQuantity);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldApplyOnlyChangedInventoryLines_WhenPendingAdjustAndPastedCatalogProvided()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(20, "Apple", "Produce", null, null, null) { CurrentQuantity = 1m },
+                new FoodItemDto(51, "Burger Sauce", "Condiments", null, null, null) { CurrentQuantity = 1m }
+            ]
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Inventory };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        const string payloadText = """
+        🥬 Produce
+        [20] Apple [3]+2
+        [35] Avocado
+        🧂 Condiments
+        [51] Burger Sauce =4
+        """;
+
+        _ = await sut.Webhook(BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.Adjust, null, updateId: 927), CancellationToken.None);
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, payloadText, null, updateId: 928), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var webhookPayload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("inventory.adjust.done", webhookPayload.Intent);
+        Assert.Equal(2, foodService.AdjustOperations.Count);
+        Assert.Contains(foodService.AdjustOperations, operation => operation == (20, "delta", 2m));
+        Assert.Contains(foodService.AdjustOperations, operation => operation == (51, "set", 4m));
+    }
+
+    [Fact]
     public async Task Webhook_ShouldRejectInvalidAdjustFormat_WhenPendingAdjustAndTextIsInvalid()
     {
         var foodService = new FakeFoodTrackingService
