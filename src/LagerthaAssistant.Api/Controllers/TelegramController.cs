@@ -4425,7 +4425,6 @@ public sealed class TelegramController : ControllerBase
 
         return category;
     }
-
     private string BuildCaloriesPerServingSuffix(int? caloriesPerServing, string locale)
         => caloriesPerServing.HasValue
             ? _navigationPresenter.GetText("food.weekly.view.calories_suffix", locale, caloriesPerServing.Value)
