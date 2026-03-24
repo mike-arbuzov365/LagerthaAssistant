@@ -158,6 +158,9 @@ public sealed class FoodSyncServiceTests
             NotionPageId = "page-1",
             Name = "Beer",
             IconEmoji = null,
+            CurrentQuantity = 0m,
+            MinQuantity = 2m,
+            Quantity = null,
             NotionUpdatedAt = new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc)
         };
         var notion = new FakeNotionFoodClient
@@ -165,7 +168,11 @@ public sealed class FoodSyncServiceTests
             InventoryPages = [MakePage(
                 "page-1",
                 "2026-01-01T00:00:00Z",
-                [("Item Name", Title("Beer"))],
+                [
+                    ("Item Name", Title("Beer")),
+                    ("Item Quantity", RichText("1")),
+                    ("Min Quantity", Number(10m))
+                ],
                 iconEmoji: "🍺")]
         };
         var foodRepo = new FakeFoodItemRepository { Existing = existing };
@@ -175,6 +182,9 @@ public sealed class FoodSyncServiceTests
 
         Assert.Equal(1, summary.InventoryUpserted);
         Assert.Equal("🍺", existing.IconEmoji);
+        Assert.Equal(0m, existing.CurrentQuantity);
+        Assert.Equal(2m, existing.MinQuantity);
+        Assert.Null(existing.Quantity);
     }
 
     // ── SyncFromNotionAsync – Meals ──────────────────────────────────────────

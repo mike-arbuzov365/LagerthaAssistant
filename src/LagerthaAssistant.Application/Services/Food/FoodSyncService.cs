@@ -75,9 +75,16 @@ public sealed class FoodSyncService : IFoodSyncService
                         !string.IsNullOrWhiteSpace(page.IconEmoji)
                         && !string.Equals(existing.IconEmoji, page.IconEmoji, StringComparison.Ordinal);
 
-                    if (notionUpdatedAt > existing.NotionUpdatedAt || hasNewIconFromNotion)
+                    if (notionUpdatedAt > existing.NotionUpdatedAt)
                     {
                         UpdateFoodItem(existing, page, notionUpdatedAt);
+                        await _unitOfWork.SaveChangesAsync(cancellationToken);
+                        inventoryUpserted++;
+                    }
+                    else if (hasNewIconFromNotion)
+                    {
+                        // Keep local quantity/min values intact when only icon needs refresh.
+                        existing.IconEmoji = page.IconEmoji;
                         await _unitOfWork.SaveChangesAsync(cancellationToken);
                         inventoryUpserted++;
                     }
