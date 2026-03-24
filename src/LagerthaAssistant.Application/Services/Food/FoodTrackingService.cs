@@ -38,10 +38,12 @@ public sealed class FoodTrackingService : IFoodTrackingService
 
     // ── Inventory ─────────────────────────────────────────────────────────────
 
-    public async Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 50, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 0, CancellationToken cancellationToken = default)
     {
         var items = await _foodItemRepo.GetAllAsync(cancellationToken);
-        return items.Take(take).Select(MapFoodItemToDto).ToList();
+        return (take <= 0 ? items : items.Take(take))
+            .Select(MapFoodItemToDto)
+            .ToList();
     }
 
     public async Task<IReadOnlyList<FoodItemDto>> SearchInventoryAsync(string query, int take = 10, CancellationToken cancellationToken = default)

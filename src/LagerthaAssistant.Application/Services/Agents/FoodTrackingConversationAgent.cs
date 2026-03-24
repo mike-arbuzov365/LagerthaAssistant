@@ -312,7 +312,7 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
 
     internal async Task<ConversationAgentResult> HandleInventoryListAsync(string locale, CancellationToken cancellationToken)
     {
-        var items = await _foodService.GetAllInventoryAsync(50, cancellationToken);
+        var items = await _foodService.GetAllInventoryAsync(0, cancellationToken);
         if (items.Count == 0)
         {
             return Result("inventory.list.empty", _loc.Get("inventory.empty", locale));
