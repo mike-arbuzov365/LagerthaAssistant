@@ -6,7 +6,10 @@ public interface IFoodTrackingService
 {
     // ── Inventory ────────────────────────────────────────────────────────────
 
-    Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 50, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Returns inventory items. Pass <c>take &lt;= 0</c> to return all items.
+    /// </summary>
+    Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 0, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<FoodItemDto>> SearchInventoryAsync(string query, int take = 10, CancellationToken cancellationToken = default);
 

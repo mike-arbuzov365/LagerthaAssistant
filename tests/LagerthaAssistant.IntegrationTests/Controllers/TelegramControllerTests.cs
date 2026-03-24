@@ -4971,7 +4971,14 @@ public sealed class TelegramControllerTests
         public decimal? LastSetMinQuantity { get; private set; }
 
         public Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 50, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<FoodItemDto>>(InventoryItems.Take(take).ToList());
+        {
+            if (take <= 0)
+            {
+                return Task.FromResult<IReadOnlyList<FoodItemDto>>(InventoryItems.ToList());
+            }
+
+            return Task.FromResult<IReadOnlyList<FoodItemDto>>(InventoryItems.Take(take).ToList());
+        }
 
         public Task<IReadOnlyList<FoodItemDto>> SearchInventoryAsync(string query, int take = 10, CancellationToken cancellationToken = default)
         {
@@ -4980,10 +4987,12 @@ public sealed class TelegramControllerTests
                 return GetAllInventoryAsync(take, cancellationToken);
             }
 
-            var matches = InventoryItems
-                .Where(x => x.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
-                .Take(take)
-                .ToList();
+            var filtered = InventoryItems
+                .Where(x => x.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+            var matches = take <= 0
+                ? filtered.ToList()
+                : filtered.Take(take).ToList();
             return Task.FromResult<IReadOnlyList<FoodItemDto>>(matches);
         }
 
