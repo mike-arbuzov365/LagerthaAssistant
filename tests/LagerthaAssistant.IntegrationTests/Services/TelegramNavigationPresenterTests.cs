@@ -1,6 +1,7 @@
 namespace LagerthaAssistant.IntegrationTests.Services;
 
 using LagerthaAssistant.Api.Services;
+using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Infrastructure.Services;
 using Xunit;
 
@@ -126,5 +127,19 @@ public sealed class TelegramNavigationPresenterTests
 
         Assert.Contains(allText, t => t.Contains("Улюблені", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(allText, t => t.Contains("Записати", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildInventoryKeyboard_ShouldContainMinStockCallback()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildInventoryKeyboard("en");
+        var callbacks = keyboard.InlineKeyboard
+            .SelectMany(row => row)
+            .Select(button => button.CallbackData)
+            .ToList();
+
+        Assert.Contains(CallbackDataConstants.Inventory.Min, callbacks);
     }
 }

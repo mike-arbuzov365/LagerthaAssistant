@@ -180,11 +180,11 @@ public sealed class FoodTrackingServiceTests
     }
 
     [Fact]
-    public async Task DeleteItemsByIdsAsync_ShouldDeleteSelectedItems()
+    public async Task DeleteItemsByIdsAsync_ShouldMarkSelectedItemsAsBought()
     {
         var repo = new FakeGroceryListRepository
         {
-            ActiveItems =
+            AllItems =
             [
                 new GroceryListItem { Id = 1, Name = "Milk", IsBought = false },
                 new GroceryListItem { Id = 2, Name = "Bread", IsBought = false }
@@ -195,7 +195,8 @@ public sealed class FoodTrackingServiceTests
         var count = await sut.DeleteItemsByIdsAsync([1]);
 
         Assert.Equal(1, count);
-        Assert.Equal([1], repo.LastDeletedItemIds);
+        Assert.Equal([1], repo.LastMarkedItemIds);
+        Assert.NotNull(repo.LastMarkedUpdatedAtUtc);
     }
 
     // ── GetAllMealsAsync ─────────────────────────────────────────────────────
@@ -941,6 +942,32 @@ public sealed class FoodTrackingServiceTests
         var sut = CreateSut(foodItemRepo: repo);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => sut.AdjustInventoryQuantityAsync(12, 0m));
+    }
+
+    [Fact]
+    public async Task SetInventoryMinQuantityAsync_ShouldUpdateMinQuantity_AndMarkPendingSync()
+    {
+        var item = new FoodItem { Id = 30, Name = "Apple", MinQuantity = 1m, NotionSyncStatus = FoodSyncStatus.Synced };
+        var repo = new FakeFoodItemRepository { AllItems = [item] };
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(foodItemRepo: repo, unitOfWork: uow);
+
+        var updated = await sut.SetInventoryMinQuantityAsync(30, 3m);
+
+        Assert.Equal(3m, updated.MinQuantity);
+        Assert.Equal(3m, item.MinQuantity);
+        Assert.Equal(FoodSyncStatus.Pending, item.NotionSyncStatus);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task SetInventoryMinQuantityAsync_ShouldThrow_WhenMinQuantityIsNegative()
+    {
+        var item = new FoodItem { Id = 31, Name = "Milk", MinQuantity = 1m };
+        var repo = new FakeFoodItemRepository { AllItems = [item] };
+        var sut = CreateSut(foodItemRepo: repo);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => sut.SetInventoryMinQuantityAsync(31, -1m));
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

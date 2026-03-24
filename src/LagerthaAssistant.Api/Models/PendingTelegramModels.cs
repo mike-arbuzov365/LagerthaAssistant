@@ -47,7 +47,8 @@ internal enum PendingChatActionKind
     InventorySearch = 3,
     MealCreation = 4,
     FoodPhotoLog = 5,
-    InventoryAdjustQuantity = 6
+    InventoryAdjustQuantity = 6,
+    InventorySetMinQuantity = 7
 }
 
 internal sealed record PendingFoodPhotoLog(
