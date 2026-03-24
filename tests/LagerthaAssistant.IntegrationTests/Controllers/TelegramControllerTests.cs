@@ -1860,7 +1860,7 @@ public sealed class TelegramControllerTests
         Assert.True(confirmPayload.Replied);
         Assert.Equal("settings.onedrive.index.confirm", confirmPayload.Intent);
         Assert.Equal(0, indexService.RebuildCalls);
-        Assert.Contains($"❓{Environment.NewLine}⚠️ Rebuilding cache can take some time. Start now?", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Rebuilding cache can take some time", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("take some time", sender.LastText, StringComparison.OrdinalIgnoreCase);
 
         var response = await sut.Webhook(
@@ -1916,7 +1916,7 @@ public sealed class TelegramControllerTests
 
         Assert.True(confirmPayload.Replied);
         Assert.Equal("settings.onedrive.cache.confirm", confirmPayload.Intent);
-        Assert.Contains($"❓{Environment.NewLine}⚠️ Clear cache?", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Clear cache?", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("records=57", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, indexService.ClearCalls);
 
@@ -3750,6 +3750,12 @@ public sealed class TelegramControllerTests
                 "inventory.adjust.done" => "Updated {0}: {1}",
                 "inventory.adjust.invalid" => "Invalid format",
                 "inventory.adjust.not_found" => "Item not found: {0}",
+                "inventory.min.prompt" => "Set min quantity: <id> <value>",
+                "inventory.min.hint" => "Example: 42 3",
+                "inventory.min.done" => "Min updated for {0}: {1}",
+                "inventory.min.invalid" => "Invalid min format",
+                "inventory.min.not_found" => "Item not found: {0}",
+                "inventory.category.uncategorized" => "Other",
                 "onboarding.choose_language" => "Choose language",
                 "language.current" => "Current: {0}",
                 "language.changed" => "Changed: {0}",
@@ -4148,7 +4154,6 @@ public sealed class TelegramControllerTests
 
     [Theory]
     [InlineData(CallbackDataConstants.Shop.List, "food.shop.list")]
-    [InlineData(CallbackDataConstants.Shop.Add, "food.shop.add.prompt")]
     public async Task Webhook_ShouldHandleShopCallback_AndReturnShoppingKeyboard(string callbackData, string expectedIntent)
     {
         var orchestrator = new FakeConversationOrchestrator
@@ -4259,6 +4264,122 @@ public sealed class TelegramControllerTests
         Assert.Equal("inventory.stats", payload.Intent);
         Assert.Contains("12", sender.LastText, StringComparison.Ordinal);
         Assert.Contains("57.5", sender.LastText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldShowGroupedInventoryCatalog_WhenShopAddCallbackRequested()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(20, "Apple", "Produce", null, null, null) { CurrentQuantity = 2m },
+                new FoodItemDto(70, "Beer", "Beverages", null, null, "6 cans"),
+                new FoodItemDto(85, "Ground pepper", "Condiments", null, null, "1")
+            ]
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Shopping };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        var response = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Shop.Add, null, updateId: 918),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("food.shop.add.from_inventory", payload.Intent);
+        Assert.Contains("Beverages", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Produce", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("[20] Apple [2]", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ℹ️", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("ℹ️ ℹ️", sender.LastText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldSetInventoryMinQuantity_WhenPendingMinAndValidTextProvided()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(7, "Beer", null, null, null, null) { CurrentQuantity = 5m, MinQuantity = 1m }
+            ]
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Inventory };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        _ = await sut.Webhook(BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.Min, null, updateId: 931), CancellationToken.None);
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "7 3", null, updateId: 932), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("inventory.min.done", payload.Intent);
+        Assert.Equal(7, foodService.LastSetMinInventoryItemId);
+        Assert.Equal(3m, foodService.LastSetMinQuantity);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldRejectInvalidMinFormat_WhenPendingMinAndTextIsInvalid()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(9, "Milk", null, null, null, null) { CurrentQuantity = 2m }
+            ]
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Inventory };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        _ = await sut.Webhook(BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.Min, null, updateId: 933), CancellationToken.None);
+        var response = await sut.Webhook(BuildTextUpdate(1001, 2002, "9 +2", null, updateId: 934), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("inventory.min.invalid", payload.Intent);
+        Assert.Null(foodService.LastSetMinInventoryItemId);
     }
 
     [Fact]
@@ -4664,6 +4785,8 @@ public sealed class TelegramControllerTests
         public IReadOnlyCollection<int> LastAddFromInventoryIds { get; private set; } = [];
         public int? LastAdjustedInventoryItemId { get; private set; }
         public decimal? LastAdjustedDelta { get; private set; }
+        public int? LastSetMinInventoryItemId { get; private set; }
+        public decimal? LastSetMinQuantity { get; private set; }
 
         public Task<IReadOnlyList<FoodItemDto>> GetAllInventoryAsync(int take = 50, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<FoodItemDto>>(InventoryItems.Take(take).ToList());
@@ -4696,6 +4819,19 @@ public sealed class TelegramControllerTests
             LastAdjustedInventoryItemId = foodItemId;
             LastAdjustedDelta = delta;
             return Task.FromResult(found with { CurrentQuantity = (found.CurrentQuantity ?? 0m) + delta });
+        }
+
+        public Task<FoodItemDto> SetInventoryMinQuantityAsync(int foodItemId, decimal minQuantity, CancellationToken cancellationToken = default)
+        {
+            var found = InventoryItems.FirstOrDefault(x => x.Id == foodItemId);
+            if (found is null)
+            {
+                throw new InvalidOperationException($"Food item {foodItemId} not found.");
+            }
+
+            LastSetMinInventoryItemId = foodItemId;
+            LastSetMinQuantity = minQuantity;
+            return Task.FromResult(found with { MinQuantity = minQuantity });
         }
 
         public Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default)

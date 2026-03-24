@@ -658,6 +658,32 @@ curl -X POST "http://localhost:5000/api/vocabulary/save-batch?channel=api&userId
 
 On startup both UI and API apply EF migrations automatically.
 
+### Team workflow rules (important)
+
+This repository follows a strict delivery workflow:
+
+- Work branch: `dev` only. Do not create feature branches.
+- Pull requests: only `dev -> master`.
+- PR description format: same style as PR #62:
+  - `Summary`
+  - `Key changes`
+  - `Validation / Test Plan`
+- Every implementation must include automated tests (unit/integration as applicable).
+- Before opening PR:
+  - sync `dev` with latest `origin/master`
+  - run test suites
+- After opening PR:
+  - always check mergeability/conflicts
+  - if conflicts exist, resolve them immediately in `dev`, push, and re-check PR status until `CLEAN`/`MERGEABLE`
+- After conflict resolution:
+  - rerun tests before final merge approval.
+
+Practical guardrails:
+
+- Keep project/repo text in English; use localized text only where localization is intended.
+- Avoid bulk text-rewrite operations on Unicode-heavy files (localization, Telegram text) without verification.
+- If non-UTF artifacts appear (mojibake), fix encoding before commit.
+
 ## Deploy to Railway.app
 
 ### Step 1 - Create Telegram bot

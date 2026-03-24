@@ -738,6 +738,14 @@ public sealed class FoodTrackingConversationAgentTests
             return Task.FromResult(found with { CurrentQuantity = (found.CurrentQuantity ?? 0m) + delta });
         }
 
+        public Task<FoodItemDto> SetInventoryMinQuantityAsync(int foodItemId, decimal minQuantity, CancellationToken cancellationToken = default)
+        {
+            var found = InventoryItems.FirstOrDefault(x => x.Id == foodItemId)
+                ?? throw new InvalidOperationException($"Food item {foodItemId} not found in inventory.");
+
+            return Task.FromResult(found with { MinQuantity = minQuantity });
+        }
+
         public Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default)
         {
             var found = InventoryItems.FirstOrDefault(x => x.Id == foodItemId);

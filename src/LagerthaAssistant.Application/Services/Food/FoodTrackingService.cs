@@ -112,6 +112,34 @@ public sealed class FoodTrackingService : IFoodTrackingService
         return MapFoodItemToDto(item);
     }
 
+    public async Task<FoodItemDto> SetInventoryMinQuantityAsync(
+        int foodItemId,
+        decimal minQuantity,
+        CancellationToken cancellationToken = default)
+    {
+        if (minQuantity < 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(minQuantity), "Min quantity cannot be negative.");
+        }
+
+        var item = await _foodItemRepo.GetByIdAsync(foodItemId, cancellationToken)
+            ?? throw new InvalidOperationException($"Food item {foodItemId} not found in inventory.");
+
+        item.MinQuantity = Math.Round(minQuantity, 3, MidpointRounding.AwayFromZero);
+        item.NotionSyncStatus = FoodSyncStatus.Pending;
+        item.NotionUpdatedAt = DateTime.UtcNow;
+        item.NotionLastError = null;
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Updated inventory min quantity. FoodItemId={FoodItemId}; MinQuantity={MinQuantity}",
+            item.Id,
+            item.MinQuantity);
+
+        return MapFoodItemToDto(item);
+    }
+
     public async Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(
         int foodItemId,
         string? quantity,
@@ -237,9 +265,14 @@ public sealed class FoodTrackingService : IFoodTrackingService
         IReadOnlyCollection<int> itemIds,
         CancellationToken cancellationToken = default)
     {
-        var deleted = await _groceryRepo.DeleteByIdsAsync(itemIds, cancellationToken);
-        _logger.LogInformation("Deleted {Count} selected grocery items", deleted);
-        return deleted;
+        if (itemIds.Count == 0)
+        {
+            return 0;
+        }
+
+        var marked = await _groceryRepo.MarkBoughtByIdsAsync(itemIds, DateTime.UtcNow, cancellationToken);
+        _logger.LogInformation("Marked {Count} selected grocery items as bought", marked);
+        return marked;
     }
 
     // ── Meals ─────────────────────────────────────────────────────────────────
