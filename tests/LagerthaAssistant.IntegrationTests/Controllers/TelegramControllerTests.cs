@@ -4413,6 +4413,70 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldUsePackageIconForInventoryItem_WhenItemIconIsMissing()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(70, "Beer", "Beverages", null, null, "6 cans")
+            ]
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Shopping };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        _ = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Shop.Add, null, updateId: 919),
+            CancellationToken.None);
+
+        Assert.Contains("&#127866; Beverages", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("[70] &#128230; Beer [6 cans]", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("[70] &#127866; Beer", sender.LastText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldAddBlankLineBetweenQuestionAndInfoMarkers_WhenInventoryAdjustPromptRequested()
+    {
+        var foodService = new FakeFoodTrackingService();
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Inventory };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        _ = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.Adjust, null, updateId: 920),
+            CancellationToken.None);
+
+        Assert.Matches(@"\r?\n\r?\n(?:&#8505;|ℹ️)", sender.LastText);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldStartInventoryPhotoMode_WhenPhotoRestockCallbackRequested()
     {
         var foodService = new FakeFoodTrackingService

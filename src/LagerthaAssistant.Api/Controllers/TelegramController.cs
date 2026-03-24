@@ -285,9 +285,10 @@ public sealed class TelegramController : ControllerBase
                 hasStoredLocale: !string.IsNullOrWhiteSpace(storedLocale),
                 cancellationToken);
 
+            var normalizedResponseText = NormalizeMarkerSpacing(response.Text);
             var outboundText = response.IsHtml
-                ? response.Text
-                : WebUtility.HtmlEncode(response.Text);
+                ? normalizedResponseText
+                : WebUtility.HtmlEncode(normalizedResponseText);
 
             if (localeState.IsSwitched)
             {
@@ -3170,6 +3171,59 @@ public sealed class TelegramController : ControllerBase
         return null;
     }
 
+    private static string NormalizeMarkerSpacing(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var normalized = value.Replace("\r\n", "\n");
+        var lines = normalized.Split('\n');
+        var output = new List<string>(lines.Length + 4);
+        var previousNonEmptyWasMarker = false;
+
+        foreach (var line in lines)
+        {
+            var isEmpty = string.IsNullOrWhiteSpace(line);
+            var isMarker = IsStatusMarkerLine(line);
+
+            if (isMarker && previousNonEmptyWasMarker && (output.Count == 0 || output[^1].Length > 0))
+            {
+                output.Add(string.Empty);
+            }
+
+            output.Add(line);
+
+            if (isEmpty)
+            {
+                previousNonEmptyWasMarker = false;
+                continue;
+            }
+
+            previousNonEmptyWasMarker = isMarker;
+        }
+
+        return string.Join(Environment.NewLine, output);
+    }
+
+    private static bool IsStatusMarkerLine(string line)
+    {
+        var trimmed = line.TrimStart();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return false;
+        }
+
+        if (WarningMarkers.Any(marker => trimmed.StartsWith(marker, StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        return trimmed.StartsWith(QuestionMarker, StringComparison.Ordinal)
+            || trimmed.StartsWith(InfoMarker, StringComparison.Ordinal);
+    }
+
     private async Task TrySendProgressMessageAsync(
         long chatId,
         int? messageThreadId,
@@ -3181,9 +3235,10 @@ public sealed class TelegramController : ControllerBase
             return;
         }
 
+        var normalizedText = NormalizeMarkerSpacing(text);
         var sendResult = await _telegramBotSender.SendTextAsync(
             chatId,
-            WebUtility.HtmlEncode(text),
+            WebUtility.HtmlEncode(normalizedText),
             EnsureHtmlParseMode(options: null),
             messageThreadId,
             cancellationToken);
@@ -4413,7 +4468,7 @@ public sealed class TelegramController : ControllerBase
             var qty = string.IsNullOrWhiteSpace(candidate.Quantity) ? string.Empty : $" x {candidate.Quantity}";
             var store = string.IsNullOrWhiteSpace(candidate.Store) ? string.Empty : $" ({candidate.Store})";
             inventoryByName.TryGetValue(candidate.Name.Trim(), out var matchedInventory);
-            var displayName = BuildInventoryItemTitle(candidate.Name, matchedInventory?.IconEmoji, matchedInventory?.Category);
+            var displayName = BuildInventoryItemTitle(candidate.Name, matchedInventory?.IconEmoji);
             sb.AppendLine(_navigationPresenter.GetText(
                 "food.shop.delete.prompt.item",
                 locale,
@@ -4922,18 +4977,13 @@ public sealed class TelegramController : ControllerBase
     }
 
     private static string BuildInventoryItemTitle(FoodItemDto item)
-        => BuildInventoryItemTitle(item.Name, item.IconEmoji, item.Category);
+        => BuildInventoryItemTitle(item.Name, item.IconEmoji);
 
-    private static string BuildInventoryItemTitle(string name, string? iconEmoji, string? category)
+    private static string BuildInventoryItemTitle(string name, string? iconEmoji)
     {
         if (!string.IsNullOrWhiteSpace(iconEmoji))
         {
             return $"{iconEmoji} {name}";
-        }
-
-        if (!string.IsNullOrWhiteSpace(category) && CategoryEmojis.TryGetValue(category, out var categoryEmoji))
-        {
-            return $"{categoryEmoji} {name}";
         }
 
         return $"📦 {name}";
@@ -4961,7 +5011,7 @@ public sealed class TelegramController : ControllerBase
                 "inventory.photo.preview.item",
                 locale,
                 candidate.Number,
-                BuildInventoryItemTitle(candidate.Name, candidate.IconEmoji, candidate.Category),
+                BuildInventoryItemTitle(candidate.Name, candidate.IconEmoji),
                 sign,
                 $"{quantity}{unit}",
                 candidate.Confidence));
