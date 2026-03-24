@@ -1,5 +1,6 @@
 namespace LagerthaAssistant.Application.Services.Agents;
 
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using LagerthaAssistant.Application.Constants;
@@ -19,6 +20,8 @@ using LagerthaAssistant.Application.Services.Food;
 public sealed class FoodTrackingConversationAgent : IConversationAgent, IConversationAgentProfile
 {
     private static readonly Regex CyrillicRegex = new("[\\u0400-\\u04FF]", RegexOptions.Compiled);
+    private const string QuestionMarker = "❓";
+    private const string InfoMarker = "ℹ️";
 
     private readonly IFoodTrackingService _foodService;
     private readonly ILocalizationService _loc;
@@ -123,7 +126,7 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
 
     internal ConversationAgentResult HandleShopAddPrompt(string locale)
     {
-        return Result("food.shop.add.prompt", _loc.Get("food.shop.add.prompt", locale));
+        return Result("food.shop.add.prompt", $"{QuestionMarker} {_loc.Get("food.shop.add.prompt", locale)}");
     }
 
     internal async Task<ConversationAgentResult> HandleShopClearAsync(string locale, CancellationToken cancellationToken)
@@ -320,7 +323,7 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         sb.AppendLine();
         foreach (var item in items)
         {
-            var qty = item.Quantity is not null ? $" [{item.Quantity}]" : string.Empty;
+            var qty = BuildInventoryQuantitySuffix(item);
             var cat = item.Category is not null ? $" — {item.Category}" : string.Empty;
             sb.AppendLine($"  [{item.Id}] {item.Name}{qty}{cat}");
         }
@@ -329,10 +332,10 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
     }
 
     internal ConversationAgentResult HandleInventorySearchPrompt(string locale)
-        => Result("inventory.search.prompt", _loc.Get("inventory.search.prompt", locale));
+        => Result("inventory.search.prompt", $"{QuestionMarker} {_loc.Get("inventory.search.prompt", locale)}");
 
     internal ConversationAgentResult HandleInventoryAdjustPrompt(string locale)
-        => Result("inventory.adjust.prompt", $"{_loc.Get("inventory.adjust.prompt", locale)}\n{_loc.Get("inventory.adjust.hint", locale)}");
+        => Result("inventory.adjust.prompt", $"{QuestionMarker} {_loc.Get("inventory.adjust.prompt", locale)}\n{InfoMarker} {_loc.Get("inventory.adjust.hint", locale)}");
 
     internal async Task<ConversationAgentResult> HandleInventoryStatsAsync(string locale, CancellationToken cancellationToken)
     {
@@ -435,6 +438,18 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
 
     internal Task<ConversationAgentResult> AddItemFromTextAsync(string input, CancellationToken cancellationToken)
         => AddItemFromTextAsync(input, "en", cancellationToken);
+
+    private static string BuildInventoryQuantitySuffix(FoodItemDto item)
+    {
+        if (item.CurrentQuantity.HasValue)
+        {
+            return $" [{item.CurrentQuantity.Value.ToString("0.###", CultureInfo.InvariantCulture)}]";
+        }
+
+        return string.IsNullOrWhiteSpace(item.Quantity)
+            ? string.Empty
+            : $" [{item.Quantity}]";
+    }
 
     private static ConversationAgentResult Result(string intent, string message)
         => ConversationAgentResult.Empty("food-tracking-agent", intent, message);

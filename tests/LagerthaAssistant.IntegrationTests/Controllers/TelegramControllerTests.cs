@@ -84,171 +84,6 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
-    public async Task Webhook_ShouldShowReleaseAnnouncementOnlyOncePerVersionPerUser()
-    {
-        var orchestrator = new FakeConversationOrchestrator();
-        var sender = new FakeTelegramBotSender();
-        var memoryRepository = new FakeUserMemoryRepository();
-        var unitOfWork = new FakeUnitOfWork();
-
-        var sut = CreateSut(
-            orchestrator,
-            new FakeConversationScopeAccessor(),
-            new FakeVocabularyStorageModeProvider(),
-            new FakeVocabularyStoragePreferenceService
-            {
-                CurrentMode = VocabularyStorageMode.Graph
-            },
-            assistantSessionService: null,
-            localeStateService: null,
-            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
-            vocabularyCardRepository: null,
-            navigationPresenter: null,
-            new FakeTelegramFormatter("assistant reply"),
-            sender,
-            new TelegramOptions { Enabled = true },
-            userMemoryRepository: memoryRepository,
-            unitOfWork: unitOfWork,
-            releaseAnnouncementOptions: new ReleaseAnnouncementOptions
-            {
-                Enabled = true,
-                Version = "2026.03.20",
-                ReleaseDate = "2026-03-20",
-                NotesEn = "Improved chat and import flows."
-            });
-
-        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 501), CancellationToken.None);
-        Assert.Contains("Bot update", sender.LastText, StringComparison.Ordinal);
-        Assert.Contains("Version: <b>2026.03.20</b>", sender.LastText, StringComparison.Ordinal);
-        Assert.Contains("Date: 2026-03-20", sender.LastText, StringComparison.Ordinal);
-        Assert.Contains("What's new: Improved chat and import flows.", sender.LastText, StringComparison.Ordinal);
-        Assert.Contains("assistant reply", sender.LastText, StringComparison.Ordinal);
-        Assert.Equal(1, unitOfWork.SaveChangesCalls);
-
-        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 502), CancellationToken.None);
-        Assert.DoesNotContain("Bot update", sender.LastText, StringComparison.Ordinal);
-        Assert.Equal("assistant reply", sender.LastText);
-        Assert.Equal(1, unitOfWork.SaveChangesCalls);
-
-        var stored = await memoryRepository.GetByKeyAsync(
-            UserPreferenceMemoryKeys.ReleaseLastNotifiedVersion,
-            "telegram",
-            "2002",
-            CancellationToken.None);
-
-        Assert.NotNull(stored);
-        Assert.StartsWith("2026.03.20|en|", stored!.Value, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Webhook_ShouldShowReleaseAnnouncementAgain_WhenLocaleChanges()
-    {
-        var orchestrator = new FakeConversationOrchestrator();
-        var sender = new FakeTelegramBotSender();
-        var memoryRepository = new FakeUserMemoryRepository();
-        var unitOfWork = new FakeUnitOfWork();
-        var localeStateService = new FakeUserLocaleStateService
-        {
-            NextLocale = "en",
-            StoredLocale = "en"
-        };
-
-        var sut = CreateSut(
-            orchestrator,
-            new FakeConversationScopeAccessor(),
-            new FakeVocabularyStorageModeProvider(),
-            new FakeVocabularyStoragePreferenceService
-            {
-                CurrentMode = VocabularyStorageMode.Graph
-            },
-            assistantSessionService: null,
-            localeStateService: localeStateService,
-            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
-            vocabularyCardRepository: null,
-            navigationPresenter: null,
-            new FakeTelegramFormatter("assistant reply"),
-            sender,
-            new TelegramOptions { Enabled = true },
-            userMemoryRepository: memoryRepository,
-            unitOfWork: unitOfWork,
-            releaseAnnouncementOptions: new ReleaseAnnouncementOptions
-            {
-                Enabled = true,
-                Version = "2026.03.22",
-                ReleaseDate = "2026-03-22",
-                NotesEn = "English notes",
-                NotesUk = "Українські нотатки"
-            });
-
-        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 561), CancellationToken.None);
-        Assert.Contains("Bot update", sender.LastText, StringComparison.Ordinal);
-        Assert.Equal(1, unitOfWork.SaveChangesCalls);
-
-        localeStateService.NextLocale = "uk";
-        localeStateService.StoredLocale = "uk";
-
-        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 562), CancellationToken.None);
-        Assert.Contains("Bot update", sender.LastText, StringComparison.Ordinal);
-        Assert.Equal(2, unitOfWork.SaveChangesCalls);
-
-        var stored = await memoryRepository.GetByKeyAsync(
-            UserPreferenceMemoryKeys.ReleaseLastNotifiedVersion,
-            "telegram",
-            "2002",
-            CancellationToken.None);
-
-        Assert.NotNull(stored);
-        Assert.StartsWith("2026.03.22|uk|", stored!.Value, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Webhook_ShouldNormalizeGuidReleaseVersionInAnnouncement()
-    {
-        var orchestrator = new FakeConversationOrchestrator();
-        var sender = new FakeTelegramBotSender();
-        var memoryRepository = new FakeUserMemoryRepository();
-        var unitOfWork = new FakeUnitOfWork();
-        const string guidVersion = "20df36d2-5eb5-42cc-85b0-d0015d1044f7";
-
-        var sut = CreateSut(
-            orchestrator,
-            new FakeConversationScopeAccessor(),
-            new FakeVocabularyStorageModeProvider(),
-            new FakeVocabularyStoragePreferenceService
-            {
-                CurrentMode = VocabularyStorageMode.Graph
-            },
-            assistantSessionService: null,
-            localeStateService: null,
-            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
-            vocabularyCardRepository: null,
-            navigationPresenter: null,
-            new FakeTelegramFormatter("assistant reply"),
-            sender,
-            new TelegramOptions { Enabled = true },
-            userMemoryRepository: memoryRepository,
-            unitOfWork: unitOfWork,
-            releaseAnnouncementOptions: new ReleaseAnnouncementOptions
-            {
-                Enabled = true,
-                Version = guidVersion,
-                ReleaseDate = "2026-03-20"
-            });
-
-        _ = await sut.Webhook(BuildTextUpdate(1001, 2002, "void", null, updateId: 511), CancellationToken.None);
-
-        Assert.Contains("Version: <b>build-20df36d2</b>", sender.LastText, StringComparison.Ordinal);
-
-        var stored = await memoryRepository.GetByKeyAsync(
-            UserPreferenceMemoryKeys.ReleaseLastNotifiedVersion,
-            "telegram",
-            "2002",
-            CancellationToken.None);
-        Assert.NotNull(stored);
-        Assert.StartsWith("build-20df36d2|en|", stored!.Value, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task Webhook_ShouldForceGraphStorageMode_ForTelegramEvenWhenPreferenceIsLocal()
     {
         var orchestrator = new FakeConversationOrchestrator();
@@ -2666,8 +2501,7 @@ public sealed class TelegramControllerTests
         FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null,
         FakeTelegramImportSourceReader? importSourceReader = null,
         FakeUserMemoryRepository? userMemoryRepository = null,
-        FakeUnitOfWork? unitOfWork = null,
-        ReleaseAnnouncementOptions? releaseAnnouncementOptions = null)
+        FakeUnitOfWork? unitOfWork = null)
     {
         return CreateSut(
             orchestrator,
@@ -2686,8 +2520,7 @@ public sealed class TelegramControllerTests
             vocabularyDiscoveryService: vocabularyDiscoveryService,
             importSourceReader: importSourceReader,
             userMemoryRepository: userMemoryRepository,
-            unitOfWork: unitOfWork,
-            releaseAnnouncementOptions: releaseAnnouncementOptions);
+            unitOfWork: unitOfWork);
     }
 
     private static TelegramController CreateSut(
@@ -2708,8 +2541,7 @@ public sealed class TelegramControllerTests
         FakeVocabularyDiscoveryService? vocabularyDiscoveryService = null,
         FakeTelegramImportSourceReader? importSourceReader = null,
         FakeUserMemoryRepository? userMemoryRepository = null,
-        FakeUnitOfWork? unitOfWork = null,
-        ReleaseAnnouncementOptions? releaseAnnouncementOptions = null)
+        FakeUnitOfWork? unitOfWork = null)
     {
         return CreateSut(
             orchestrator,
@@ -2733,8 +2565,7 @@ public sealed class TelegramControllerTests
             vocabularyDiscoveryService: vocabularyDiscoveryService,
             importSourceReader: importSourceReader,
             userMemoryRepository: userMemoryRepository,
-            unitOfWork: unitOfWork,
-            releaseAnnouncementOptions: releaseAnnouncementOptions);
+            unitOfWork: unitOfWork);
     }
 
     private static TelegramController CreateSut(
@@ -2760,7 +2591,6 @@ public sealed class TelegramControllerTests
         FakeTelegramImportSourceReader? importSourceReader = null,
         FakeUserMemoryRepository? userMemoryRepository = null,
         FakeUnitOfWork? unitOfWork = null,
-        ReleaseAnnouncementOptions? releaseAnnouncementOptions = null,
         FakeFoodTrackingService? foodTrackingService = null)
     {
         return new TelegramController(
@@ -2791,7 +2621,6 @@ public sealed class TelegramControllerTests
             NullLogger<TelegramController>.Instance,
             userMemoryRepository,
             unitOfWork,
-            Options.Create(releaseAnnouncementOptions ?? new ReleaseAnnouncementOptions()),
             notionOptions: null,
             notionFoodOptions: null,
             notionSyncWorkerOptions: null,
@@ -3847,11 +3676,6 @@ public sealed class TelegramControllerTests
                 "settings.notion_enabled" => "Enabled",
                 "settings.notion_partial" => "Needs setup",
                 "settings.notion_disabled" => "Disabled",
-                "release.title" => "Bot update",
-                "release.version" => "Version",
-                "release.date" => "Date",
-                "release.whats_new" => "What's new",
-                "release.notes_default" => "Improved chat mode action handling and response quality.",
                 "notion.title" => "<b>Notion</b>",
                 "notion.vocabulary" => "Vocabulary export",
                 "notion.food" => "Food sync",
@@ -4956,4 +4780,3 @@ public sealed class TelegramControllerTests
             => Task.FromResult<PortionCalculationDto?>(new PortionCalculationDto("Test Meal", 2, targetServings, (decimal)targetServings / 2, []));
     }
 }
-
