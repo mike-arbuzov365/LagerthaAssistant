@@ -12,6 +12,8 @@ public interface IGroceryListRepository
 
     Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default);
 
+    Task<int> CountPermanentlyFailedNotionSyncAsync(CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<GroceryListItem>> ClaimPendingNotionSyncAsync(int take, DateTime claimedAt, CancellationToken cancellationToken = default);
 
     Task AddAsync(GroceryListItem item, CancellationToken cancellationToken = default);

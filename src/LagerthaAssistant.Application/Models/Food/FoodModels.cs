@@ -94,6 +94,17 @@ public sealed record FoodSyncSummary(
     bool HasErrors,
     string? LastError);
 
+/// <summary>
+/// Current sync health snapshot for both Inventory and Grocery queues.
+/// PendingOrFailed counts items that will be retried automatically.
+/// PermanentlyFailed counts items that exceeded the max retry limit and need manual attention.
+/// </summary>
+public sealed record FoodSyncStatusSummary(
+    int InventoryPendingOrFailed,
+    int InventoryPermanentlyFailed,
+    int GroceryPendingOrFailed,
+    int GroceryPermanentlyFailed);
+
 /// <summary>Notion API response envelope for database queries.</summary>
 public sealed record NotionQueryResponse(
     IReadOnlyList<NotionPage> Results,

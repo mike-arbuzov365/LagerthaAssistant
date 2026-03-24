@@ -26,4 +26,9 @@ public interface IFoodSyncService
     /// Returns the number of pages archived.
     /// </summary>
     Task<int> ReconcileNotionGroceryOrphansAsync(TimeSpan? gracePeriod = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns a snapshot of sync queue health for both Inventory and Grocery.
+    /// </summary>
+    Task<FoodSyncStatusSummary> GetSyncStatusAsync(CancellationToken cancellationToken = default);
 }

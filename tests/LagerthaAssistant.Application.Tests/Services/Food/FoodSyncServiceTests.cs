@@ -799,6 +799,159 @@ public sealed class FoodSyncServiceTests
         Assert.DoesNotContain("fail-page", notion.ArchivedPageIds);
     }
 
+    // ── Per-field conflict protection ────────────────────────────────────────
+
+    [Fact]
+    public async Task SyncFromNotionAsync_ShouldPreserveLocalQuantities_WhenItemHasPendingStatus()
+    {
+        // Arrange: local item has a pending local change to CurrentQuantity=10.
+        var existing = new FoodItem
+        {
+            Id = 1,
+            NotionPageId = "page-1",
+            Name = "Chicken",
+            CurrentQuantity = 10m,
+            MinQuantity = 2m,
+            NotionUpdatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            NotionSyncStatus = FoodSyncStatus.Pending
+        };
+        // Notion has a newer structural edit (name changed) with an older quantity.
+        var notion = new FakeNotionFoodClient
+        {
+            InventoryPages = [MakePage("page-1", "2026-06-01T00:00:00Z",
+                ("Item Name", Title("Chicken Breast")),
+                ("Item Quantity", RichText("3")),
+                ("Min Quantity", Number(1m)))]
+        };
+        var foodRepo = new FakeFoodItemRepository { Existing = existing };
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        await sut.SyncFromNotionAsync();
+
+        // Structural field updated from Notion.
+        Assert.Equal("Chicken Breast", existing.Name);
+        // Local quantities preserved — NOT overwritten by Notion.
+        Assert.Equal(10m, existing.CurrentQuantity);
+        Assert.Equal(2m, existing.MinQuantity);
+    }
+
+    [Fact]
+    public async Task SyncFromNotionAsync_ShouldOverwriteQuantities_WhenItemIsSynced()
+    {
+        // Arrange: item is already synced — no pending local changes.
+        var existing = new FoodItem
+        {
+            Id = 1,
+            NotionPageId = "page-1",
+            Name = "Chicken",
+            CurrentQuantity = 5m,
+            MinQuantity = 1m,
+            NotionUpdatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            NotionSyncStatus = FoodSyncStatus.Synced
+        };
+        var notion = new FakeNotionFoodClient
+        {
+            InventoryPages = [MakePage("page-1", "2026-06-01T00:00:00Z",
+                ("Item Name", Title("Chicken Breast")),
+                ("Item Quantity", RichText("3")),
+                ("Min Quantity", Number(0.5m)))]
+        };
+        var foodRepo = new FakeFoodItemRepository { Existing = existing };
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        await sut.SyncFromNotionAsync();
+
+        // All fields — including quantities — should be updated from Notion.
+        Assert.Equal("Chicken Breast", existing.Name);
+        Assert.Equal(3m, existing.CurrentQuantity);
+        Assert.Equal(0.5m, existing.MinQuantity);
+    }
+
+    // ── PermanentlyFailed status ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task SyncInventoryChangesToNotionAsync_ShouldMarkPermanentlyFailed_WhenMaxAttemptsExceeded()
+    {
+        var pendingItem = new FoodItem
+        {
+            Id = 31,
+            NotionPageId = "inv-31",
+            CurrentQuantity = 1m,
+            NotionSyncStatus = FoodSyncStatus.Pending,
+            NotionAttemptCount = 5   // equals MaxSyncAttempts
+        };
+        var foodRepo = new FakeFoodItemRepository { PendingItems = [pendingItem] };
+        var notion = new FakeNotionFoodClient { ShouldThrowOnUpdateInventory = true };
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        await sut.SyncInventoryChangesToNotionAsync(take: 10);
+
+        Assert.Equal(FoodSyncStatus.PermanentlyFailed, pendingItem.NotionSyncStatus);
+    }
+
+    [Fact]
+    public async Task SyncInventoryChangesToNotionAsync_ShouldMarkFailed_WhenUnderMaxAttempts()
+    {
+        var pendingItem = new FoodItem
+        {
+            Id = 32,
+            NotionPageId = "inv-32",
+            CurrentQuantity = 1m,
+            NotionSyncStatus = FoodSyncStatus.Pending,
+            NotionAttemptCount = 3   // below MaxSyncAttempts=5
+        };
+        var foodRepo = new FakeFoodItemRepository { PendingItems = [pendingItem] };
+        var notion = new FakeNotionFoodClient { ShouldThrowOnUpdateInventory = true };
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        await sut.SyncInventoryChangesToNotionAsync(take: 10);
+
+        Assert.Equal(FoodSyncStatus.Failed, pendingItem.NotionSyncStatus);
+    }
+
+    [Fact]
+    public async Task SyncGroceryChangesToNotionAsync_ShouldMarkPermanentlyFailed_WhenMaxAttemptsExceeded()
+    {
+        var pendingItem = new GroceryListItem
+        {
+            Id = 41,
+            NotionPageId = "groc-41",
+            IsBought = true,
+            NotionSyncStatus = FoodSyncStatus.Pending,
+            NotionAttemptCount = 5
+        };
+        var groceryRepo = new FakeGroceryListRepository { PendingItems = [pendingItem] };
+        var notion = new FakeNotionFoodClient { ShouldThrowOnMarkBought = true };
+        var sut = CreateSut(notion: notion, groceryRepo: groceryRepo);
+
+        await sut.SyncGroceryChangesToNotionAsync(take: 10);
+
+        Assert.Equal(FoodSyncStatus.PermanentlyFailed, pendingItem.NotionSyncStatus);
+    }
+
+    // ── GetSyncStatusAsync ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetSyncStatusAsync_ShouldReturnCombinedCounts()
+    {
+        var foodRepo = new FakeFoodItemRepository
+        {
+            PendingItems = [new FoodItem { Id = 1, NotionPageId = "p1", NotionSyncStatus = FoodSyncStatus.Pending }]
+        };
+        var groceryRepo = new FakeGroceryListRepository
+        {
+            PendingItems = [new GroceryListItem { Id = 2, NotionPageId = "g1", NotionSyncStatus = FoodSyncStatus.Pending }]
+        };
+        var sut = CreateSut(foodRepo: foodRepo, groceryRepo: groceryRepo);
+
+        var status = await sut.GetSyncStatusAsync();
+
+        Assert.Equal(1, status.InventoryPendingOrFailed);
+        Assert.Equal(1, status.GroceryPendingOrFailed);
+        Assert.Equal(0, status.InventoryPermanentlyFailed);
+        Assert.Equal(0, status.GroceryPermanentlyFailed);
+    }
+
     [Fact]
     public async Task SyncFromNotionAsync_ShouldArchiveBoughtNotionItems_AndDeleteLocalRows()
     {
@@ -994,6 +1147,9 @@ public sealed class FoodSyncServiceTests
         public Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(PendingItems.Count);
 
+        public Task<int> CountPermanentlyFailedNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
         public Task<IReadOnlyList<FoodItem>> ClaimPendingNotionSyncAsync(int take, DateTime claimedAt, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<FoodItem>>(PendingItems.Take(take).ToList());
 
@@ -1060,6 +1216,9 @@ public sealed class FoodSyncServiceTests
 
         public Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(PendingItems.Count);
+
+        public Task<int> CountPermanentlyFailedNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
 
         public Task<IReadOnlyList<GroceryListItem>> ClaimPendingNotionSyncAsync(int take, DateTime claimedAt, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<GroceryListItem>>(PendingItems.Take(take).ToList());

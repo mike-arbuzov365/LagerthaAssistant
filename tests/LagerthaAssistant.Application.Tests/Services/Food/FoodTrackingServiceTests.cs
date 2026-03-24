@@ -1056,6 +1056,9 @@ public sealed class FoodTrackingServiceTests
         public Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(0);
 
+        public Task<int> CountPermanentlyFailedNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
         public Task<IReadOnlyList<FoodItem>> ClaimPendingNotionSyncAsync(
             int take,
             DateTime claimedAt,
@@ -1138,6 +1141,9 @@ public sealed class FoodTrackingServiceTests
             => Task.FromResult<IReadOnlyList<GroceryListItem>>(AllItems);
 
         public Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<int> CountPermanentlyFailedNotionSyncAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(0);
 
         public Task<IReadOnlyList<GroceryListItem>> ClaimPendingNotionSyncAsync(int take, DateTime claimedAt, CancellationToken cancellationToken = default)

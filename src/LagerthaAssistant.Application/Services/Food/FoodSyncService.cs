@@ -11,6 +11,12 @@ using Microsoft.Extensions.Logging;
 
 public sealed class FoodSyncService : IFoodSyncService
 {
+    /// <summary>
+    /// Maximum number of sync attempts before an item is moved to PermanentlyFailed.
+    /// Prevents runaway retry loops for items with persistent Notion API errors.
+    /// </summary>
+    private const int MaxSyncAttempts = 5;
+
     private readonly INotionFoodClient _notionClient;
     private readonly IFoodItemRepository _foodItemRepo;
     private readonly IMealRepository _mealRepo;
@@ -79,7 +85,24 @@ public sealed class FoodSyncService : IFoodSyncService
 
                     if (notionUpdatedAt > existing.NotionUpdatedAt)
                     {
-                        UpdateFoodItem(existing, page, notionUpdatedAt);
+                        // If a local quantity change is pending push, protect CurrentQuantity and MinQuantity
+                        // from being overwritten by an older or concurrent Notion edit.
+                        // Structural fields (name, category, store, icon, price) are always refreshed.
+                        var hasPendingLocalChanges =
+                            existing.NotionSyncStatus is FoodSyncStatus.Pending or FoodSyncStatus.Processing;
+
+                        if (hasPendingLocalChanges)
+                        {
+                            UpdateFoodItemStructuralFields(existing, page, notionUpdatedAt);
+                            _logger.LogDebug(
+                                "Inventory pull: preserved local pending quantities for item {Id} ({Name}); only structural fields updated",
+                                existing.Id,
+                                existing.Name);
+                        }
+                        else
+                        {
+                            UpdateFoodItem(existing, page, notionUpdatedAt);
+                        }
                         await _unitOfWork.SaveChangesAsync(cancellationToken);
                         inventoryUpserted++;
                     }
@@ -91,6 +114,23 @@ public sealed class FoodSyncService : IFoodSyncService
                         inventoryUpserted++;
                     }
                     notionIdToFoodItemId[page.Id] = existing.Id;
+                }
+            }
+
+            // Detect local inventory items whose NotionPageId is absent from the Notion response.
+            // This happens when a page is archived or deleted in Notion. Log only — no auto-deletion.
+            var allLocalItems = await _foodItemRepo.GetAllAsync(cancellationToken);
+            foreach (var localItem in allLocalItems)
+            {
+                if (!IsLocalPageId(localItem.NotionPageId)
+                    && !notionIdToFoodItemId.ContainsKey(localItem.NotionPageId))
+                {
+                    _logger.LogWarning(
+                        "Inventory orphan detected: FoodItem {Id} ('{Name}') has NotionPageId '{PageId}' not present in Notion response. " +
+                        "The Notion page may have been archived or deleted.",
+                        localItem.Id,
+                        localItem.Name,
+                        localItem.NotionPageId);
                 }
             }
 
@@ -298,9 +338,18 @@ public sealed class FoodSyncService : IFoodSyncService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to sync grocery item {Id} to Notion", item.Id);
-                item.NotionSyncStatus = FoodSyncStatus.Failed;
-                item.NotionLastError = ex.Message;
+                var isPermanent = item.NotionAttemptCount >= MaxSyncAttempts;
+                _logger.LogWarning(ex,
+                    "Failed to sync grocery item {Id} to Notion (attempt {Count}/{Max}){Suffix}",
+                    item.Id,
+                    item.NotionAttemptCount,
+                    MaxSyncAttempts,
+                    isPermanent ? " — marking PermanentlyFailed" : string.Empty);
+
+                item.NotionSyncStatus = isPermanent
+                    ? FoodSyncStatus.PermanentlyFailed
+                    : FoodSyncStatus.Failed;
+                item.NotionLastError = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
                 item.NotionLastAttemptAt = DateTime.UtcNow;
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
@@ -343,15 +392,38 @@ public sealed class FoodSyncService : IFoodSyncService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to sync inventory item {Id} to Notion", item.Id);
-                item.NotionSyncStatus = FoodSyncStatus.Failed;
-                item.NotionLastError = ex.Message;
+                var isPermanent = item.NotionAttemptCount >= MaxSyncAttempts;
+                _logger.LogWarning(ex,
+                    "Failed to sync inventory item {Id} to Notion (attempt {Count}/{Max}){Suffix}",
+                    item.Id,
+                    item.NotionAttemptCount,
+                    MaxSyncAttempts,
+                    isPermanent ? " — marking PermanentlyFailed" : string.Empty);
+
+                item.NotionSyncStatus = isPermanent
+                    ? FoodSyncStatus.PermanentlyFailed
+                    : FoodSyncStatus.Failed;
+                item.NotionLastError = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
                 item.NotionLastAttemptAt = DateTime.UtcNow;
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
         }
 
         return synced;
+    }
+
+    public async Task<FoodSyncStatusSummary> GetSyncStatusAsync(CancellationToken cancellationToken = default)
+    {
+        var inventoryPending = await _foodItemRepo.CountPendingNotionSyncAsync(cancellationToken);
+        var inventoryPermFailed = await _foodItemRepo.CountPermanentlyFailedNotionSyncAsync(cancellationToken);
+        var groceryPending = await _groceryRepo.CountPendingNotionSyncAsync(cancellationToken);
+        var groceryPermFailed = await _groceryRepo.CountPermanentlyFailedNotionSyncAsync(cancellationToken);
+
+        return new FoodSyncStatusSummary(
+            InventoryPendingOrFailed: inventoryPending,
+            InventoryPermanentlyFailed: inventoryPermFailed,
+            GroceryPendingOrFailed: groceryPending,
+            GroceryPermanentlyFailed: groceryPermFailed);
     }
 
     public async Task<int> ReconcileNotionGroceryOrphansAsync(
@@ -444,6 +516,24 @@ public sealed class FoodSyncService : IFoodSyncService
         item.CurrentQuantity = GetNumberOrRichTextNumber(page, "Item Quantity");
         item.MinQuantity = GetNumber(page, "Min Quantity");
         item.LastAddedToCartAt = GetDate(page, "Added to Cart on");
+        item.NotionUpdatedAt = notionUpdatedAt;
+    }
+
+    /// <summary>
+    /// Updates only structural (non-quantity) fields from Notion.
+    /// Used during pull-sync when the item has a pending local change that hasn't been pushed yet,
+    /// to prevent Notion from overwriting a locally-modified CurrentQuantity or MinQuantity.
+    /// </summary>
+    private static void UpdateFoodItemStructuralFields(FoodItem item, NotionPage page, DateTime notionUpdatedAt)
+    {
+        item.Name = GetTitle(page, "Item Name");
+        item.IconEmoji = page.IconEmoji;
+        item.Category = GetSelect(page, "Category");
+        item.Store = GetSelect(page, "Store");
+        item.Price = GetNumber(page, "Price");
+        item.LastAddedToCartAt = GetDate(page, "Added to Cart on");
+        // CurrentQuantity, MinQuantity, and Quantity are intentionally skipped:
+        // local changes are pending push and must not be overwritten.
         item.NotionUpdatedAt = notionUpdatedAt;
     }
 

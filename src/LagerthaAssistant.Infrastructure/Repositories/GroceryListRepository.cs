@@ -83,6 +83,20 @@ public sealed class GroceryListRepository : IGroceryListRepository
         }
     }
 
+    public async Task<int> CountPermanentlyFailedNotionSyncAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _context.GroceryListItems
+                .CountAsync(x => x.NotionSyncStatus == FoodSyncStatus.PermanentlyFailed, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for permanently-failed grocery sync count", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.GetActive, "Failed to count permanently-failed grocery sync items", ex);
+        }
+    }
+
     public async Task<IReadOnlyList<GroceryListItem>> ClaimPendingNotionSyncAsync(
         int take,
         DateTime claimedAt,

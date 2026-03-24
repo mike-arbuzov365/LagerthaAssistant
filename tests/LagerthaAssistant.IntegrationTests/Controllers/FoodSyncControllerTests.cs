@@ -8,6 +8,31 @@ using Xunit;
 
 public sealed class FoodSyncControllerTests
 {
+    // ── GetStatus ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetStatus_ShouldReturnSyncCounts()
+    {
+        var service = new FakeFoodSyncService
+        {
+            StatusResult = new FoodSyncStatusSummary(
+                InventoryPendingOrFailed: 4,
+                InventoryPermanentlyFailed: 1,
+                GroceryPendingOrFailed: 2,
+                GroceryPermanentlyFailed: 0)
+        };
+        var sut = new FoodSyncController(service);
+
+        var result = await sut.GetStatus(CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var payload = Assert.IsType<FoodSyncStatusResponse>(ok.Value);
+        Assert.Equal(4, payload.InventoryPendingOrFailed);
+        Assert.Equal(1, payload.InventoryPermanentlyFailed);
+        Assert.Equal(2, payload.GroceryPendingOrFailed);
+        Assert.Equal(0, payload.GroceryPermanentlyFailed);
+    }
+
     // ── ReconcileGrocery ─────────────────────────────────────────────────────
 
     [Fact]
@@ -66,6 +91,7 @@ public sealed class FoodSyncControllerTests
     {
         public int ReconcileResult { get; init; }
         public TimeSpan? LastGracePeriod { get; private set; }
+        public FoodSyncStatusSummary StatusResult { get; init; } = new(0, 0, 0, 0);
 
         public Task<FoodSyncSummary> SyncFromNotionAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(new FoodSyncSummary(0, 0, 0, 0, false, null));
@@ -81,5 +107,8 @@ public sealed class FoodSyncControllerTests
             LastGracePeriod = gracePeriod;
             return Task.FromResult(ReconcileResult);
         }
+
+        public Task<FoodSyncStatusSummary> GetSyncStatusAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(StatusResult);
     }
 }

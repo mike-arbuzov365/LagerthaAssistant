@@ -1,6 +1,7 @@
 namespace LagerthaAssistant.Api.Controllers;
 
 using LagerthaAssistant.Application.Interfaces.Food;
+using LagerthaAssistant.Application.Models.Food;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
@@ -12,6 +13,21 @@ public sealed class FoodSyncController : ControllerBase
     public FoodSyncController(IFoodSyncService foodSyncService)
     {
         _foodSyncService = foodSyncService;
+    }
+
+    /// <summary>
+    /// Returns a snapshot of the food sync queue health (pending, failed, permanently-failed counts).
+    /// </summary>
+    [HttpGet("status")]
+    [ProducesResponseType(typeof(FoodSyncStatusResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<FoodSyncStatusResponse>> GetStatus(CancellationToken cancellationToken = default)
+    {
+        var summary = await _foodSyncService.GetSyncStatusAsync(cancellationToken);
+        return Ok(new FoodSyncStatusResponse(
+            summary.InventoryPendingOrFailed,
+            summary.InventoryPermanentlyFailed,
+            summary.GroceryPendingOrFailed,
+            summary.GroceryPermanentlyFailed));
     }
 
     /// <summary>
@@ -41,6 +57,16 @@ public sealed class FoodSyncController : ControllerBase
         return Ok(new FoodSyncReconcileGroceryResponse(archived, gracePeriodMinutes));
     }
 }
+
+/// <param name="InventoryPendingOrFailed">Inventory items queued for retry.</param>
+/// <param name="InventoryPermanentlyFailed">Inventory items that exceeded max retry attempts.</param>
+/// <param name="GroceryPendingOrFailed">Grocery items queued for retry.</param>
+/// <param name="GroceryPermanentlyFailed">Grocery items that exceeded max retry attempts.</param>
+public sealed record FoodSyncStatusResponse(
+    int InventoryPendingOrFailed,
+    int InventoryPermanentlyFailed,
+    int GroceryPendingOrFailed,
+    int GroceryPermanentlyFailed);
 
 /// <param name="ArchivedCount">Number of orphaned Notion pages that were archived.</param>
 /// <param name="GracePeriodMinutes">Grace period that was applied during the run.</param>
