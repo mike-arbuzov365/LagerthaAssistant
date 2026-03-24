@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using LagerthaAssistant.Application.Interfaces.Food;
 using LagerthaAssistant.Application.Models.Food;
 using LagerthaAssistant.Infrastructure.Options;
@@ -291,16 +292,28 @@ public sealed class NotionFoodClient : INotionFoodClient
 
     private sealed class NotionQueryEnvelope
     {
+        [JsonPropertyName("results")]
         public List<NotionPageEnvelope> Results { get; set; } = [];
+
+        [JsonPropertyName("next_cursor")]
         public string? NextCursor { get; set; }
+
+        [JsonPropertyName("has_more")]
         public bool HasMore { get; set; }
     }
 
     private sealed class NotionPageEnvelope
     {
+        [JsonPropertyName("id")]
         public string Id { get; set; } = string.Empty;
+
+        [JsonPropertyName("last_edited_time")]
         public string LastEditedTime { get; set; } = string.Empty;
+
+        [JsonPropertyName("icon")]
         public JsonElement Icon { get; set; }
+
+        [JsonPropertyName("properties")]
         public Dictionary<string, JsonElement> Properties { get; set; } = [];
     }
 }
