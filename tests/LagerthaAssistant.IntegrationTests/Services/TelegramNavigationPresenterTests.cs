@@ -141,6 +141,7 @@ public sealed class TelegramNavigationPresenterTests
             .ToList();
 
         Assert.Contains(CallbackDataConstants.Inventory.Min, callbacks);
+        Assert.Contains(CallbackDataConstants.Inventory.ResetStock, callbacks);
         Assert.Contains(CallbackDataConstants.Inventory.PhotoRestock, callbacks);
         Assert.Contains(CallbackDataConstants.Inventory.PhotoConsume, callbacks);
     }
@@ -159,5 +160,20 @@ public sealed class TelegramNavigationPresenterTests
         Assert.Contains(CallbackDataConstants.Inventory.PhotoApplyAll, callbacks);
         Assert.Contains(CallbackDataConstants.Inventory.PhotoSelect, callbacks);
         Assert.Contains(CallbackDataConstants.Inventory.PhotoCancel, callbacks);
+    }
+
+    [Fact]
+    public void BuildInventoryResetStockConfirmationKeyboard_ShouldContainExpectedCallbacks()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildInventoryResetStockConfirmationKeyboard("uk");
+        var callbacks = keyboard.InlineKeyboard
+            .SelectMany(row => row)
+            .Select(button => button.CallbackData)
+            .ToList();
+
+        Assert.Contains(CallbackDataConstants.Inventory.ResetStockConfirm, callbacks);
+        Assert.Contains(CallbackDataConstants.Food.Inventory, callbacks);
     }
 }

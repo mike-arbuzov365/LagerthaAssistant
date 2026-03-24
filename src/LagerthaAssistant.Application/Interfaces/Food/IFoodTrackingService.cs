@@ -17,6 +17,10 @@ public interface IFoodTrackingService
 
     Task<FoodItemDto> AdjustInventoryQuantityAsync(int foodItemId, decimal delta, CancellationToken cancellationToken = default);
 
+    Task<FoodItemDto> SetInventoryCurrentQuantityAsync(int foodItemId, decimal quantity, CancellationToken cancellationToken = default);
+
+    Task<int> ResetAllInventoryCurrentQuantitiesAsync(CancellationToken cancellationToken = default);
+
     Task<FoodItemDto> SetInventoryMinQuantityAsync(int foodItemId, decimal minQuantity, CancellationToken cancellationToken = default);
 
     Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default);
