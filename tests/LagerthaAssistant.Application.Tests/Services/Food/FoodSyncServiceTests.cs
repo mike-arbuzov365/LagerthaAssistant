@@ -1004,6 +1004,85 @@ public sealed class FoodSyncServiceTests
         Assert.Equal([33], groceryRepo.DeletedAnyStateIds);
     }
 
+    // ── Tombstone (soft-delete guard) ────────────────────────────────────────
+
+    [Fact]
+    public async Task SyncFromNotionAsync_ShouldNotReCreateGroceryItem_WhenTombstoneExists()
+    {
+        // A grocery page is active in Notion but has an archived tombstone locally.
+        // Pull-sync must skip it to prevent zombie re-creation.
+        var notion = new FakeNotionFoodClient
+        {
+            GroceryPages =
+            [
+                MakePage("grocery-zombie-1", "2026-06-01T00:00:00Z",
+                    ("Item Name", Title("Zombie Milk")))
+            ]
+        };
+        var groceryRepo = new FakeGroceryListRepository
+        {
+            ArchivedNotionPageIds = { "grocery-zombie-1" }
+        };
+        var sut = CreateSut(notion: notion, groceryRepo: groceryRepo);
+
+        var summary = await sut.SyncFromNotionAsync();
+
+        Assert.False(summary.HasErrors);
+        Assert.Equal(0, summary.GroceryItemsUpserted);
+        Assert.Empty(groceryRepo.Added);
+    }
+
+    [Fact]
+    public async Task SyncFromNotionAsync_ShouldCreateGroceryItem_WhenNoTombstoneExists()
+    {
+        // Normal case: page in Notion, no tombstone, no existing record → should create.
+        var notion = new FakeNotionFoodClient
+        {
+            GroceryPages =
+            [
+                MakePage("grocery-new-1", "2026-06-01T00:00:00Z",
+                    ("Item Name", Title("Fresh Bread")))
+            ]
+        };
+        var groceryRepo = new FakeGroceryListRepository();
+        var sut = CreateSut(notion: notion, groceryRepo: groceryRepo);
+
+        var summary = await sut.SyncFromNotionAsync();
+
+        Assert.Equal(1, summary.GroceryItemsUpserted);
+        Assert.Single(groceryRepo.Added);
+        Assert.Equal("Fresh Bread", groceryRepo.Added[0].Name);
+    }
+
+    [Fact]
+    public async Task SyncFromNotionAsync_ShouldSoftDeleteBoughtGroceryItem_LeavingTombstone()
+    {
+        // When pull-sync encounters a bought item, it calls DeleteByIdsAnyStateAsync.
+        // Verify the fake tracks the delete (real impl now soft-deletes).
+        var existing = new GroceryListItem
+        {
+            Id = 99,
+            NotionPageId = "grocery-bought-99",
+            Name = "Old Juice",
+            IsBought = false
+        };
+        var notion = new FakeNotionFoodClient
+        {
+            GroceryPages =
+            [
+                MakePage("grocery-bought-99", "2026-06-01T00:00:00Z",
+                    ("Item Name", Title("Old Juice")),
+                    ("Bought?", Checkbox(true)))
+            ]
+        };
+        var groceryRepo = new FakeGroceryListRepository { ExistingByNotionPageId = existing };
+        var sut = CreateSut(notion: notion, groceryRepo: groceryRepo);
+
+        await sut.SyncFromNotionAsync();
+
+        Assert.Equal([99], groceryRepo.DeletedAnyStateIds);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static FoodSyncService CreateSut(
@@ -1225,6 +1304,7 @@ public sealed class FoodSyncServiceTests
         public List<GroceryListItem> PendingItems { get; init; } = [];
         public GroceryListItem? ExistingByNotionPageId { get; init; }
         public List<int> DeletedAnyStateIds { get; } = [];
+        public HashSet<string> ArchivedNotionPageIds { get; } = [];
 
         public Task<GroceryListItem?> GetByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default)
             => Task.FromResult(
@@ -1265,6 +1345,12 @@ public sealed class FoodSyncServiceTests
             DeletedAnyStateIds.AddRange(itemIds);
             return Task.FromResult(itemIds.Count);
         }
+
+        public Task<bool> ExistsArchivedByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default)
+            => Task.FromResult(ArchivedNotionPageIds.Contains(notionPageId));
+
+        public Task<int> PurgeArchivedAsync(DateTime olderThan, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

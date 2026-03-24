@@ -27,4 +27,16 @@ public interface IGroceryListRepository
     Task<int> DeleteByIdsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default);
 
     Task<int> DeleteByIdsAnyStateAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns true if a tombstone (soft-deleted record) exists for the given NotionPageId.
+    /// Bypasses the global query filter to include archived items.
+    /// </summary>
+    Task<bool> ExistsArchivedByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hard-deletes tombstones older than <paramref name="olderThan"/>.
+    /// Called periodically to reclaim storage.
+    /// </summary>
+    Task<int> PurgeArchivedAsync(DateTime olderThan, CancellationToken cancellationToken = default);
 }

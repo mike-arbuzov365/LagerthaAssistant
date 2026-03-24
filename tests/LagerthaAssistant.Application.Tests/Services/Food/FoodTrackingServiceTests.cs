@@ -1194,6 +1194,12 @@ public sealed class FoodTrackingServiceTests
 
         public Task<int> DeleteByIdsAnyStateAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default)
             => DeleteByIdsAsync(itemIds, cancellationToken);
+
+        public Task<bool> ExistsArchivedByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
+
+        public Task<int> PurgeArchivedAsync(DateTime olderThan, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
     }
 
     private sealed class FakeMealHistoryRepository : IMealHistoryRepository

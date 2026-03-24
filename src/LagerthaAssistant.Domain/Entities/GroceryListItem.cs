@@ -23,6 +23,12 @@ public sealed class GroceryListItem : AuditableEntity
     /// <summary>Optional link back to the source FoodItem in Inventory.</summary>
     public int? FoodItemId { get; set; }
 
+    /// <summary>
+    /// When set, this item is a tombstone — logically deleted but retained to prevent zombie re-creation
+    /// during the next Notion pull-sync. Tombstones are periodically purged after a retention period.
+    /// </summary>
+    public DateTime? ArchivedAt { get; set; }
+
     public FoodSyncStatus NotionSyncStatus { get; set; } = FoodSyncStatus.Synced;
 
     public int NotionAttemptCount { get; set; }

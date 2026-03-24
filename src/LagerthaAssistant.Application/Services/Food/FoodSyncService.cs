@@ -223,6 +223,19 @@ public sealed class FoodSyncService : IFoodSyncService
 
                 if (existing is null)
                 {
+                    // Tombstone guard: if the item was soft-deleted locally, do not re-create it.
+                    // This prevents the "zombie re-creation" cycle where items deleted locally
+                    // keep reappearing because Notion still has the active page.
+                    if (await _groceryRepo.ExistsArchivedByNotionPageIdAsync(page.Id, cancellationToken))
+                    {
+                        _logger.LogDebug(
+                            "Skipping tombstoned grocery page {PageId} ('{Name}')",
+                            page.Id,
+                            GetTitle(page, "Item Name"));
+                        grocerySkipped++;
+                        continue;
+                    }
+
                     var groceryItem = MapToGroceryListItem(page, notionUpdatedAt, notionIdToFoodItemId);
                     _logger.LogDebug(
                         "Adding grocery item: Name={Name}, IsBought={IsBought}, NotionPageId={PageId}",

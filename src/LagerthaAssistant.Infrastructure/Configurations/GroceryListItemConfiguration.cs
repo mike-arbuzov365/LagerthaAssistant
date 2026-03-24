@@ -45,6 +45,8 @@ public sealed class GroceryListItemConfiguration : IEntityTypeConfiguration<Groc
             .HasForeignKey(x => x.FoodItemId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        builder.HasQueryFilter(x => x.ArchivedAt == null);
+
         builder.HasIndex(x => x.NotionPageId).IsUnique();
         builder.HasIndex(x => x.IsBought);
         builder.HasIndex(x => new { x.NotionSyncStatus, x.NotionUpdatedAt });
