@@ -1,4 +1,4 @@
-namespace LagerthaAssistant.Application.Tests.Services.Agents;
+﻿namespace LagerthaAssistant.Application.Tests.Services.Agents;
 
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces;
@@ -10,7 +10,7 @@ using Xunit;
 
 public sealed class FoodTrackingConversationAgentTests
 {
-    // ── CanHandle ────────────────────────────────────────────────────────────
+    // â”€â”€ CanHandle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Theory]
     [InlineData(CallbackDataConstants.Shop.List)]
@@ -45,7 +45,7 @@ public sealed class FoodTrackingConversationAgentTests
         Assert.False(sut.CanHandle(new ConversationAgentContext(input, [])));
     }
 
-    // ── HandleAsync ──────────────────────────────────────────────────────────
+    // â”€â”€ HandleAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task HandleAsync_ShopList_ShouldReturnEmptyMessage_WhenNoItems()
@@ -283,7 +283,7 @@ public sealed class FoodTrackingConversationAgentTests
         Assert.Contains("Pasta", result.Message);
     }
 
-    // ── weekly:create ────────────────────────────────────────────────────────
+    // â”€â”€ weekly:create â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task HandleAsync_WeeklyCreate_ShouldReturnCreatePrompt()
@@ -296,7 +296,7 @@ public sealed class FoodTrackingConversationAgentTests
         Assert.Contains("What meal", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ── weekly:goal ──────────────────────────────────────────────────────────
+    // â”€â”€ weekly:goal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task HandleAsync_WeeklyDailyGoal_ShouldShowConsumedAndGoal()
@@ -318,11 +318,11 @@ public sealed class FoodTrackingConversationAgentTests
 
         var result = await sut.HandleAsync(new ConversationAgentContext(CallbackDataConstants.Weekly.DailyGoal, []));
 
-        // Progress bar uses █ (filled) and ░ (empty) characters
-        Assert.True(result.Message!.Contains('█') || result.Message.Contains('░'));
+        // Progress bar uses block characters.
+        Assert.True(result.Message!.Contains('\u2588') || result.Message.Contains('\u2591'));
     }
 
-    // ── weekly:diversity ─────────────────────────────────────────────────────
+    // â”€â”€ weekly:diversity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task HandleAsync_WeeklyDiversity_ShouldReturnNoMeals_WhenEmpty()
@@ -356,7 +356,7 @@ public sealed class FoodTrackingConversationAgentTests
         Assert.Contains("Pasta", result.Message); // repeated meal name
     }
 
-    // ── AddItemFromTextAsync ──────────────────────────────────────────────────
+    // â”€â”€ AddItemFromTextAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task AddItemFromTextAsync_ShouldAddFromInventory_WhenSingleWordMatches()
@@ -437,7 +437,7 @@ public sealed class FoodTrackingConversationAgentTests
     {
         var sut = CreateSut();
 
-        var result = await sut.AddItemFromTextAsync("Молоко 2л", CancellationToken.None);
+        var result = await sut.AddItemFromTextAsync("\u041c\u043e\u043b\u043e\u043a\u043e 2\u043b", CancellationToken.None);
 
         Assert.Equal("shop.only_english", result.Intent);
         Assert.Contains("must be in English", result.Message, StringComparison.OrdinalIgnoreCase);
@@ -458,7 +458,7 @@ public sealed class FoodTrackingConversationAgentTests
         Assert.Contains("Add this product to inventory first", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ── Inventory handlers ───────────────────────────────────────────────────
+    // â”€â”€ Inventory handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task HandleInventoryListAsync_ShouldReturnItemList_WhenItemsExist()
@@ -587,7 +587,7 @@ public sealed class FoodTrackingConversationAgentTests
         Assert.Equal("inventory.cart.not_found", result.Intent);
     }
 
-    // ── CanHandle — food: and inventory: prefixes ────────────────────────────
+    // â”€â”€ CanHandle â€” food: and inventory: prefixes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Theory]
     [InlineData(CallbackDataConstants.Food.Inventory)]
@@ -614,7 +614,7 @@ public sealed class FoodTrackingConversationAgentTests
         Assert.True(sut.CanHandle(ctx));
     }
 
-    // ── Profile ──────────────────────────────────────────────────────────────
+    // â”€â”€ Profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void Profile_ShouldHaveCorrectMetadata()
@@ -627,7 +627,7 @@ public sealed class FoodTrackingConversationAgentTests
         Assert.False(sut.SupportsBatchInputs);
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private static FoodTrackingConversationAgent CreateSut(FakeFoodTrackingService? service = null)
         => new(service ?? new FakeFoodTrackingService(), new FakeLocalizationService());
@@ -639,8 +639,8 @@ public sealed class FoodTrackingConversationAgentTests
             ["food.shop.list.empty"] = "Shopping list is empty.",
             ["food.shop.list.title"] = "Shopping list ({0} items):",
             ["food.shop.list.no_store"] = "No store",
-            ["food.shop.list.store"] = "📍 {0}",
-            ["food.shop.list.item"] = "  • {0}{1}{2}",
+            ["food.shop.list.store"] = "ðŸ“ {0}",
+            ["food.shop.list.item"] = "  â€¢ {0}{1}{2}",
             ["food.shop.add.prompt"] = "What would you like to add to the shopping list?",
             ["food.shop.clear.none"] = "No bought items to clear.",
             ["food.shop.clear.done"] = "Cleared {0} bought item(s) from the list.",
@@ -654,31 +654,31 @@ public sealed class FoodTrackingConversationAgentTests
             ["food.weekly.cookable.empty"] = "No meals can be prepared with the current inventory.",
             ["food.weekly.cookable.title"] = "You can cook right now ({0} options):",
             ["food.weekly.calories.empty"] = "No calorie data for the past 7 days.",
-            ["food.weekly.calories.title"] = "📊 Calories — last 7 days ({0} – {1})",
+            ["food.weekly.calories.title"] = "ðŸ“Š Calories â€” last 7 days ({0} â€“ {1})",
             ["food.weekly.calories.total"] = "Total:   {0} kcal",
             ["food.weekly.calories.avg"] = "Average: {0:F0} kcal/day",
             ["food.weekly.calories.protein"] = "Protein: {0:F0} g",
             ["food.weekly.calories.carbs"] = "Carbs:   {0:F0} g",
             ["food.weekly.calories.fat"] = "Fat:     {0:F0} g",
             ["food.weekly.favourites.empty"] = "No meal history yet. Log your meals to build your favourites list.",
-            ["food.weekly.favourites.title"] = "⭐ Your top meals ({0}):",
+            ["food.weekly.favourites.title"] = "â­ Your top meals ({0}):",
             ["food.weekly.log.empty"] = "No meals found. Add meals in Notion Meal Plans first, then sync.",
             ["food.weekly.log.prompt"] = "Which meal did you eat? Reply with the meal ID and optional servings:",
             ["food.weekly.create.prompt"] = "What meal would you like to create?",
-            ["food.weekly.goal.title"] = "🎯 Daily progress — {0}",
+            ["food.weekly.goal.title"] = "ðŸŽ¯ Daily progress â€” {0}",
             ["food.weekly.goal.consumed"] = "Consumed: {0} / {1} kcal",
             ["food.weekly.goal.remaining"] = "Remaining: {0} kcal",
             ["food.weekly.goal.meals"] = "Meals logged: {0}",
             ["food.weekly.diversity.empty"] = "No meals logged in the past 7 days.",
-            ["food.weekly.diversity.title"] = "🥗 Diet diversity — last {0} days",
+            ["food.weekly.diversity.title"] = "ðŸ¥— Diet diversity â€” last {0} days",
             ["food.weekly.diversity.total"] = "Total meals: {0}",
             ["food.weekly.diversity.unique"] = "Unique meals: {0}",
             ["food.weekly.diversity.repeated"] = "Most repeated:",
             ["food.weekly.diversity.score"] = "Diversity score: {0:F0}% unique",
             ["inventory.cart.added"] = "Added \"{0}\" to your shopping list.",
             ["inventory.cart.not_found"] = "Item not found in inventory.",
-            ["inventory.low_stock.title"] = "Low stock — {0} item(s) to reorder:",
-            ["inventory.low_stock.item"] = "  ⚠️ {0} — {1} (needs restock)",
+            ["inventory.low_stock.title"] = "Low stock â€” {0} item(s) to reorder:",
+            ["inventory.low_stock.item"] = "  • {0} — {1} (needs restock)",
             ["inventory.stats.title"] = "Inventory stats",
             ["inventory.stats.total_items"] = "Total items: {0}",
             ["inventory.stats.with_current"] = "With current quantity: {0}",

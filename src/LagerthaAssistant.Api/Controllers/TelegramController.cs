@@ -3726,12 +3726,12 @@ public sealed class TelegramController : ControllerBase
             }
 
             var sb = new StringBuilder();
-            sb.AppendLine(_navigationPresenter.GetText("inventory.low_stock.title", locale, lowStock.Count));
+            sb.AppendLine(EnsureWarningMarker(_navigationPresenter.GetText("inventory.low_stock.title", locale, lowStock.Count)));
             sb.AppendLine();
             foreach (var item in lowStock)
             {
                 var cur = item.CurrentQuantity.HasValue ? $"{item.CurrentQuantity.Value:G}" : "?";
-                sb.AppendLine(_navigationPresenter.GetText("inventory.low_stock.item", locale, item.Name, cur));
+                sb.AppendLine(_navigationPresenter.GetText("inventory.low_stock.item", locale, BuildInventoryItemTitle(item), cur));
             }
             return new TelegramRouteResponse(
                 "inventory.suggest",
@@ -3814,6 +3814,7 @@ public sealed class TelegramController : ControllerBase
             }
 
             var allInventory = await _foodTrackingService.GetAllInventoryAsync(0, cancellationToken);
+            var inventoryById = allInventory.ToDictionary(item => item.Id);
             var hints = allInventory
                 .Select(item => new TelegramInventoryItemHint(item.Id, item.Name))
                 .ToList();
@@ -3835,13 +3836,19 @@ public sealed class TelegramController : ControllerBase
             var candidates = analysis.Candidates
                 .OrderByDescending(candidate => candidate.Confidence)
                 .ThenBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
-                .Select((candidate, index) => new PendingInventoryPhotoCandidate(
-                    Number: index + 1,
-                    candidate.ItemId,
-                    candidate.Name,
-                    candidate.Quantity,
-                    candidate.Unit,
-                    candidate.Confidence))
+                .Select((candidate, index) =>
+                {
+                    inventoryById.TryGetValue(candidate.ItemId, out var matchedInventoryItem);
+                    return new PendingInventoryPhotoCandidate(
+                        Number: index + 1,
+                        candidate.ItemId,
+                        candidate.Name,
+                        candidate.Quantity,
+                        candidate.Unit,
+                        candidate.Confidence,
+                        matchedInventoryItem?.IconEmoji,
+                        matchedInventoryItem?.Category);
+                })
                 .ToList();
 
             var unknown = analysis.Unknown
@@ -4342,6 +4349,9 @@ public sealed class TelegramController : ControllerBase
         }
 
         var items = await _foodTrackingService.GetActiveGroceryListAsync(cancellationToken);
+        var inventoryByName = (await _foodTrackingService.GetAllInventoryAsync(0, cancellationToken))
+            .GroupBy(x => x.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         if (items.Count == 0)
         {
             _pendingStateStore.ShoppingDeleteSessions.TryRemove(BuildPendingShoppingDeleteKey(scope), out _);
@@ -4370,11 +4380,13 @@ public sealed class TelegramController : ControllerBase
         {
             var qty = string.IsNullOrWhiteSpace(candidate.Quantity) ? string.Empty : $" x {candidate.Quantity}";
             var store = string.IsNullOrWhiteSpace(candidate.Store) ? string.Empty : $" ({candidate.Store})";
+            inventoryByName.TryGetValue(candidate.Name.Trim(), out var matchedInventory);
+            var displayName = BuildInventoryItemTitle(candidate.Name, matchedInventory?.IconEmoji, matchedInventory?.Category);
             sb.AppendLine(_navigationPresenter.GetText(
                 "food.shop.delete.prompt.item",
                 locale,
                 candidate.Number,
-                $"{candidate.Name}{qty}{store}"));
+                $"{displayName}{qty}{store}"));
         }
 
         sb.AppendLine();
@@ -4878,13 +4890,21 @@ public sealed class TelegramController : ControllerBase
     }
 
     private static string BuildInventoryItemTitle(FoodItemDto item)
+        => BuildInventoryItemTitle(item.Name, item.IconEmoji, item.Category);
+
+    private static string BuildInventoryItemTitle(string name, string? iconEmoji, string? category)
     {
-        if (!string.IsNullOrWhiteSpace(item.IconEmoji))
+        if (!string.IsNullOrWhiteSpace(iconEmoji))
         {
-            return $"{item.IconEmoji} {item.Name}";
+            return $"{iconEmoji} {name}";
         }
 
-        return item.Name;
+        if (!string.IsNullOrWhiteSpace(category) && CategoryEmojis.TryGetValue(category, out var categoryEmoji))
+        {
+            return $"{categoryEmoji} {name}";
+        }
+
+        return $"📦 {name}";
     }
 
     private string BuildInventoryPhotoPreviewText(
@@ -4909,7 +4929,7 @@ public sealed class TelegramController : ControllerBase
                 "inventory.photo.preview.item",
                 locale,
                 candidate.Number,
-                candidate.Name,
+                BuildInventoryItemTitle(candidate.Name, candidate.IconEmoji, candidate.Category),
                 sign,
                 $"{quantity}{unit}",
                 candidate.Confidence));

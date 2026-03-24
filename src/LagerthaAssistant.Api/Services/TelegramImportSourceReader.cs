@@ -144,18 +144,36 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         var endpoint = new Uri(new Uri(baseUrl), OpenAiConstants.ChatCompletionsEndpoint);
         var dataUrl = $"data:image/jpeg;base64,{Convert.ToBase64String(download.Content!)}";
         var modeText = mode == TelegramInventoryPhotoMode.Consumption ? "consumption" : "restock";
+        var ocrText = string.Empty;
+
+        // For restock mode, OCR helps when users send a receipt photo instead of product photo.
+        if (mode == TelegramInventoryPhotoMode.Restock)
+        {
+            var ocr = await ExtractTextFromImageAsync(download.Content!, "image/jpeg", cancellationToken);
+            if (ocr.Success && !string.IsNullOrWhiteSpace(ocr.Text))
+            {
+                ocrText = ocr.Text.Trim();
+            }
+        }
 
         var prompt = new StringBuilder();
-        prompt.AppendLine("Detect inventory quantity changes from this photo.");
+        prompt.AppendLine("Detect inventory quantity changes from this image.");
         prompt.AppendLine($"Mode: {modeText}.");
         prompt.AppendLine("Use only inventory IDs from the list below.");
+        prompt.AppendLine("The image can be either products on a table OR a receipt photo.");
         prompt.AppendLine("Return strict JSON only:");
         prompt.AppendLine("{\"candidates\":[{\"itemId\":20,\"quantity\":2,\"unit\":\"pcs\",\"confidence\":0.91}],\"unknown\":[{\"name\":\"item\",\"quantity\":1,\"unit\":\"pcs\",\"confidence\":0.62}]}");
         prompt.AppendLine("Rules:");
         prompt.AppendLine("- quantity must be > 0.");
+        prompt.AppendLine("- if image is a receipt and mode=restock, infer quantities from line items; if qty is missing, default to 1.");
         prompt.AppendLine("- confidence range 0..1.");
         prompt.AppendLine("- unknown list only for products not present in the inventory list.");
         prompt.AppendLine("- no markdown, no commentary.");
+        if (!string.IsNullOrWhiteSpace(ocrText))
+        {
+            prompt.AppendLine("OCR text extracted from image (use as extra signal):");
+            prompt.AppendLine(ocrText.Length <= 6000 ? ocrText : ocrText[..6000]);
+        }
         prompt.AppendLine("Inventory list (id|name):");
         prompt.AppendLine(string.Join('\n', inventoryLines));
 

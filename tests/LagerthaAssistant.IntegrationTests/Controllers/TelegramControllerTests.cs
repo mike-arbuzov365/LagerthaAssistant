@@ -3777,7 +3777,7 @@ public sealed class TelegramControllerTests
                 "inventory.category.uncategorized" => "Other",
                 "menu.inventory.photo_restock" => "Restock photo",
                 "menu.inventory.photo_consume" => "Consumption photo",
-                "inventory.photo.awaiting_restock" => "Send restock photo",
+                "inventory.photo.awaiting_restock" => "Send restock photo or receipt",
                 "inventory.photo.awaiting_consume" => "Send consumption photo",
                 "inventory.photo.mode_required" => "Choose photo mode first",
                 "inventory.photo.failed" => "Photo analyze failed",
@@ -3798,6 +3798,11 @@ public sealed class TelegramControllerTests
                 "inventory.photo.apply_all" => "Apply all",
                 "inventory.photo.select" => "Select numbers",
                 "inventory.photo.cancel" => "Cancel",
+                "inventory.low_stock.title" => "Low stock — {0} item(s) to reorder:",
+                "inventory.low_stock.item" => "  • {0} — {1} (needs restock)",
+                "inventory.suggest.empty" => "No suggestions",
+                "inventory.suggest.missing_current" => "Missing current quantity for {0} item(s).",
+                "inventory.suggest.all_good" => "All good.",
                 "onboarding.choose_language" => "Choose language",
                 "language.current" => "Current: {0}",
                 "language.changed" => "Changed: {0}",
@@ -4316,6 +4321,42 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
+    public async Task Webhook_ShouldShowWarningTitleAndItemIcon_WhenInventorySuggestCallbackRequested()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            InventoryItems =
+            [
+                new FoodItemDto(70, "Beer", "Beverages", null, null, null) { CurrentQuantity = 1m, MinQuantity = 2m, IconEmoji = "🍺" }
+            ]
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Inventory };
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService);
+
+        var response = await sut.Webhook(BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.Suggest, null), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("inventory.suggest", payload.Intent);
+        Assert.Contains("⚠️", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("&#127866;", sender.LastText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Webhook_ShouldShowGroupedInventoryCatalog_WhenShopAddCallbackRequested()
     {
         var foodService = new FakeFoodTrackingService
@@ -4392,7 +4433,7 @@ public sealed class TelegramControllerTests
         var ok = Assert.IsType<OkObjectResult>(response.Result);
         var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
         Assert.Equal("inventory.photo.awaiting_image", payload.Intent);
-        Assert.Contains("Send restock photo", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("receipt", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
