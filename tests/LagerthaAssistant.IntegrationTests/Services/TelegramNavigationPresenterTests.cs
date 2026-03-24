@@ -141,5 +141,23 @@ public sealed class TelegramNavigationPresenterTests
             .ToList();
 
         Assert.Contains(CallbackDataConstants.Inventory.Min, callbacks);
+        Assert.Contains(CallbackDataConstants.Inventory.PhotoRestock, callbacks);
+        Assert.Contains(CallbackDataConstants.Inventory.PhotoConsume, callbacks);
+    }
+
+    [Fact]
+    public void BuildInventoryPhotoConfirmKeyboard_ShouldContainExpectedCallbacks()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildInventoryPhotoConfirmKeyboard("en");
+        var callbacks = keyboard.InlineKeyboard
+            .SelectMany(row => row)
+            .Select(button => button.CallbackData)
+            .ToList();
+
+        Assert.Contains(CallbackDataConstants.Inventory.PhotoApplyAll, callbacks);
+        Assert.Contains(CallbackDataConstants.Inventory.PhotoSelect, callbacks);
+        Assert.Contains(CallbackDataConstants.Inventory.PhotoCancel, callbacks);
     }
 }

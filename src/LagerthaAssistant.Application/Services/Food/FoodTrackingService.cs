@@ -537,6 +537,7 @@ public sealed class FoodTrackingService : IFoodTrackingService
     private static FoodItemDto MapFoodItemToDto(FoodItem item) =>
         new(item.Id, item.Name, item.Category, item.Store, item.Price, item.Quantity)
         {
+            IconEmoji = item.IconEmoji,
             CurrentQuantity = item.CurrentQuantity,
             MinQuantity = item.MinQuantity
         };

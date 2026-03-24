@@ -183,7 +183,33 @@ public sealed class NotionFoodClient : INotionFoodClient
             properties[key] = MapProperty(raw);
         }
 
-        return new NotionPage(page.Id, page.LastEditedTime, properties);
+        return new NotionPage(page.Id, page.LastEditedTime, properties, ParsePageIconEmoji(page.Icon));
+    }
+
+    private static string? ParsePageIconEmoji(JsonElement icon)
+    {
+        if (icon.ValueKind == JsonValueKind.Undefined || icon.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (!icon.TryGetProperty("type", out var typeProp))
+        {
+            return null;
+        }
+
+        if (!string.Equals(typeProp.GetString(), "emoji", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (!icon.TryGetProperty("emoji", out var emojiProp))
+        {
+            return null;
+        }
+
+        var emoji = emojiProp.GetString();
+        return string.IsNullOrWhiteSpace(emoji) ? null : emoji.Trim();
     }
 
     private static NotionPropertyValue MapProperty(JsonElement raw)
@@ -274,6 +300,7 @@ public sealed class NotionFoodClient : INotionFoodClient
     {
         public string Id { get; set; } = string.Empty;
         public string LastEditedTime { get; set; } = string.Empty;
+        public JsonElement Icon { get; set; }
         public Dictionary<string, JsonElement> Properties { get; set; } = [];
     }
 }

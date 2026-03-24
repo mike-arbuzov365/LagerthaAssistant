@@ -8,6 +8,7 @@ public sealed record FoodItemDto(
     decimal? Price,
     string? Quantity)
 {
+    public string? IconEmoji { get; init; }
     public decimal? CurrentQuantity { get; init; }
     public decimal? MinQuantity { get; init; }
 }
@@ -102,7 +103,8 @@ public sealed record NotionQueryResponse(
 public sealed record NotionPage(
     string Id,
     string LastEditedTime,
-    Dictionary<string, NotionPropertyValue> Properties);
+    Dictionary<string, NotionPropertyValue> Properties,
+    string? IconEmoji = null);
 
 public sealed record NotionPropertyValue(
     string Type,

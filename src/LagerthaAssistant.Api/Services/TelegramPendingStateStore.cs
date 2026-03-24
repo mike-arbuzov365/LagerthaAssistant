@@ -32,6 +32,9 @@ public sealed class TelegramPendingStateStore
     internal ConcurrentDictionary<string, PendingFoodPhotoLog> FoodPhotoLogs { get; }
         = new(StringComparer.Ordinal);
 
+    internal ConcurrentDictionary<string, PendingInventoryPhotoSession> InventoryPhotoSessions { get; }
+        = new(StringComparer.Ordinal);
+
     internal ConcurrentDictionary<string, PendingShoppingDeleteSession> ShoppingDeleteSessions { get; }
         = new(StringComparer.Ordinal);
 
@@ -44,6 +47,7 @@ public sealed class TelegramPendingStateStore
         CleanupDict(VocabularyUrlSessions, threshold);
         CleanupDict(MealCreations, threshold);
         CleanupDict(FoodPhotoLogs, threshold);
+        CleanupDict(InventoryPhotoSessions, threshold);
         CleanupDict(ShoppingDeleteSessions, threshold);
         // GraphChallenges excluded — they have their own TTL via OAuth flow
     }
