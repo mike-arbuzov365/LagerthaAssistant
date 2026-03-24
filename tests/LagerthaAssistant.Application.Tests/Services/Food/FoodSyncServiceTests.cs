@@ -86,6 +86,27 @@ public sealed class FoodSyncServiceTests
     }
 
     [Fact]
+    public async Task SyncFromNotionAsync_ShouldMapIconEmoji_FromNotionPage()
+    {
+        var notion = new FakeNotionFoodClient
+        {
+            InventoryPages = [MakePage(
+                "page-1",
+                "2026-06-01T00:00:00Z",
+                [("Item Name", Title("Beer"))],
+                iconEmoji: "🍺")]
+        };
+        var foodRepo = new FakeFoodItemRepository();
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        var summary = await sut.SyncFromNotionAsync();
+
+        Assert.Equal(1, summary.InventoryUpserted);
+        Assert.Single(foodRepo.Added);
+        Assert.Equal("🍺", foodRepo.Added[0].IconEmoji);
+    }
+
+    [Fact]
     public async Task SyncFromNotionAsync_ShouldKeepCurrentQuantityNull_WhenItemQuantityHasNoNumericPrefix()
     {
         var notion = new FakeNotionFoodClient
@@ -555,8 +576,18 @@ public sealed class FoodSyncServiceTests
 
     // ── Notion page builders ─────────────────────────────────────────────────
 
-    private static NotionPage MakePage(string id, string lastEditedTime, params (string Key, NotionPropertyValue Value)[] props)
-        => new(id, lastEditedTime, props.ToDictionary(p => p.Key, p => p.Value));
+    private static NotionPage MakePage(
+        string id,
+        string lastEditedTime,
+        IReadOnlyList<(string Key, NotionPropertyValue Value)> props,
+        string? iconEmoji = null)
+        => new(id, lastEditedTime, props.ToDictionary(p => p.Key, p => p.Value), iconEmoji);
+
+    private static NotionPage MakePage(
+        string id,
+        string lastEditedTime,
+        params (string Key, NotionPropertyValue Value)[] props)
+        => MakePage(id, lastEditedTime, (IReadOnlyList<(string Key, NotionPropertyValue Value)>)props);
 
     private static NotionPropertyValue Title(string text)
         => new("title", [new NotionRichTextItem(text)], null, null, null, null, null, null);

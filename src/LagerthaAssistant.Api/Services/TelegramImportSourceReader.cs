@@ -101,6 +101,142 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         return await IdentifyFoodFromImageAsync(download.Content!, cancellationToken);
     }
 
+    public async Task<TelegramInventoryPhotoAnalysisResult> AnalyzeInventoryPhotoAsync(
+        string photoFileId,
+        TelegramInventoryPhotoMode mode,
+        IReadOnlyList<TelegramInventoryItemHint> inventoryItems,
+        CancellationToken cancellationToken = default)
+    {
+        if (inventoryItems.Count == 0)
+        {
+            return new TelegramInventoryPhotoAnalysisResult(
+                Success: false,
+                Candidates: [],
+                Unknown: [],
+                Error: "Inventory is empty.");
+        }
+
+        var download = await DownloadTelegramFileAsync(photoFileId, MaxPhotoBytes, cancellationToken);
+        if (!download.Success)
+        {
+            return new TelegramInventoryPhotoAnalysisResult(false, [], [], download.Error);
+        }
+
+        if (string.IsNullOrWhiteSpace(_openAiOptions.ApiKey))
+        {
+            return new TelegramInventoryPhotoAnalysisResult(false, [], [], "OpenAI API key is not configured.");
+        }
+
+        var inventoryLookup = inventoryItems.ToDictionary(x => x.Id, x => x.Name);
+        var inventoryLines = inventoryItems
+            .OrderBy(x => x.Id)
+            .Select(x => $"{x.Id}|{x.Name}")
+            .ToArray();
+
+        var baseUrl = string.IsNullOrWhiteSpace(_openAiOptions.BaseUrl)
+            ? OpenAiConstants.DefaultBaseUrl
+            : _openAiOptions.BaseUrl.Trim();
+        if (!baseUrl.EndsWith("/", StringComparison.Ordinal))
+        {
+            baseUrl += "/";
+        }
+
+        var endpoint = new Uri(new Uri(baseUrl), OpenAiConstants.ChatCompletionsEndpoint);
+        var dataUrl = $"data:image/jpeg;base64,{Convert.ToBase64String(download.Content!)}";
+        var modeText = mode == TelegramInventoryPhotoMode.Consumption ? "consumption" : "restock";
+
+        var prompt = new StringBuilder();
+        prompt.AppendLine("Detect inventory quantity changes from this photo.");
+        prompt.AppendLine($"Mode: {modeText}.");
+        prompt.AppendLine("Use only inventory IDs from the list below.");
+        prompt.AppendLine("Return strict JSON only:");
+        prompt.AppendLine("{\"candidates\":[{\"itemId\":20,\"quantity\":2,\"unit\":\"pcs\",\"confidence\":0.91}],\"unknown\":[{\"name\":\"item\",\"quantity\":1,\"unit\":\"pcs\",\"confidence\":0.62}]}");
+        prompt.AppendLine("Rules:");
+        prompt.AppendLine("- quantity must be > 0.");
+        prompt.AppendLine("- confidence range 0..1.");
+        prompt.AppendLine("- unknown list only for products not present in the inventory list.");
+        prompt.AppendLine("- no markdown, no commentary.");
+        prompt.AppendLine("Inventory list (id|name):");
+        prompt.AppendLine(string.Join('\n', inventoryLines));
+
+        var requestBody = new
+        {
+            model = _openAiOptions.Model,
+            temperature = 0.0,
+            messages = new object[]
+            {
+                new
+                {
+                    role = "system",
+                    content = "You are an inventory photo parser. Return strict JSON only."
+                },
+                new
+                {
+                    role = "user",
+                    content = new object[]
+                    {
+                        new
+                        {
+                            type = "text",
+                            text = prompt.ToString()
+                        },
+                        new
+                        {
+                            type = "image_url",
+                            image_url = new
+                            {
+                                url = dataUrl
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _openAiOptions.ApiKey);
+
+        using var client = _httpClientFactory.CreateClient("vocab-discovery");
+        using var response = await client.SendAsync(request, cancellationToken);
+        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Inventory photo analysis failed with status {StatusCode}: {Body}", (int)response.StatusCode, raw);
+            return new TelegramInventoryPhotoAnalysisResult(
+                false,
+                [],
+                [],
+                $"Inventory photo analysis request failed ({(int)response.StatusCode}).");
+        }
+
+        try
+        {
+            using var completionDoc = JsonDocument.Parse(raw);
+            var assistantText = ExtractAssistantText(completionDoc.RootElement);
+            if (string.IsNullOrWhiteSpace(assistantText))
+            {
+                return new TelegramInventoryPhotoAnalysisResult(false, [], [], "Empty response from Vision API.");
+            }
+
+            var normalizedJson = NormalizeJsonPayload(assistantText);
+            using var jsonDoc = JsonDocument.Parse(normalizedJson);
+            var root = jsonDoc.RootElement;
+
+            var candidates = ParseInventoryCandidates(root, inventoryLookup);
+            var unknown = ParseInventoryUnknown(root);
+            return new TelegramInventoryPhotoAnalysisResult(true, candidates, unknown);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse inventory photo analysis response.");
+            return new TelegramInventoryPhotoAnalysisResult(false, [], [], "Failed to parse inventory photo response.");
+        }
+    }
+
     private async Task<TelegramFoodIdentificationResult> IdentifyFoodFromImageAsync(
         byte[] imageBytes,
         CancellationToken cancellationToken)
@@ -670,6 +806,183 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
                 .Where(x => !string.IsNullOrWhiteSpace(x))),
             _ => string.Empty
         };
+    }
+
+    private static string NormalizeJsonPayload(string assistantText)
+    {
+        var trimmed = assistantText.Trim();
+        if (trimmed.StartsWith("```", StringComparison.Ordinal))
+        {
+            var start = trimmed.IndexOf('{');
+            var end = trimmed.LastIndexOf('}');
+            if (start >= 0 && end > start)
+            {
+                return trimmed[start..(end + 1)];
+            }
+        }
+
+        return trimmed;
+    }
+
+    private static IReadOnlyList<TelegramInventoryPhotoCandidate> ParseInventoryCandidates(
+        JsonElement root,
+        IReadOnlyDictionary<int, string> inventoryLookup)
+    {
+        var result = new List<TelegramInventoryPhotoCandidate>();
+        if (!root.TryGetProperty("candidates", out var candidatesElement)
+            || candidatesElement.ValueKind != JsonValueKind.Array)
+        {
+            return result;
+        }
+
+        foreach (var element in candidatesElement.EnumerateArray())
+        {
+            if (!TryGetInt(element, "itemId", out var itemId))
+            {
+                continue;
+            }
+
+            if (!inventoryLookup.TryGetValue(itemId, out var name))
+            {
+                continue;
+            }
+
+            if (!TryGetDecimal(element, "quantity", out var quantity) || quantity <= 0m)
+            {
+                continue;
+            }
+
+            var unit = TryGetString(element, "unit");
+            var confidence = TryGetDouble(element, "confidence", 0.75);
+
+            result.Add(new TelegramInventoryPhotoCandidate(
+                itemId,
+                name,
+                Math.Round(quantity, 3, MidpointRounding.AwayFromZero),
+                unit,
+                Math.Clamp(confidence, 0d, 1d)));
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<TelegramInventoryPhotoUnknown> ParseInventoryUnknown(JsonElement root)
+    {
+        var result = new List<TelegramInventoryPhotoUnknown>();
+        if (!root.TryGetProperty("unknown", out var unknownElement)
+            || unknownElement.ValueKind != JsonValueKind.Array)
+        {
+            return result;
+        }
+
+        foreach (var element in unknownElement.EnumerateArray())
+        {
+            var name = TryGetString(element, "name");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            if (!TryGetDecimal(element, "quantity", out var quantity) || quantity <= 0m)
+            {
+                continue;
+            }
+
+            var unit = TryGetString(element, "unit");
+            var confidence = TryGetDouble(element, "confidence", 0.5);
+
+            result.Add(new TelegramInventoryPhotoUnknown(
+                name.Trim(),
+                Math.Round(quantity, 3, MidpointRounding.AwayFromZero),
+                unit,
+                Math.Clamp(confidence, 0d, 1d)));
+        }
+
+        return result;
+    }
+
+    private static string? TryGetString(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return null;
+        }
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.String => property.GetString(),
+            JsonValueKind.Number => property.GetRawText(),
+            _ => null
+        };
+    }
+
+    private static bool TryGetInt(JsonElement element, string propertyName, out int value)
+    {
+        value = 0;
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return false;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out value))
+        {
+            return true;
+        }
+
+        if (property.ValueKind == JsonValueKind.String
+            && int.TryParse(property.GetString(), out value))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetDecimal(JsonElement element, string propertyName, out decimal value)
+    {
+        value = 0m;
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return false;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetDecimal(out value))
+        {
+            return true;
+        }
+
+        if (property.ValueKind == JsonValueKind.String)
+        {
+            var raw = property.GetString()?.Replace(',', '.');
+            return decimal.TryParse(raw, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out value);
+        }
+
+        return false;
+    }
+
+    private static double TryGetDouble(JsonElement element, string propertyName, double fallback)
+    {
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return fallback;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetDouble(out var numeric))
+        {
+            return numeric;
+        }
+
+        if (property.ValueKind == JsonValueKind.String
+            && double.TryParse(
+                property.GetString()?.Replace(',', '.'),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var parsed))
+        {
+            return parsed;
+        }
+
+        return fallback;
     }
 
     private static string DecodeText(byte[] bytes)

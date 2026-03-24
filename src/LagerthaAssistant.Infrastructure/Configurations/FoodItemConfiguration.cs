@@ -20,6 +20,9 @@ public sealed class FoodItemConfiguration : IEntityTypeConfiguration<FoodItem>
             .HasMaxLength(256)
             .IsRequired();
 
+        builder.Property(x => x.IconEmoji)
+            .HasMaxLength(32);
+
         builder.Property(x => x.Category)
             .HasMaxLength(64);
 

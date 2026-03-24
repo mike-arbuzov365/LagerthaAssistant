@@ -10,12 +10,47 @@ public interface ITelegramImportSourceReader
     Task<TelegramFoodIdentificationResult> IdentifyFoodAsync(
         string photoFileId,
         CancellationToken cancellationToken = default);
+
+    Task<TelegramInventoryPhotoAnalysisResult> AnalyzeInventoryPhotoAsync(
+        string photoFileId,
+        TelegramInventoryPhotoMode mode,
+        IReadOnlyList<TelegramInventoryItemHint> inventoryItems,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record TelegramFoodIdentificationResult(
     bool Success,
     string? MealName = null,
     int? EstimatedCalories = null,
+    string? Error = null);
+
+public enum TelegramInventoryPhotoMode
+{
+    Restock = 0,
+    Consumption = 1
+}
+
+public sealed record TelegramInventoryItemHint(
+    int Id,
+    string Name);
+
+public sealed record TelegramInventoryPhotoCandidate(
+    int ItemId,
+    string Name,
+    decimal Quantity,
+    string? Unit,
+    double Confidence);
+
+public sealed record TelegramInventoryPhotoUnknown(
+    string Name,
+    decimal Quantity,
+    string? Unit,
+    double Confidence);
+
+public sealed record TelegramInventoryPhotoAnalysisResult(
+    bool Success,
+    IReadOnlyList<TelegramInventoryPhotoCandidate> Candidates,
+    IReadOnlyList<TelegramInventoryPhotoUnknown> Unknown,
     string? Error = null);
 
 public sealed record TelegramImportInbound(

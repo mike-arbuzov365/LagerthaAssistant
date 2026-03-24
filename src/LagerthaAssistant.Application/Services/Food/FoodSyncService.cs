@@ -265,6 +265,7 @@ public sealed class FoodSyncService : IFoodSyncService
         {
             NotionPageId = page.Id,
             Name = GetTitle(page, "Item Name"),
+            IconEmoji = page.IconEmoji,
             Category = GetSelect(page, "Category"),
             Store = GetSelect(page, "Store"),
             Price = GetNumber(page, "Price"),
@@ -280,6 +281,7 @@ public sealed class FoodSyncService : IFoodSyncService
     private static void UpdateFoodItem(FoodItem item, NotionPage page, DateTime notionUpdatedAt)
     {
         item.Name = GetTitle(page, "Item Name");
+        item.IconEmoji = page.IconEmoji;
         item.Category = GetSelect(page, "Category");
         item.Store = GetSelect(page, "Store");
         item.Price = GetNumber(page, "Price");

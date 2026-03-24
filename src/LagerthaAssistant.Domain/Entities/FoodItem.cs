@@ -12,6 +12,8 @@ public sealed class FoodItem : AuditableEntity
 
     public string Name { get; set; } = string.Empty;
 
+    public string? IconEmoji { get; set; }
+
     public string? Category { get; set; }
 
     public string? Store { get; set; }

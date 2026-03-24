@@ -81,6 +81,47 @@ public sealed class TelegramImportSourceReaderTests
         Assert.Contains("Second paragraph", result.Text ?? string.Empty, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldFail_WhenInventoryIsEmpty()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        var sut = CreateSut(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems: [],
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Empty(result.Candidates);
+        Assert.Empty(result.Unknown);
+        Assert.Contains("Inventory is empty", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldFail_WhenOpenAiApiKeyIsMissing()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/inventory.jpg", [1, 2, 3, 4]);
+
+        var sut = CreateSut(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems:
+            [
+                new TelegramInventoryItemHint(1, "Milk")
+            ],
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Empty(result.Candidates);
+        Assert.Empty(result.Unknown);
+        Assert.Contains("API key", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static ITelegramImportSourceReader CreateSut(HttpMessageHandler handler)
     {
         var readerType = typeof(TelegramController).Assembly.GetType(

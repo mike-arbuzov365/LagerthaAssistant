@@ -48,13 +48,35 @@ internal enum PendingChatActionKind
     MealCreation = 4,
     FoodPhotoLog = 5,
     InventoryAdjustQuantity = 6,
-    InventorySetMinQuantity = 7
+    InventorySetMinQuantity = 7,
+    InventoryPhotoAwaitingImage = 8,
+    InventoryPhotoAwaitingSelection = 9
 }
 
 internal sealed record PendingFoodPhotoLog(
     string MealName,
     int EstimatedCalories,
     decimal Servings);
+
+internal sealed record PendingInventoryPhotoSession(
+    TelegramInventoryPhotoMode Mode,
+    IReadOnlyList<PendingInventoryPhotoCandidate> Candidates,
+    IReadOnlyList<PendingInventoryPhotoUnknown> Unknown);
+
+internal sealed record PendingInventoryPhotoCandidate(
+    int Number,
+    int ItemId,
+    string Name,
+    decimal Quantity,
+    string? Unit,
+    double Confidence);
+
+internal sealed record PendingInventoryPhotoUnknown(
+    int Number,
+    string Name,
+    decimal Quantity,
+    string? Unit,
+    double Confidence);
 
 internal sealed record PendingShoppingDeleteSession(
     IReadOnlyList<PendingShoppingDeleteCandidate> Candidates);

@@ -90,6 +90,7 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
                 [Button("menu.inventory.list", locale, CallbackDataConstants.Inventory.List), Button("menu.inventory.search", locale, CallbackDataConstants.Inventory.Search)],
                 [Button("menu.inventory.stats", locale, CallbackDataConstants.Inventory.Stats), Button("menu.inventory.suggest", locale, CallbackDataConstants.Inventory.Suggest)],
                 [Button("menu.inventory.adjust", locale, CallbackDataConstants.Inventory.Adjust), Button("menu.inventory.min", locale, CallbackDataConstants.Inventory.Min)],
+                [Button("menu.inventory.photo_restock", locale, CallbackDataConstants.Inventory.PhotoRestock), Button("menu.inventory.photo_consume", locale, CallbackDataConstants.Inventory.PhotoConsume)],
                 [Button("menu.inventory.back", locale, CallbackDataConstants.Food.Menu)]
             ]);
     }
@@ -244,6 +245,16 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             InlineKeyboard:
             [
                 [Button("food.photo.confirm", locale, CallbackDataConstants.Weekly.PhotoConfirm), Button("food.photo.cancel", locale, CallbackDataConstants.Weekly.PhotoCancel)]
+            ]);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildInventoryPhotoConfirmKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("inventory.photo.apply_all", locale, CallbackDataConstants.Inventory.PhotoApplyAll)],
+                [Button("inventory.photo.select", locale, CallbackDataConstants.Inventory.PhotoSelect), Button("inventory.photo.cancel", locale, CallbackDataConstants.Inventory.PhotoCancel)]
             ]);
     }
 

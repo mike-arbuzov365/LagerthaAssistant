@@ -98,6 +98,11 @@ public static class CallbackDataConstants
         public const string Adjust = "inventory:adjust";
         public const string Min = "inventory:min";
         public const string Suggest = "inventory:suggest";
+        public const string PhotoRestock = "inventory:photo:restock";
+        public const string PhotoConsume = "inventory:photo:consume";
+        public const string PhotoApplyAll = "inventory:photo:apply_all";
+        public const string PhotoSelect = "inventory:photo:select";
+        public const string PhotoCancel = "inventory:photo:cancel";
         public const string CartPrefix = "inventory:cart:";
     }
 
