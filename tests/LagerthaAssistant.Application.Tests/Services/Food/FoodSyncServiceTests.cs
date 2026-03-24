@@ -158,6 +158,9 @@ public sealed class FoodSyncServiceTests
             NotionPageId = "page-1",
             Name = "Beer",
             IconEmoji = null,
+            CurrentQuantity = 0m,
+            MinQuantity = 2m,
+            Quantity = null,
             NotionUpdatedAt = new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc)
         };
         var notion = new FakeNotionFoodClient
@@ -165,7 +168,11 @@ public sealed class FoodSyncServiceTests
             InventoryPages = [MakePage(
                 "page-1",
                 "2026-01-01T00:00:00Z",
-                [("Item Name", Title("Beer"))],
+                [
+                    ("Item Name", Title("Beer")),
+                    ("Item Quantity", RichText("1")),
+                    ("Min Quantity", Number(10m))
+                ],
                 iconEmoji: "🍺")]
         };
         var foodRepo = new FakeFoodItemRepository { Existing = existing };
@@ -175,6 +182,9 @@ public sealed class FoodSyncServiceTests
 
         Assert.Equal(1, summary.InventoryUpserted);
         Assert.Equal("🍺", existing.IconEmoji);
+        Assert.Equal(0m, existing.CurrentQuantity);
+        Assert.Equal(2m, existing.MinQuantity);
+        Assert.Null(existing.Quantity);
     }
 
     // ── SyncFromNotionAsync – Meals ──────────────────────────────────────────
@@ -483,11 +493,10 @@ public sealed class FoodSyncServiceTests
         var synced = await sut.SyncGroceryChangesToNotionAsync(take: 10);
 
         Assert.Equal(1, synced);
-        Assert.Equal(FoodSyncStatus.Synced, pendingItem.NotionSyncStatus);
-        Assert.NotNull(pendingItem.NotionSyncedAt);
-        Assert.Null(pendingItem.NotionLastError);
         Assert.Equal("page-99", notion.LastBoughtPageId);
         Assert.True(notion.LastBoughtValue);
+        Assert.Equal("page-99", notion.LastArchivedPageId);
+        Assert.Equal([1], groceryRepo.DeletedAnyStateIds);
     }
 
     [Fact]
@@ -556,11 +565,12 @@ public sealed class FoodSyncServiceTests
 
         Assert.Equal(1, synced);
         Assert.Equal("notion-real-10", pendingItem.NotionPageId);
-        Assert.Equal(FoodSyncStatus.Synced, pendingItem.NotionSyncStatus);
         Assert.Equal("notion-real-10", notion.LastBoughtPageId);
+        Assert.Equal("notion-real-10", notion.LastArchivedPageId);
         Assert.Equal("Milk", notion.LastCreatedName);
         Assert.Equal("2L", notion.LastCreatedQuantity);
         Assert.Equal("ATB", notion.LastCreatedStore);
+        Assert.Equal([10], groceryRepo.DeletedAnyStateIds);
     }
 
     [Fact]
@@ -584,6 +594,80 @@ public sealed class FoodSyncServiceTests
         Assert.Equal(FoodSyncStatus.Failed, pendingItem.NotionSyncStatus);
         Assert.NotNull(pendingItem.NotionLastError);
         Assert.StartsWith("local:", pendingItem.NotionPageId, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SyncInventoryChangesToNotionAsync_ShouldPushQuantity_AndMarkItemsSynced()
+    {
+        var pendingItem = new FoodItem
+        {
+            Id = 21,
+            NotionPageId = "inv-21",
+            CurrentQuantity = 2.5m,
+            NotionSyncStatus = FoodSyncStatus.Pending
+        };
+        var foodRepo = new FakeFoodItemRepository { PendingItems = [pendingItem] };
+        var notion = new FakeNotionFoodClient();
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        var synced = await sut.SyncInventoryChangesToNotionAsync(take: 10);
+
+        Assert.Equal(1, synced);
+        Assert.Equal("inv-21", notion.LastQuantityPageId);
+        Assert.Equal("2.5", notion.LastQuantityValue);
+        Assert.Equal(FoodSyncStatus.Synced, pendingItem.NotionSyncStatus);
+        Assert.NotNull(pendingItem.NotionSyncedAt);
+    }
+
+    [Fact]
+    public async Task SyncInventoryChangesToNotionAsync_ShouldMarkFailed_WhenNotionThrows()
+    {
+        var pendingItem = new FoodItem
+        {
+            Id = 22,
+            NotionPageId = "inv-22",
+            CurrentQuantity = 1m,
+            NotionSyncStatus = FoodSyncStatus.Pending
+        };
+        var foodRepo = new FakeFoodItemRepository { PendingItems = [pendingItem] };
+        var notion = new FakeNotionFoodClient { ShouldThrowOnUpdateInventory = true };
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        var synced = await sut.SyncInventoryChangesToNotionAsync(take: 10);
+
+        Assert.Equal(0, synced);
+        Assert.Equal(FoodSyncStatus.Failed, pendingItem.NotionSyncStatus);
+        Assert.NotNull(pendingItem.NotionLastError);
+    }
+
+    [Fact]
+    public async Task SyncFromNotionAsync_ShouldArchiveBoughtNotionItems_AndDeleteLocalRows()
+    {
+        var existing = new GroceryListItem
+        {
+            Id = 33,
+            NotionPageId = "grocery-bought-33",
+            Name = "Milk",
+            IsBought = false
+        };
+        var notion = new FakeNotionFoodClient
+        {
+            GroceryPages =
+            [
+                MakePage("grocery-bought-33", "2026-01-01T00:00:00Z",
+                    ("Item Name", Title("Milk")),
+                    ("Bought?", Checkbox(true)))
+            ]
+        };
+        var groceryRepo = new FakeGroceryListRepository { ExistingByNotionPageId = existing };
+        var sut = CreateSut(notion: notion, groceryRepo: groceryRepo);
+
+        var summary = await sut.SyncFromNotionAsync();
+
+        Assert.False(summary.HasErrors);
+        Assert.Equal(0, summary.GroceryItemsUpserted);
+        Assert.Equal("grocery-bought-33", notion.LastArchivedPageId);
+        Assert.Equal([33], groceryRepo.DeletedAnyStateIds);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -648,11 +732,16 @@ public sealed class FoodSyncServiceTests
         public string CreatedPageId { get; init; } = "notion-created-id";
         public bool ShouldThrowOnInventory { get; init; }
         public bool ShouldThrowOnMarkBought { get; init; }
+        public bool ShouldThrowOnUpdateInventory { get; init; }
+        public bool ShouldThrowOnArchive { get; init; }
         public bool ShouldThrowOnCreate { get; init; }
         public string? FailPageId { get; init; }
 
         public string? LastBoughtPageId { get; private set; }
         public bool LastBoughtValue { get; private set; }
+        public string? LastQuantityPageId { get; private set; }
+        public string? LastQuantityValue { get; private set; }
+        public string? LastArchivedPageId { get; private set; }
         public string? LastCreatedName { get; private set; }
         public string? LastCreatedQuantity { get; private set; }
         public string? LastCreatedStore { get; private set; }
@@ -678,6 +767,32 @@ public sealed class FoodSyncServiceTests
             return Task.CompletedTask;
         }
 
+        public Task UpdateInventoryItemQuantityAsync(
+            string notionPageId,
+            string? quantityText,
+            CancellationToken cancellationToken = default)
+        {
+            if (ShouldThrowOnUpdateInventory || notionPageId == FailPageId)
+            {
+                throw new HttpRequestException("Notion quantity update failed");
+            }
+
+            LastQuantityPageId = notionPageId;
+            LastQuantityValue = quantityText;
+            return Task.CompletedTask;
+        }
+
+        public Task ArchivePageAsync(string notionPageId, CancellationToken cancellationToken = default)
+        {
+            if (ShouldThrowOnArchive || notionPageId == FailPageId)
+            {
+                throw new HttpRequestException("Notion archive failed");
+            }
+
+            LastArchivedPageId = notionPageId;
+            return Task.CompletedTask;
+        }
+
         public Task<string> CreateGroceryItemAsync(string name, string? quantity, string? store, CancellationToken cancellationToken = default)
         {
             if (ShouldThrowOnCreate)
@@ -696,6 +811,7 @@ public sealed class FoodSyncServiceTests
     {
         public FoodItem? Existing { get; init; }
         public List<FoodItem> Added { get; } = [];
+        public List<FoodItem> PendingItems { get; init; } = [];
         public int InsertedId { get; init; }
         private int _nextId;
 
@@ -711,6 +827,12 @@ public sealed class FoodSyncServiceTests
 
         public Task<IReadOnlyList<FoodItem>> SearchByNameAsync(string query, int take = 10, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<FoodItem>>([]);
+
+        public Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(PendingItems.Count);
+
+        public Task<IReadOnlyList<FoodItem>> ClaimPendingNotionSyncAsync(int take, DateTime claimedAt, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<FoodItem>>(PendingItems.Take(take).ToList());
 
         public Task AddAsync(FoodItem item, CancellationToken cancellationToken = default)
         {
@@ -758,9 +880,14 @@ public sealed class FoodSyncServiceTests
     {
         public List<GroceryListItem> Added { get; } = [];
         public List<GroceryListItem> PendingItems { get; init; } = [];
+        public GroceryListItem? ExistingByNotionPageId { get; init; }
+        public List<int> DeletedAnyStateIds { get; } = [];
 
         public Task<GroceryListItem?> GetByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default)
-            => Task.FromResult<GroceryListItem?>(null);
+            => Task.FromResult(
+                ExistingByNotionPageId?.NotionPageId == notionPageId
+                    ? ExistingByNotionPageId
+                    : null);
 
         public Task<IReadOnlyList<GroceryListItem>> GetActiveAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<GroceryListItem>>([]);
@@ -786,6 +913,12 @@ public sealed class FoodSyncServiceTests
         public Task<int> MarkAllBoughtAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<int> DeleteBoughtAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<int> DeleteByIdsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) => Task.FromResult(0);
+
+        public Task<int> DeleteByIdsAnyStateAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default)
+        {
+            DeletedAnyStateIds.AddRange(itemIds);
+            return Task.FromResult(itemIds.Count);
+        }
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

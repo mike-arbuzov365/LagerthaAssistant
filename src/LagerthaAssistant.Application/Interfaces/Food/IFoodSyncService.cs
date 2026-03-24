@@ -11,7 +11,12 @@ public interface IFoodSyncService
     Task<FoodSyncSummary> SyncFromNotionAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Pushes locally-changed GroceryListItems (IsBought flag) back to Notion.
+    /// Pushes locally-changed GroceryListItems back to Notion.
     /// </summary>
     Task<int> SyncGroceryChangesToNotionAsync(int take, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pushes locally-changed Inventory quantities back to Notion.
+    /// </summary>
+    Task<int> SyncInventoryChangesToNotionAsync(int take, CancellationToken cancellationToken = default);
 }

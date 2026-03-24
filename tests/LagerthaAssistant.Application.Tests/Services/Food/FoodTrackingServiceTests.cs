@@ -1053,6 +1053,15 @@ public sealed class FoodTrackingServiceTests
                 .Where(x => x.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
                 .Take(take).ToList());
 
+        public Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<IReadOnlyList<FoodItem>> ClaimPendingNotionSyncAsync(
+            int take,
+            DateTime claimedAt,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<FoodItem>>([]);
+
         public Task AddAsync(FoodItem item, CancellationToken cancellationToken = default)
         {
             if (item.Id == 0) item.Id = ++_nextId;
@@ -1176,6 +1185,9 @@ public sealed class FoodTrackingServiceTests
 
             return Task.FromResult(deletedCount);
         }
+
+        public Task<int> DeleteByIdsAnyStateAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default)
+            => DeleteByIdsAsync(itemIds, cancellationToken);
     }
 
     private sealed class FakeMealHistoryRepository : IMealHistoryRepository
@@ -1219,6 +1231,15 @@ public sealed class FoodTrackingServiceTests
         }
 
         public Task MarkGroceryItemBoughtAsync(string notionPageId, bool bought, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task UpdateInventoryItemQuantityAsync(
+            string notionPageId,
+            string? quantityText,
+            CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task ArchivePageAsync(string notionPageId, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
         public Task<IReadOnlyList<NotionPage>> GetInventoryAsync(CancellationToken cancellationToken = default)

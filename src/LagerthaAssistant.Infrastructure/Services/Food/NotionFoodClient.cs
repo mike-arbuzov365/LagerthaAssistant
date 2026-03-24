@@ -67,6 +67,73 @@ public sealed class NotionFoodClient : INotionFoodClient
         }
     }
 
+    public async Task UpdateInventoryItemQuantityAsync(
+        string notionPageId,
+        string? quantityText,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"{_options.ApiBaseUrl}/pages/{notionPageId}";
+        var trimmed = quantityText?.Trim();
+        var richText = string.IsNullOrWhiteSpace(trimmed)
+            ? Array.Empty<object>()
+            : [new { text = new { content = trimmed } }];
+
+        var properties = new Dictionary<string, object>
+        {
+            ["Item Quantity"] = new
+            {
+                rich_text = richText
+            }
+        };
+
+        var body = JsonSerializer.Serialize(new
+        {
+            properties
+        });
+
+        using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+        AddHeaders(request);
+
+        var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError(
+                "Notion PATCH inventory page {PageId} failed: {Status} - {Error}",
+                notionPageId,
+                (int)response.StatusCode,
+                error);
+            response.EnsureSuccessStatusCode();
+        }
+    }
+
+    public async Task ArchivePageAsync(string notionPageId, CancellationToken cancellationToken = default)
+    {
+        var url = $"{_options.ApiBaseUrl}/pages/{notionPageId}";
+        var body = JsonSerializer.Serialize(new { archived = true });
+
+        using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+        AddHeaders(request);
+
+        var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError(
+                "Notion archive page {PageId} failed: {Status} - {Error}",
+                notionPageId,
+                (int)response.StatusCode,
+                error);
+            response.EnsureSuccessStatusCode();
+        }
+    }
+
     public async Task<string> CreateGroceryItemAsync(
         string name,
         string? quantity,

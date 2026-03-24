@@ -1,5 +1,6 @@
 namespace LagerthaAssistant.Application.Services.Food;
 
+using System.Globalization;
 using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Food;
 using LagerthaAssistant.Application.Interfaces.Repositories.Food;
@@ -41,6 +42,7 @@ public sealed class FoodSyncService : IFoodSyncService
         var mealsUpserted = 0;
         var groceryUpserted = 0;
         var ingredientsLinked = 0;
+        var groceryArchived = 0;
         string? lastError = null;
 
         try
@@ -75,9 +77,16 @@ public sealed class FoodSyncService : IFoodSyncService
                         !string.IsNullOrWhiteSpace(page.IconEmoji)
                         && !string.Equals(existing.IconEmoji, page.IconEmoji, StringComparison.Ordinal);
 
-                    if (notionUpdatedAt > existing.NotionUpdatedAt || hasNewIconFromNotion)
+                    if (notionUpdatedAt > existing.NotionUpdatedAt)
                     {
                         UpdateFoodItem(existing, page, notionUpdatedAt);
+                        await _unitOfWork.SaveChangesAsync(cancellationToken);
+                        inventoryUpserted++;
+                    }
+                    else if (hasNewIconFromNotion)
+                    {
+                        // Keep local quantity/min values intact when only icon needs refresh.
+                        existing.IconEmoji = page.IconEmoji;
                         await _unitOfWork.SaveChangesAsync(cancellationToken);
                         inventoryUpserted++;
                     }
@@ -148,6 +157,31 @@ public sealed class FoodSyncService : IFoodSyncService
 
                 var existing = await _groceryRepo.GetByNotionPageIdAsync(page.Id, cancellationToken);
                 var notionUpdatedAt = ParseDateTime(page.LastEditedTime);
+                var boughtInNotion = GetCheckbox(page, "Bought?");
+
+                if (boughtInNotion)
+                {
+                    if (!IsLocalPageId(page.Id))
+                    {
+                        try
+                        {
+                            await _notionClient.ArchivePageAsync(page.Id, cancellationToken);
+                            groceryArchived++;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to archive bought Notion grocery page {PageId}", page.Id);
+                        }
+                    }
+
+                    if (existing is not null)
+                    {
+                        await _groceryRepo.DeleteByIdsAnyStateAsync([existing.Id], cancellationToken);
+                    }
+
+                    grocerySkipped++;
+                    continue;
+                }
 
                 if (existing is null)
                 {
@@ -179,9 +213,10 @@ public sealed class FoodSyncService : IFoodSyncService
             }
 
             _logger.LogInformation(
-                "Grocery list sync complete: {Upserted} upserted, {Skipped} unchanged",
+                "Grocery list sync complete: {Upserted} upserted, {Skipped} unchanged, {Archived} archived",
                 groceryUpserted,
-                grocerySkipped);
+                grocerySkipped,
+                groceryArchived);
         }
         catch (OperationCanceledException)
         {
@@ -240,9 +275,21 @@ public sealed class FoodSyncService : IFoodSyncService
                         "Upgraded local grocery sync ID to Notion page ID. ItemId={ItemId}; NewNotionPageId={NotionPageId}",
                         item.Id,
                         item.NotionPageId);
+
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
                 }
 
-                await _notionClient.MarkGroceryItemBoughtAsync(item.NotionPageId, item.IsBought, cancellationToken);
+                if (item.IsBought)
+                {
+                    await _notionClient.MarkGroceryItemBoughtAsync(item.NotionPageId, true, cancellationToken);
+                    await _notionClient.ArchivePageAsync(item.NotionPageId, cancellationToken);
+
+                    await _groceryRepo.DeleteByIdsAnyStateAsync([item.Id], cancellationToken);
+                    synced++;
+                    continue;
+                }
+
+                await _notionClient.MarkGroceryItemBoughtAsync(item.NotionPageId, false, cancellationToken);
                 item.NotionSyncStatus = FoodSyncStatus.Synced;
                 item.NotionSyncedAt = DateTime.UtcNow;
                 item.NotionLastError = null;
@@ -252,6 +299,51 @@ public sealed class FoodSyncService : IFoodSyncService
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to sync grocery item {Id} to Notion", item.Id);
+                item.NotionSyncStatus = FoodSyncStatus.Failed;
+                item.NotionLastError = ex.Message;
+                item.NotionLastAttemptAt = DateTime.UtcNow;
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        return synced;
+    }
+
+    public async Task<int> SyncInventoryChangesToNotionAsync(int take, CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("Syncing inventory changes to Notion; Take: {Take}", take);
+
+        var items = await _foodItemRepo.ClaimPendingNotionSyncAsync(
+            take,
+            DateTime.UtcNow,
+            cancellationToken);
+
+        var synced = 0;
+        foreach (var item in items)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if (IsLocalPageId(item.NotionPageId))
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot sync inventory item {item.Id} with local page ID '{item.NotionPageId}'.");
+                }
+
+                var quantityText = item.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture);
+                await _notionClient.UpdateInventoryItemQuantityAsync(item.NotionPageId, quantityText, cancellationToken);
+
+                item.NotionSyncStatus = FoodSyncStatus.Synced;
+                item.NotionSyncedAt = DateTime.UtcNow;
+                item.NotionLastError = null;
+                item.NotionUpdatedAt = DateTime.UtcNow;
+                item.Quantity = quantityText;
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                synced++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to sync inventory item {Id} to Notion", item.Id);
                 item.NotionSyncStatus = FoodSyncStatus.Failed;
                 item.NotionLastError = ex.Message;
                 item.NotionLastAttemptAt = DateTime.UtcNow;

@@ -23,4 +23,6 @@ public interface IGroceryListRepository
     Task<int> DeleteBoughtAsync(CancellationToken cancellationToken = default);
 
     Task<int> DeleteByIdsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default);
+
+    Task<int> DeleteByIdsAnyStateAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default);
 }

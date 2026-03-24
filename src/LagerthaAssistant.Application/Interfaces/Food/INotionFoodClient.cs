@@ -16,6 +16,16 @@ public interface INotionFoodClient
     Task MarkGroceryItemBoughtAsync(string notionPageId, bool bought, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Updates Inventory "Item Quantity" rich-text value in Notion.
+    /// </summary>
+    Task UpdateInventoryItemQuantityAsync(string notionPageId, string? quantityText, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Archives a Notion page (soft delete in Notion UI).
+    /// </summary>
+    Task ArchivePageAsync(string notionPageId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a new page in the Notion Grocery List database.
     /// Returns the new page ID.
     /// </summary>
