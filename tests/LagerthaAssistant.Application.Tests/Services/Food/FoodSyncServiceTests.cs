@@ -4,6 +4,7 @@ using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Food;
 using LagerthaAssistant.Application.Interfaces.Repositories.Food;
 using LagerthaAssistant.Application.Models.Food;
+using LagerthaAssistant.Application.Options;
 using LagerthaAssistant.Application.Services.Food;
 using LagerthaAssistant.Domain.Entities;
 using LagerthaAssistant.Domain.Enums;
@@ -929,6 +930,27 @@ public sealed class FoodSyncServiceTests
         Assert.Equal(FoodSyncStatus.PermanentlyFailed, pendingItem.NotionSyncStatus);
     }
 
+    [Fact]
+    public async Task SyncInventoryChangesToNotionAsync_ShouldRespectConfiguredMaxSyncAttempts()
+    {
+        // With MaxSyncAttempts=3, an item at attempt count 3 should be permanently failed.
+        var pendingItem = new FoodItem
+        {
+            Id = 33,
+            NotionPageId = "inv-33",
+            CurrentQuantity = 1m,
+            NotionSyncStatus = FoodSyncStatus.Pending,
+            NotionAttemptCount = 3
+        };
+        var foodRepo = new FakeFoodItemRepository { PendingItems = [pendingItem] };
+        var notion = new FakeNotionFoodClient { ShouldThrowOnUpdateInventory = true };
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo, options: new FoodSyncOptions { MaxSyncAttempts = 3 });
+
+        await sut.SyncInventoryChangesToNotionAsync(take: 10);
+
+        Assert.Equal(FoodSyncStatus.PermanentlyFailed, pendingItem.NotionSyncStatus);
+    }
+
     // ── GetSyncStatusAsync ───────────────────────────────────────────────────
 
     [Fact]
@@ -989,14 +1011,16 @@ public sealed class FoodSyncServiceTests
         IFoodItemRepository? foodRepo = null,
         IMealRepository? mealRepo = null,
         IGroceryListRepository? groceryRepo = null,
-        IUnitOfWork? unitOfWork = null)
+        IUnitOfWork? unitOfWork = null,
+        FoodSyncOptions? options = null)
         => new(
             notion ?? new FakeNotionFoodClient(),
             foodRepo ?? new FakeFoodItemRepository(),
             mealRepo ?? new FakeMealRepository(),
             groceryRepo ?? new FakeGroceryListRepository(),
             unitOfWork ?? new FakeUnitOfWork(),
-            NullLogger<FoodSyncService>.Instance);
+            NullLogger<FoodSyncService>.Instance,
+            options);
 
     // ── Notion page builders ─────────────────────────────────────────────────
 

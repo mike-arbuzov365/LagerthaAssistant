@@ -10,6 +10,7 @@ using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Repositories.Food;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Interfaces;
+using LagerthaAssistant.Application.Options;
 using LagerthaAssistant.Domain.Abstractions;
 using LagerthaAssistant.Infrastructure.AI;
 using LagerthaAssistant.Infrastructure.Constants;
@@ -163,6 +164,13 @@ public static class DependencyInjection
             RequestTimeoutSeconds = ParseInt(notionFoodSection["RequestTimeoutSeconds"], 60)
         };
         services.AddSingleton(notionFoodOptions);
+
+        var foodSyncSection = configuration.GetSection("FoodSync");
+        var foodSyncOptions = new FoodSyncOptions
+        {
+            MaxSyncAttempts = ParseInt(foodSyncSection["MaxSyncAttempts"], 5)
+        };
+        services.AddSingleton(foodSyncOptions);
 
         services.AddScoped<IFoodItemRepository, FoodItemRepository>();
         services.AddScoped<IMealRepository, MealRepository>();

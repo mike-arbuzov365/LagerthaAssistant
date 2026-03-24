@@ -5,18 +5,14 @@ using LagerthaAssistant.Application.Interfaces.Common;
 using LagerthaAssistant.Application.Interfaces.Food;
 using LagerthaAssistant.Application.Interfaces.Repositories.Food;
 using LagerthaAssistant.Application.Models.Food;
+using LagerthaAssistant.Application.Options;
 using LagerthaAssistant.Domain.Entities;
 using LagerthaAssistant.Domain.Enums;
 using Microsoft.Extensions.Logging;
 
 public sealed class FoodSyncService : IFoodSyncService
 {
-    /// <summary>
-    /// Maximum number of sync attempts before an item is moved to PermanentlyFailed.
-    /// Prevents runaway retry loops for items with persistent Notion API errors.
-    /// </summary>
-    private const int MaxSyncAttempts = 5;
-
+    private readonly int _maxSyncAttempts;
     private readonly INotionFoodClient _notionClient;
     private readonly IFoodItemRepository _foodItemRepo;
     private readonly IMealRepository _mealRepo;
@@ -30,8 +26,10 @@ public sealed class FoodSyncService : IFoodSyncService
         IMealRepository mealRepo,
         IGroceryListRepository groceryRepo,
         IUnitOfWork unitOfWork,
-        ILogger<FoodSyncService> logger)
+        ILogger<FoodSyncService> logger,
+        FoodSyncOptions? options = null)
     {
+        _maxSyncAttempts = options?.MaxSyncAttempts ?? 5;
         _notionClient = notionClient;
         _foodItemRepo = foodItemRepo;
         _mealRepo = mealRepo;
@@ -338,12 +336,12 @@ public sealed class FoodSyncService : IFoodSyncService
             }
             catch (Exception ex)
             {
-                var isPermanent = item.NotionAttemptCount >= MaxSyncAttempts;
+                var isPermanent = item.NotionAttemptCount >= _maxSyncAttempts;
                 _logger.LogWarning(ex,
                     "Failed to sync grocery item {Id} to Notion (attempt {Count}/{Max}){Suffix}",
                     item.Id,
                     item.NotionAttemptCount,
-                    MaxSyncAttempts,
+                    _maxSyncAttempts,
                     isPermanent ? " — marking PermanentlyFailed" : string.Empty);
 
                 item.NotionSyncStatus = isPermanent
@@ -392,12 +390,12 @@ public sealed class FoodSyncService : IFoodSyncService
             }
             catch (Exception ex)
             {
-                var isPermanent = item.NotionAttemptCount >= MaxSyncAttempts;
+                var isPermanent = item.NotionAttemptCount >= _maxSyncAttempts;
                 _logger.LogWarning(ex,
                     "Failed to sync inventory item {Id} to Notion (attempt {Count}/{Max}){Suffix}",
                     item.Id,
                     item.NotionAttemptCount,
-                    MaxSyncAttempts,
+                    _maxSyncAttempts,
                     isPermanent ? " — marking PermanentlyFailed" : string.Empty);
 
                 item.NotionSyncStatus = isPermanent
