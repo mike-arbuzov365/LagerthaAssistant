@@ -58,10 +58,10 @@ public sealed class FoodSyncHostedService : BackgroundService
                 return;
             }
 
-            // ── Push local changes to Notion (grocery bought status) ──────────
+            // Push local changes to Notion.
             await RunToNotionAsync(batchSize, stoppingToken);
 
-            // ── Pull from Notion on its own slower cadence ────────────────────
+            // Pull from Notion on its own slower cadence.
             if (DateTime.UtcNow >= nextFromNotion)
             {
                 var succeeded = await RunFromNotionAsync(stoppingToken);
@@ -84,7 +84,7 @@ public sealed class FoodSyncHostedService : BackgroundService
             sw.Stop();
 
             _logger.LogInformation(
-                "Food sync (Notion→DB) completed in {ElapsedMs} ms. Inventory={Inventory}, Meals={Meals}, Grocery={Grocery}, Ingredients={Ingredients}, Errors={Errors}",
+                "Food sync (Notion->DB) completed in {ElapsedMs} ms. Inventory={Inventory}, Meals={Meals}, Grocery={Grocery}, Ingredients={Ingredients}, Errors={Errors}",
                 sw.ElapsedMilliseconds,
                 summary.InventoryUpserted,
                 summary.MealsUpserted,
@@ -101,7 +101,7 @@ public sealed class FoodSyncHostedService : BackgroundService
         catch (Exception ex)
         {
             sw.Stop();
-            _logger.LogWarning(ex, "Food sync (Notion→DB) failed after {ElapsedMs} ms", sw.ElapsedMilliseconds);
+            _logger.LogWarning(ex, "Food sync (Notion->DB) failed after {ElapsedMs} ms", sw.ElapsedMilliseconds);
             return false;
         }
     }
@@ -112,11 +112,15 @@ public sealed class FoodSyncHostedService : BackgroundService
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
             var syncService = scope.ServiceProvider.GetRequiredService<IFoodSyncService>();
-            var synced = await syncService.SyncGroceryChangesToNotionAsync(batchSize, cancellationToken);
+            var inventorySynced = await syncService.SyncInventoryChangesToNotionAsync(batchSize, cancellationToken);
+            var grocerySynced = await syncService.SyncGroceryChangesToNotionAsync(batchSize, cancellationToken);
 
-            if (synced > 0)
+            if (inventorySynced > 0 || grocerySynced > 0)
             {
-                _logger.LogInformation("Food sync (DB→Notion) pushed {Count} grocery changes", synced);
+                _logger.LogInformation(
+                    "Food sync (DB->Notion) pushed {InventoryCount} inventory changes and {GroceryCount} grocery changes",
+                    inventorySynced,
+                    grocerySynced);
             }
         }
         catch (OperationCanceledException)
@@ -125,7 +129,7 @@ public sealed class FoodSyncHostedService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Food sync (DB→Notion) run failed");
+            _logger.LogWarning(ex, "Food sync (DB->Notion) run failed");
         }
     }
 }

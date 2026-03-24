@@ -14,6 +14,10 @@ public interface IFoodItemRepository
 
     Task<IReadOnlyList<FoodItem>> SearchByNameAsync(string query, int take = 10, CancellationToken cancellationToken = default);
 
+    Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<FoodItem>> ClaimPendingNotionSyncAsync(int take, DateTime claimedAt, CancellationToken cancellationToken = default);
+
     Task AddAsync(FoodItem item, CancellationToken cancellationToken = default);
 
     Task<int> DeleteAllAsync(CancellationToken cancellationToken = default);

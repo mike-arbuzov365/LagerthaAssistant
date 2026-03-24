@@ -2,6 +2,7 @@ namespace LagerthaAssistant.Infrastructure.Repositories;
 
 using LagerthaAssistant.Application.Interfaces.Repositories.Food;
 using LagerthaAssistant.Domain.Entities;
+using LagerthaAssistant.Domain.Enums;
 using LagerthaAssistant.Infrastructure.Constants;
 using LagerthaAssistant.Infrastructure.Data;
 using LagerthaAssistant.Infrastructure.Exceptions;
@@ -100,6 +101,88 @@ public sealed class FoodItemRepository : IFoodItemRepository
         {
             _logger.LogError(ex, "Error in {Operation} for query '{Query}'", RepositoryOperations.GetByKey, query);
             throw new RepositoryException(nameof(FoodItemRepository), RepositoryOperations.GetByKey, "Failed to search food items by name", ex);
+        }
+    }
+
+    public async Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _context.FoodItems
+                .CountAsync(
+                    x => x.NotionSyncStatus == FoodSyncStatus.Pending
+                        || x.NotionSyncStatus == FoodSyncStatus.Failed,
+                    cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for pending food sync count", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(FoodItemRepository), RepositoryOperations.GetActive, "Failed to count pending food sync items", ex);
+        }
+    }
+
+    public async Task<IReadOnlyList<FoodItem>> ClaimPendingNotionSyncAsync(
+        int take,
+        DateTime claimedAt,
+        CancellationToken cancellationToken = default)
+    {
+        if (take <= 0)
+        {
+            return [];
+        }
+
+        try
+        {
+            var candidateIds = await _context.FoodItems
+                .AsNoTracking()
+                .Where(x => x.NotionSyncStatus == FoodSyncStatus.Pending || x.NotionSyncStatus == FoodSyncStatus.Failed)
+                .OrderBy(x => x.UpdatedAt)
+                .Select(x => x.Id)
+                .Take(take * 3)
+                .ToListAsync(cancellationToken);
+
+            if (candidateIds.Count == 0)
+            {
+                return [];
+            }
+
+            var claimed = new List<FoodItem>(Math.Min(take, candidateIds.Count));
+            foreach (var id in candidateIds)
+            {
+                if (claimed.Count >= take)
+                {
+                    break;
+                }
+
+                var updated = await _context.FoodItems
+                    .Where(x => x.Id == id && (x.NotionSyncStatus == FoodSyncStatus.Pending || x.NotionSyncStatus == FoodSyncStatus.Failed))
+                    .ExecuteUpdateAsync(
+                        s => s
+                            .SetProperty(x => x.NotionSyncStatus, FoodSyncStatus.Processing)
+                            .SetProperty(x => x.NotionAttemptCount, x => x.NotionAttemptCount + 1)
+                            .SetProperty(x => x.NotionLastAttemptAt, claimedAt),
+                        cancellationToken);
+
+                if (updated == 0)
+                {
+                    continue;
+                }
+
+                var item = await _context.FoodItems
+                    .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+                if (item is not null)
+                {
+                    claimed.Add(item);
+                }
+            }
+
+            return claimed;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for claiming pending food sync", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(FoodItemRepository), RepositoryOperations.GetActive, "Failed to claim pending food sync items", ex);
         }
     }
 

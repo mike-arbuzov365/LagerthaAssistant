@@ -224,7 +224,7 @@ public sealed class GroceryListRepository : IGroceryListRepository
         {
             _logger.LogDebug("Executing {Operation} for deleting bought grocery items", RepositoryOperations.Delete);
             return await _context.GroceryListItems
-                .Where(x => x.IsBought)
+                .Where(x => x.IsBought && x.NotionSyncStatus == FoodSyncStatus.Synced)
                 .ExecuteDeleteAsync(cancellationToken);
         }
         catch (Exception ex)
@@ -256,6 +256,31 @@ public sealed class GroceryListRepository : IGroceryListRepository
         {
             _logger.LogError(ex, "Error in {Operation} for deleting selected grocery items", RepositoryOperations.Delete);
             throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Delete, "Failed to delete selected grocery items", ex);
+        }
+    }
+
+    public async Task<int> DeleteByIdsAnyStateAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default)
+    {
+        if (itemIds.Count == 0)
+        {
+            return 0;
+        }
+
+        try
+        {
+            _logger.LogDebug(
+                "Executing {Operation} for deleting grocery items (any state); Count={Count}",
+                RepositoryOperations.Delete,
+                itemIds.Count);
+
+            return await _context.GroceryListItems
+                .Where(x => itemIds.Contains(x.Id))
+                .ExecuteDeleteAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for deleting grocery items (any state)", RepositoryOperations.Delete);
+            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Delete, "Failed to delete grocery items", ex);
         }
     }
 }
