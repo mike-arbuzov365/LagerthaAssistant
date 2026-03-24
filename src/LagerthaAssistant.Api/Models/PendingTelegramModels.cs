@@ -69,7 +69,9 @@ internal sealed record PendingInventoryPhotoCandidate(
     string Name,
     decimal Quantity,
     string? Unit,
-    double Confidence);
+    double Confidence,
+    string? IconEmoji = null,
+    string? Category = null);
 
 internal sealed record PendingInventoryPhotoUnknown(
     int Number,

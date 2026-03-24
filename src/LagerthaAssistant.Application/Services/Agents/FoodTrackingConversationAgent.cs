@@ -93,6 +93,9 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
     internal async Task<ConversationAgentResult> HandleShopListAsync(string locale, CancellationToken cancellationToken)
     {
         var items = await _foodService.GetActiveGroceryListAsync(cancellationToken);
+        var inventoryByName = (await _foodService.GetAllInventoryAsync(0, cancellationToken))
+            .GroupBy(x => x.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         if (items.Count == 0)
         {
@@ -115,7 +118,8 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
             {
                 var qty = item.Quantity is not null ? $" x {item.Quantity}" : string.Empty;
                 var cost = item.EstimatedCost.HasValue ? $" (~${item.EstimatedCost:F2})" : string.Empty;
-                sb.AppendLine(string.Format(_loc.Get("food.shop.list.item", locale), item.Name, qty, cost));
+                inventoryByName.TryGetValue(item.Name.Trim(), out var matchedInventory);
+                sb.AppendLine(string.Format(_loc.Get("food.shop.list.item", locale), BuildInventoryItemTitle(item.Name, matchedInventory), qty, cost));
             }
 
             sb.AppendLine();
@@ -325,7 +329,7 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         {
             var qty = BuildInventoryQuantitySuffix(item);
             var cat = item.Category is not null ? $" — {item.Category}" : string.Empty;
-            sb.AppendLine($"  [{item.Id}] {item.Name}{qty}{cat}");
+            sb.AppendLine($"  [{item.Id}] {BuildInventoryItemTitle(item.Name, item)}{qty}{cat}");
         }
 
         return Result("inventory.list", sb.ToString().TrimEnd());
@@ -360,12 +364,12 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine(string.Format(_loc.Get("inventory.low_stock.title", locale), items.Count));
+        sb.AppendLine($"⚠️ {string.Format(_loc.Get("inventory.low_stock.title", locale), items.Count)}");
         sb.AppendLine();
         foreach (var item in items)
         {
             var cur = item.CurrentQuantity.HasValue ? $"{item.CurrentQuantity.Value:G}" : "?";
-            sb.AppendLine(string.Format(_loc.Get("inventory.low_stock.item", locale), item.Name, cur));
+            sb.AppendLine(string.Format(_loc.Get("inventory.low_stock.item", locale), BuildInventoryItemTitle(item.Name, item), cur));
         }
 
         return Result("inventory.suggest", sb.ToString().TrimEnd());
@@ -449,6 +453,16 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
         return string.IsNullOrWhiteSpace(item.Quantity)
             ? string.Empty
             : $" [{item.Quantity}]";
+    }
+
+    private static string BuildInventoryItemTitle(string name, FoodItemDto? item)
+    {
+        if (!string.IsNullOrWhiteSpace(item?.IconEmoji))
+        {
+            return $"{item!.IconEmoji} {name}";
+        }
+
+        return $"📦 {name}";
     }
 
     private static ConversationAgentResult Result(string intent, string message)
