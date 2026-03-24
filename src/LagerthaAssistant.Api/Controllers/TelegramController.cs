@@ -50,14 +50,17 @@ public sealed class TelegramController : ControllerBase
     private static readonly Regex SentenceSplitRegex = new("(?<=[\\.!\\?])\\s+", RegexOptions.Compiled);
     private static readonly Regex LeadingWordSeparatorRegex = new("^[\\s:;,.!\\-–—]+", RegexOptions.Compiled);
     private static readonly Regex CyrillicRegex = new("[\\u0400-\\u04FF]", RegexOptions.Compiled);
-    private static readonly Regex InventoryQuantityAdjustmentRegex = new(
-        @"^\s*\[?(?<id>\d+)\]?(?:[^\r\n]*?)?(?<sign>[+-])\s*(?<value>\d+(?:[.,]\d+)?)\s*$",
+    private static readonly Regex InventoryLeadingIdRegex = new(
+        @"^\s*\[?(?<id>\d+)\]?(?<tail>.*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
-    private static readonly Regex InventoryMinSimpleRegex = new(
-        @"^\s*\[?(?<id>\d+)\]?\s*(?:(?:=|:)\s*)?(?<value>\d+(?:[.,]\d+)?)\s*$",
+    private static readonly Regex InventoryTrailingOperatorRegex = new(
+        @"(?<![+\-=])(?<op>[+\-=])\s*(?<value>\d+(?:[.,]\d+)?)\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
-    private static readonly Regex InventoryMinWithNameRegex = new(
-        @"^\s*\[?(?<id>\d+)\]?[^\r\n]*?(?:=|:)\s*(?<value>\d+(?:[.,]\d+)?)\s*$",
+    private static readonly Regex InventoryTrailingPlainValueRegex = new(
+        @"(?:^|[\s:])(?<value>\d+(?:[.,]\d+)?)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex InventoryPotentialOperationHintRegex = new(
+        @"[+\-=]\s*\d",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex ShoppingDeleteLeadingNumberRegex = new(
         @"^\s*[^\d]*(?<number>\d+)\s*[\)\].:\-]?\s*(?<tail>.*)$",
@@ -3602,6 +3605,23 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
         }
 
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.ResetStock, StringComparison.Ordinal))
+        {
+            return new TelegramRouteResponse(
+                "inventory.reset_stock.prompt",
+                EnsureQuestionMarker(_navigationPresenter.GetText("inventory.reset_stock.prompt", locale)),
+                InlineKeyboard(_navigationPresenter.BuildInventoryResetStockConfirmationKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.ResetStockConfirm, StringComparison.Ordinal))
+        {
+            var updated = await _foodTrackingService.ResetAllInventoryCurrentQuantitiesAsync(cancellationToken);
+            return new TelegramRouteResponse(
+                "inventory.reset_stock.done",
+                EnsureInfoMarker(_navigationPresenter.GetText("inventory.reset_stock.done", locale, updated)),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
         if (string.Equals(callbackData, CallbackDataConstants.Inventory.PhotoRestock, StringComparison.Ordinal)
             || string.Equals(callbackData, CallbackDataConstants.Inventory.PhotoConsume, StringComparison.Ordinal))
         {
@@ -4011,7 +4031,7 @@ public sealed class TelegramController : ControllerBase
         if (_pendingStateStore.ChatActions.TryGetValue(pendingKey, out pendingAction)
             && pendingAction == PendingChatActionKind.InventoryAdjustQuantity)
         {
-            if (!TryParseInventoryQuantityAdjustments(text, out var adjustments))
+            if (!TryParseInventoryQuantityUpdates(text, out var updates))
             {
                 return new TelegramRouteResponse(
                     "inventory.adjust.invalid",
@@ -4021,21 +4041,26 @@ public sealed class TelegramController : ControllerBase
 
             var successLines = new List<string>();
             var notFoundIds = new List<int>();
-            foreach (var adjustment in adjustments)
+            foreach (var update in updates)
             {
                 try
                 {
-                    var updated = await _foodTrackingService.AdjustInventoryQuantityAsync(
-                        adjustment.ItemId,
-                        adjustment.Delta,
-                        cancellationToken);
+                    var updated = update.Mode == InventoryQuantityUpdateMode.Delta
+                        ? await _foodTrackingService.AdjustInventoryQuantityAsync(
+                            update.ItemId,
+                            update.Value,
+                            cancellationToken)
+                        : await _foodTrackingService.SetInventoryCurrentQuantityAsync(
+                            update.ItemId,
+                            update.Value,
+                            cancellationToken);
 
                     var quantityText = updated.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
                     successLines.Add($"✅ {_navigationPresenter.GetText("inventory.adjust.done", locale, updated.Name, quantityText)}");
                 }
                 catch (InvalidOperationException)
                 {
-                    notFoundIds.Add(adjustment.ItemId);
+                    notFoundIds.Add(update.ItemId);
                 }
             }
 
@@ -4063,7 +4088,7 @@ public sealed class TelegramController : ControllerBase
         if (_pendingStateStore.ChatActions.TryGetValue(pendingKey, out pendingAction)
             && pendingAction == PendingChatActionKind.InventorySetMinQuantity)
         {
-            if (!TryParseInventoryMinQuantitySettings(text, out var minSettings))
+            if (!TryParseInventoryMinQuantityUpdates(text, out var updates))
             {
                 return new TelegramRouteResponse(
                     "inventory.min.invalid",
@@ -4071,23 +4096,30 @@ public sealed class TelegramController : ControllerBase
                     InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
             }
 
+            var currentMinById = (await _foodTrackingService.GetAllInventoryAsync(0, cancellationToken))
+                .ToDictionary(item => item.Id, item => item.MinQuantity ?? 0m);
             var successLines = new List<string>();
             var notFoundIds = new List<int>();
-            foreach (var setting in minSettings)
+            foreach (var update in updates)
             {
                 try
                 {
+                    var targetMin = update.Mode == InventoryQuantityUpdateMode.Delta
+                        ? Math.Max(0m, (currentMinById.TryGetValue(update.ItemId, out var current) ? current : 0m) + update.Value)
+                        : update.Value;
+
                     var updated = await _foodTrackingService.SetInventoryMinQuantityAsync(
-                        setting.ItemId,
-                        setting.MinQuantity,
+                        update.ItemId,
+                        targetMin,
                         cancellationToken);
 
+                    currentMinById[updated.Id] = updated.MinQuantity ?? targetMin;
                     var minQuantityText = updated.MinQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
                     successLines.Add($"✅ {_navigationPresenter.GetText("inventory.min.done", locale, updated.Name, minQuantityText)}");
                 }
                 catch (InvalidOperationException)
                 {
-                    notFoundIds.Add(setting.ItemId);
+                    notFoundIds.Add(update.ItemId);
                 }
             }
 
@@ -4987,122 +5019,205 @@ public sealed class TelegramController : ControllerBase
         return true;
     }
 
-    private static bool TryParseInventoryMinQuantitySettings(
+    private static bool TryParseInventoryMinQuantityUpdates(
         string input,
-        out IReadOnlyList<InventoryMinQuantitySetting> settings)
+        out IReadOnlyList<InventoryQuantityUpdate> updates)
     {
-        var parsed = new List<InventoryMinQuantitySetting>();
+        updates = [];
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        var parsed = new List<InventoryQuantityUpdate>();
         foreach (var token in SplitBatchInputTokens(input))
         {
-            if (!TryParseInventoryMinQuantitySettingToken(token, out var itemId, out var minQuantity))
+            if (TryParseInventoryLeadingIdToken(token, out var itemId, out var tail))
             {
-                settings = [];
-                return false;
+                if (TryParseInventoryOperatorValue(
+                        tail,
+                        allowSetWithoutOperator: true,
+                        out var mode,
+                        out var parsedValue,
+                        out var hasMalformedOperation))
+                {
+                    parsed.Add(new InventoryQuantityUpdate(itemId, mode, parsedValue));
+                    continue;
+                }
+
+                if (hasMalformedOperation)
+                {
+                    updates = [];
+                    return false;
+                }
+
+                // Unchanged line (typically copied from "All items").
+                continue;
             }
-
-            parsed.Add(new InventoryMinQuantitySetting(itemId, minQuantity));
         }
 
-        settings = parsed;
-        return settings.Count > 0;
-    }
-
-    private static bool TryParseInventoryMinQuantitySettingToken(
-        string token,
-        out int itemId,
-        out decimal minQuantity)
-    {
-        itemId = 0;
-        minQuantity = 0m;
-
-        if (string.IsNullOrWhiteSpace(token))
+        if (parsed.Count == 0)
         {
             return false;
         }
 
-        var trimmed = token.Trim();
-        var match = InventoryMinSimpleRegex.Match(trimmed);
-        if (!match.Success)
-        {
-            match = InventoryMinWithNameRegex.Match(trimmed);
-        }
-
-        if (!match.Success)
-        {
-            return false;
-        }
-
-        if (!int.TryParse(match.Groups["id"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out itemId))
-        {
-            return false;
-        }
-
-        var valueRaw = match.Groups["value"].Value.Replace(',', '.');
-        if (!decimal.TryParse(valueRaw, NumberStyles.Number, CultureInfo.InvariantCulture, out minQuantity))
-        {
-            return false;
-        }
-
-        return minQuantity >= 0m;
-    }
-
-    private static bool TryParseInventoryQuantityAdjustments(
-        string input,
-        out IReadOnlyList<InventoryQuantityAdjustment> adjustments)
-    {
-        var parsed = new List<InventoryQuantityAdjustment>();
-        foreach (var token in SplitBatchInputTokens(input))
-        {
-            if (!TryParseInventoryQuantityAdjustmentToken(token, out var itemId, out var delta))
-            {
-                adjustments = [];
-                return false;
-            }
-
-            parsed.Add(new InventoryQuantityAdjustment(itemId, delta));
-        }
-
-        adjustments = parsed;
-        return adjustments.Count > 0;
-    }
-
-    private static bool TryParseInventoryQuantityAdjustmentToken(
-        string token,
-        out int itemId,
-        out decimal delta)
-    {
-        itemId = 0;
-        delta = 0m;
-
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            return false;
-        }
-
-        var match = InventoryQuantityAdjustmentRegex.Match(token.Trim());
-        if (!match.Success)
-        {
-            return false;
-        }
-
-        if (!int.TryParse(match.Groups["id"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out itemId))
-        {
-            return false;
-        }
-
-        var valueRaw = match.Groups["value"].Value.Replace(',', '.');
-        if (!decimal.TryParse(valueRaw, NumberStyles.Number, CultureInfo.InvariantCulture, out var value))
-        {
-            return false;
-        }
-
-        if (value <= 0m)
-        {
-            return false;
-        }
-
-        delta = match.Groups["sign"].Value == "-" ? -value : value;
+        updates = parsed;
         return true;
+    }
+
+    private static bool TryParseInventoryQuantityUpdates(
+        string input,
+        out IReadOnlyList<InventoryQuantityUpdate> updates)
+    {
+        updates = [];
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        var parsed = new List<InventoryQuantityUpdate>();
+        foreach (var token in SplitBatchInputTokens(input))
+        {
+            if (TryParseInventoryLeadingIdToken(token, out var itemId, out var tail))
+            {
+                if (TryParseInventoryOperatorValue(
+                        tail,
+                        allowSetWithoutOperator: false,
+                        out var mode,
+                        out var parsedValue,
+                        out var hasMalformedOperation))
+                {
+                    parsed.Add(new InventoryQuantityUpdate(itemId, mode, parsedValue));
+                    continue;
+                }
+
+                if (hasMalformedOperation)
+                {
+                    updates = [];
+                    return false;
+                }
+
+                // Unchanged line (typically copied from "All items").
+                continue;
+            }
+        }
+
+        if (parsed.Count == 0)
+        {
+            return false;
+        }
+
+        updates = parsed;
+        return true;
+    }
+
+    private static bool TryParseInventoryLeadingIdToken(
+        string token,
+        out int itemId,
+        out string tail)
+    {
+        itemId = 0;
+        tail = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return false;
+        }
+
+        var match = InventoryLeadingIdRegex.Match(token.Trim());
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        if (!int.TryParse(match.Groups["id"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out itemId) || itemId <= 0)
+        {
+            return false;
+        }
+
+        tail = match.Groups["tail"].Value;
+        return true;
+    }
+
+    private static bool TryParseInventoryOperatorValue(
+        string tail,
+        bool allowSetWithoutOperator,
+        out InventoryQuantityUpdateMode mode,
+        out decimal value,
+        out bool hasMalformedOperation)
+    {
+        mode = InventoryQuantityUpdateMode.Delta;
+        value = 0m;
+        hasMalformedOperation = false;
+
+        if (string.IsNullOrWhiteSpace(tail))
+        {
+            return false;
+        }
+
+        var normalizedTail = tail.Trim();
+        var operatorMatch = InventoryTrailingOperatorRegex.Match(normalizedTail);
+        if (operatorMatch.Success)
+        {
+            if (!TryParseInvariantDecimal(operatorMatch.Groups["value"].Value, out var parsedRaw))
+            {
+                hasMalformedOperation = true;
+                return false;
+            }
+
+            var op = operatorMatch.Groups["op"].Value;
+            if (op == "=")
+            {
+                if (parsedRaw < 0m)
+                {
+                    hasMalformedOperation = true;
+                    return false;
+                }
+
+                mode = InventoryQuantityUpdateMode.Set;
+                value = parsedRaw;
+                return true;
+            }
+
+            if (parsedRaw <= 0m)
+            {
+                hasMalformedOperation = true;
+                return false;
+            }
+
+            mode = InventoryQuantityUpdateMode.Delta;
+            value = op == "-" ? -parsedRaw : parsedRaw;
+            return true;
+        }
+
+        if (!allowSetWithoutOperator)
+        {
+            hasMalformedOperation = InventoryPotentialOperationHintRegex.IsMatch(normalizedTail);
+            return false;
+        }
+
+        var plainValueMatch = InventoryTrailingPlainValueRegex.Match(normalizedTail);
+        if (!plainValueMatch.Success)
+        {
+            hasMalformedOperation = InventoryPotentialOperationHintRegex.IsMatch(normalizedTail);
+            return false;
+        }
+
+        if (!TryParseInvariantDecimal(plainValueMatch.Groups["value"].Value, out var parsedValue) || parsedValue < 0m)
+        {
+            hasMalformedOperation = true;
+            return false;
+        }
+
+        mode = InventoryQuantityUpdateMode.Set;
+        value = parsedValue;
+        return true;
+    }
+
+    private static bool TryParseInvariantDecimal(string raw, out decimal value)
+    {
+        var normalized = raw.Replace(',', '.');
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out value);
     }
 
     private static IReadOnlyList<string> SplitBatchInputTokens(string? input)
@@ -5121,9 +5236,13 @@ public sealed class TelegramController : ControllerBase
         return split.Count == 0 ? [] : split;
     }
 
-    private sealed record InventoryQuantityAdjustment(int ItemId, decimal Delta);
+    private sealed record InventoryQuantityUpdate(int ItemId, InventoryQuantityUpdateMode Mode, decimal Value);
 
-    private sealed record InventoryMinQuantitySetting(int ItemId, decimal MinQuantity);
+    private enum InventoryQuantityUpdateMode
+    {
+        Delta = 0,
+        Set = 1
+    }
 
     private sealed record VocabularyUrlSelectionResult(
         VocabularyUrlSelectionAction Action,

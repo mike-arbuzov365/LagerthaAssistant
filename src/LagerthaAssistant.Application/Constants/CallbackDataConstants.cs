@@ -97,6 +97,8 @@ public static class CallbackDataConstants
         public const string Stats = "inventory:stats";
         public const string Adjust = "inventory:adjust";
         public const string Min = "inventory:min";
+        public const string ResetStock = "inventory:reset_stock";
+        public const string ResetStockConfirm = "inventory:reset_stock:confirm";
         public const string Suggest = "inventory:suggest";
         public const string PhotoRestock = "inventory:photo:restock";
         public const string PhotoConsume = "inventory:photo:consume";

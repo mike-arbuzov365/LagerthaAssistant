@@ -945,6 +945,47 @@ public sealed class FoodTrackingServiceTests
     }
 
     [Fact]
+    public async Task SetInventoryCurrentQuantityAsync_ShouldSetExactQuantity_AndMarkPendingSync()
+    {
+        var item = new FoodItem { Id = 21, Name = "Apple", CurrentQuantity = 1m, NotionSyncStatus = FoodSyncStatus.Synced };
+        var repo = new FakeFoodItemRepository { AllItems = [item] };
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(foodItemRepo: repo, unitOfWork: uow);
+
+        var updated = await sut.SetInventoryCurrentQuantityAsync(21, 4.25m);
+
+        Assert.Equal(4.25m, updated.CurrentQuantity);
+        Assert.Equal(4.25m, item.CurrentQuantity);
+        Assert.Equal(FoodSyncStatus.Pending, item.NotionSyncStatus);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task ResetAllInventoryCurrentQuantitiesAsync_ShouldSetNonZeroAndNullToZero()
+    {
+        var repo = new FakeFoodItemRepository
+        {
+            AllItems =
+            [
+                new FoodItem { Id = 1, Name = "Beer", CurrentQuantity = 3m, NotionSyncStatus = FoodSyncStatus.Synced },
+                new FoodItem { Id = 2, Name = "Juice", CurrentQuantity = 0m, NotionSyncStatus = FoodSyncStatus.Synced },
+                new FoodItem { Id = 3, Name = "Wine", CurrentQuantity = null, NotionSyncStatus = FoodSyncStatus.Synced }
+            ]
+        };
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(foodItemRepo: repo, unitOfWork: uow);
+
+        var updatedCount = await sut.ResetAllInventoryCurrentQuantitiesAsync();
+
+        Assert.Equal(2, updatedCount);
+        Assert.All(repo.AllItems.Where(item => item.Id != 2), item => Assert.Equal(0m, item.CurrentQuantity));
+        Assert.Equal(FoodSyncStatus.Pending, repo.AllItems[0].NotionSyncStatus);
+        Assert.Equal(FoodSyncStatus.Pending, repo.AllItems[2].NotionSyncStatus);
+        Assert.Equal(FoodSyncStatus.Synced, repo.AllItems[1].NotionSyncStatus);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
     public async Task SetInventoryMinQuantityAsync_ShouldUpdateMinQuantity_AndMarkPendingSync()
     {
         var item = new FoodItem { Id = 30, Name = "Apple", MinQuantity = 1m, NotionSyncStatus = FoodSyncStatus.Synced };

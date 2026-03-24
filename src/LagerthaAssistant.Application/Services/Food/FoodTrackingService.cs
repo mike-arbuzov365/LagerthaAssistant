@@ -114,6 +114,67 @@ public sealed class FoodTrackingService : IFoodTrackingService
         return MapFoodItemToDto(item);
     }
 
+    public async Task<FoodItemDto> SetInventoryCurrentQuantityAsync(
+        int foodItemId,
+        decimal quantity,
+        CancellationToken cancellationToken = default)
+    {
+        if (quantity < 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(quantity), "Current quantity cannot be negative.");
+        }
+
+        var item = await _foodItemRepo.GetByIdAsync(foodItemId, cancellationToken)
+            ?? throw new InvalidOperationException($"Food item {foodItemId} not found in inventory.");
+
+        item.CurrentQuantity = Math.Round(quantity, 3, MidpointRounding.AwayFromZero);
+        item.NotionSyncStatus = FoodSyncStatus.Pending;
+        item.NotionUpdatedAt = DateTime.UtcNow;
+        item.NotionLastError = null;
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Set inventory current quantity. FoodItemId={FoodItemId}; CurrentQuantity={CurrentQuantity}",
+            item.Id,
+            item.CurrentQuantity);
+
+        return MapFoodItemToDto(item);
+    }
+
+    public async Task<int> ResetAllInventoryCurrentQuantitiesAsync(CancellationToken cancellationToken = default)
+    {
+        var items = await _foodItemRepo.GetAllAsync(cancellationToken);
+        if (items.Count == 0)
+        {
+            return 0;
+        }
+
+        var updatedCount = 0;
+        foreach (var item in items)
+        {
+            if (item.CurrentQuantity.HasValue && item.CurrentQuantity.Value == 0m)
+            {
+                continue;
+            }
+
+            item.CurrentQuantity = 0m;
+            item.NotionSyncStatus = FoodSyncStatus.Pending;
+            item.NotionUpdatedAt = DateTime.UtcNow;
+            item.NotionLastError = null;
+            updatedCount++;
+        }
+
+        if (updatedCount == 0)
+        {
+            return 0;
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Reset inventory current quantities. UpdatedItems={UpdatedItems}", updatedCount);
+        return updatedCount;
+    }
+
     public async Task<FoodItemDto> SetInventoryMinQuantityAsync(
         int foodItemId,
         decimal minQuantity,
