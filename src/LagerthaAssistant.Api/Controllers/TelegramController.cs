@@ -4111,7 +4111,10 @@ public sealed class TelegramController : ControllerBase
                             cancellationToken);
 
                     var quantityText = updated.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
-                    successLines.Add($"✅ {_navigationPresenter.GetText("inventory.adjust.done", locale, updated.Name, quantityText)}");
+                    var successText = StripLeadingStatusMarkers(
+                        _navigationPresenter.GetText("inventory.adjust.done", locale, updated.Name, quantityText),
+                        out _);
+                    successLines.Add($"{BuildInventoryItemTitle(updated)} {successText}");
                 }
                 catch (InvalidOperationException)
                 {
@@ -4170,7 +4173,10 @@ public sealed class TelegramController : ControllerBase
 
                     currentMinById[updated.Id] = updated.MinQuantity ?? targetMin;
                     var minQuantityText = updated.MinQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
-                    successLines.Add($"✅ {_navigationPresenter.GetText("inventory.min.done", locale, updated.Name, minQuantityText)}");
+                    var successText = StripLeadingStatusMarkers(
+                        _navigationPresenter.GetText("inventory.min.done", locale, updated.Name, minQuantityText),
+                        out _);
+                    successLines.Add($"{BuildInventoryItemTitle(updated)} {successText}");
                 }
                 catch (InvalidOperationException)
                 {

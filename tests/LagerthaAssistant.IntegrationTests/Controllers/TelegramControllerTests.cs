@@ -4642,6 +4642,8 @@ public sealed class TelegramControllerTests
         Assert.Equal("inventory.min.done", payload.Intent);
         Assert.Equal(7, foodService.LastSetMinInventoryItemId);
         Assert.Equal(3m, foodService.LastSetMinQuantity);
+        Assert.Contains("&#128230;", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("✅", sender.LastText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -4715,6 +4717,8 @@ public sealed class TelegramControllerTests
         Assert.Equal("inventory.adjust.done", payload.Intent);
         Assert.Equal(7, foodService.LastAdjustedInventoryItemId);
         Assert.Equal(-2m, foodService.LastAdjustedDelta);
+        Assert.Contains("&#128230;", sender.LastText, StringComparison.Ordinal);
+        Assert.DoesNotContain("✅", sender.LastText, StringComparison.Ordinal);
     }
 
     [Fact]
