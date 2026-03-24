@@ -70,7 +70,12 @@ public sealed class FoodSyncService : IFoodSyncService
                 else
                 {
                     // Notion wins on structural data if it was edited after our last sync.
-                    if (notionUpdatedAt > existing.NotionUpdatedAt)
+                    // Also refresh icon when it becomes available in Notion, even if timestamps are equal/older.
+                    var hasNewIconFromNotion =
+                        !string.IsNullOrWhiteSpace(page.IconEmoji)
+                        && !string.Equals(existing.IconEmoji, page.IconEmoji, StringComparison.Ordinal);
+
+                    if (notionUpdatedAt > existing.NotionUpdatedAt || hasNewIconFromNotion)
                     {
                         UpdateFoodItem(existing, page, notionUpdatedAt);
                         await _unitOfWork.SaveChangesAsync(cancellationToken);

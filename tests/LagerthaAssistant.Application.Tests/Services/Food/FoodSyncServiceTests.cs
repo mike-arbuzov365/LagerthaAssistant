@@ -149,6 +149,34 @@ public sealed class FoodSyncServiceTests
         Assert.Equal("Local Name", existing.Name); // unchanged
     }
 
+    [Fact]
+    public async Task SyncFromNotionAsync_ShouldUpdateExistingFoodItemIcon_WhenIconIsMissingLocally()
+    {
+        var existing = new FoodItem
+        {
+            Id = 1,
+            NotionPageId = "page-1",
+            Name = "Beer",
+            IconEmoji = null,
+            NotionUpdatedAt = new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc)
+        };
+        var notion = new FakeNotionFoodClient
+        {
+            InventoryPages = [MakePage(
+                "page-1",
+                "2026-01-01T00:00:00Z",
+                [("Item Name", Title("Beer"))],
+                iconEmoji: "🍺")]
+        };
+        var foodRepo = new FakeFoodItemRepository { Existing = existing };
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        var summary = await sut.SyncFromNotionAsync();
+
+        Assert.Equal(1, summary.InventoryUpserted);
+        Assert.Equal("🍺", existing.IconEmoji);
+    }
+
     // ── SyncFromNotionAsync – Meals ──────────────────────────────────────────
 
     [Fact]
