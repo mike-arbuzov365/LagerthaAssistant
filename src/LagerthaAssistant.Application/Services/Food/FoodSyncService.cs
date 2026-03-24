@@ -391,12 +391,13 @@ public sealed class FoodSyncService : IFoodSyncService
                 }
 
                 var quantityText = item.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture);
-                await _notionClient.UpdateInventoryItemAsync(item.NotionPageId, quantityText, item.MinQuantity, cancellationToken);
+                var notionTimestamp = await _notionClient.UpdateInventoryItemAsync(
+                    item.NotionPageId, quantityText, item.MinQuantity, cancellationToken);
 
                 item.NotionSyncStatus = FoodSyncStatus.Synced;
                 item.NotionSyncedAt = DateTime.UtcNow;
                 item.NotionLastError = null;
-                item.NotionUpdatedAt = DateTime.UtcNow;
+                item.NotionUpdatedAt = notionTimestamp;
                 item.Quantity = quantityText;
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 synced++;

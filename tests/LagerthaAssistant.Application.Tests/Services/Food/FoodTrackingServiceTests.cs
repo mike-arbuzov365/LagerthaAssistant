@@ -1245,12 +1245,12 @@ public sealed class FoodTrackingServiceTests
         public Task MarkGroceryItemBoughtAsync(string notionPageId, bool bought, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
-        public Task UpdateInventoryItemAsync(
+        public Task<DateTime> UpdateInventoryItemAsync(
             string notionPageId,
             string? quantityText,
             decimal? minQuantity,
             CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+            => Task.FromResult(DateTime.UtcNow);
 
         public Task ArchivePageAsync(string notionPageId, CancellationToken cancellationToken = default)
             => Task.CompletedTask;

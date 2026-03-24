@@ -685,6 +685,27 @@ public sealed class FoodSyncServiceTests
         Assert.Null(notion.LastMinQuantityValue);
     }
 
+    [Fact]
+    public async Task SyncInventoryChangesToNotionAsync_ShouldUseNotionTimestamp_NotUtcNow()
+    {
+        var notionTime = new DateTime(2026, 7, 15, 10, 30, 0, DateTimeKind.Utc);
+        var pendingItem = new FoodItem
+        {
+            Id = 25,
+            NotionPageId = "inv-25",
+            CurrentQuantity = 5m,
+            NotionSyncStatus = FoodSyncStatus.Pending
+        };
+        var foodRepo = new FakeFoodItemRepository { PendingItems = [pendingItem] };
+        var notion = new FakeNotionFoodClient { UpdateInventoryTimestamp = notionTime };
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        await sut.SyncInventoryChangesToNotionAsync(take: 10);
+
+        // NotionUpdatedAt must match the Notion response, not DateTime.UtcNow.
+        Assert.Equal(notionTime, pendingItem.NotionUpdatedAt);
+    }
+
     // ── ReconcileNotionGroceryOrphansAsync ───────────────────────────────────
 
     [Fact]
@@ -1184,7 +1205,9 @@ public sealed class FoodSyncServiceTests
             return Task.CompletedTask;
         }
 
-        public Task UpdateInventoryItemAsync(
+        public DateTime UpdateInventoryTimestamp { get; set; } = new(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+
+        public Task<DateTime> UpdateInventoryItemAsync(
             string notionPageId,
             string? quantityText,
             decimal? minQuantity,
@@ -1198,7 +1221,7 @@ public sealed class FoodSyncServiceTests
             LastQuantityPageId = notionPageId;
             LastQuantityValue = quantityText;
             LastMinQuantityValue = minQuantity;
-            return Task.CompletedTask;
+            return Task.FromResult(UpdateInventoryTimestamp);
         }
 
         public Task ArchivePageAsync(string notionPageId, CancellationToken cancellationToken = default)

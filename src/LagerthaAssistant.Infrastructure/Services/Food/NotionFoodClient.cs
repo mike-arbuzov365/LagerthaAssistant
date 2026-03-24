@@ -67,7 +67,7 @@ public sealed class NotionFoodClient : INotionFoodClient
         }
     }
 
-    public async Task UpdateInventoryItemAsync(
+    public async Task<DateTime> UpdateInventoryItemAsync(
         string notionPageId,
         string? quantityText,
         decimal? minQuantity,
@@ -108,6 +108,8 @@ public sealed class NotionFoodClient : INotionFoodClient
                 error);
             response.EnsureSuccessStatusCode();
         }
+
+        return await ParseLastEditedTimeAsync(response, cancellationToken);
     }
 
     public async Task ArchivePageAsync(string notionPageId, CancellationToken cancellationToken = default)
@@ -184,6 +186,27 @@ public sealed class NotionFoodClient : INotionFoodClient
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
+
+    private static async Task<DateTime> ParseLastEditedTimeAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        using var doc = await JsonDocument.ParseAsync(
+            await response.Content.ReadAsStreamAsync(cancellationToken),
+            cancellationToken: cancellationToken);
+
+        if (doc.RootElement.TryGetProperty("last_edited_time", out var prop))
+        {
+            var raw = prop.GetString();
+            if (DateTime.TryParse(raw, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+            {
+                return DateTime.SpecifyKind(dt.ToUniversalTime(), DateTimeKind.Utc);
+            }
+        }
+
+        // Fallback if Notion response doesn't include the timestamp (shouldn't happen).
+        return DateTime.UtcNow;
+    }
 
     private async Task<IReadOnlyList<NotionPage>> QueryAllPagesAsync(
         string databaseId,
