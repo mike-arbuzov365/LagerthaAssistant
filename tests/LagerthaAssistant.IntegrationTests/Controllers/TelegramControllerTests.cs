@@ -5276,6 +5276,8 @@ public sealed class TelegramControllerTests
         public decimal? LastSetCurrentQuantity { get; private set; }
         public int? LastSetMinInventoryItemId { get; private set; }
         public decimal? LastSetMinQuantity { get; private set; }
+        public string? LastAddedInventoryCategory { get; private set; }
+        public string? LastAddedInventoryIcon { get; private set; }
         public int ResetAllCalls { get; private set; }
         public int ResetAllUpdatedCount { get; init; }
         public List<(int ItemId, string Mode, decimal Value)> AdjustOperations { get; } = [];
@@ -5365,9 +5367,22 @@ public sealed class TelegramControllerTests
             return Task.FromResult(found);
         }
 
-        public Task<FoodItemDto> AddInventoryItemAsync(string name, string? store, decimal? price, decimal? currentQuantity, CancellationToken cancellationToken = default)
+        public Task<FoodItemDto> AddInventoryItemAsync(
+            string name,
+            string? store,
+            decimal? price,
+            decimal? currentQuantity,
+            string? category = null,
+            string? iconEmoji = null,
+            CancellationToken cancellationToken = default)
         {
-            var newItem = new FoodItemDto(InventoryItems.Count + 100, name, null, store, price, null) { CurrentQuantity = currentQuantity };
+            LastAddedInventoryCategory = category;
+            LastAddedInventoryIcon = iconEmoji;
+            var newItem = new FoodItemDto(InventoryItems.Count + 100, name, category, store, price, null)
+            {
+                IconEmoji = iconEmoji,
+                CurrentQuantity = currentQuantity
+            };
             return Task.FromResult(newItem);
         }
 

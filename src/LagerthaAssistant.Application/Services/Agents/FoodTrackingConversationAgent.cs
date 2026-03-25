@@ -447,7 +447,7 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
     {
         if (item.CurrentQuantity.HasValue)
         {
-            return $" [{item.CurrentQuantity.Value.ToString("0.###", CultureInfo.InvariantCulture)}]";
+            return $" [{item.CurrentQuantity.Value.ToString("0.##", CultureInfo.InvariantCulture)}]";
         }
 
         return string.IsNullOrWhiteSpace(item.Quantity)

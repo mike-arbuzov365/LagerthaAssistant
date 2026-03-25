@@ -752,6 +752,36 @@ public sealed class FoodSyncServiceTests
     }
 
     [Fact]
+    public async Task SyncInventoryChangesToNotionAsync_ShouldUpgradeLocalInventoryId_BeforeUpdate()
+    {
+        var pendingItem = new FoodItem
+        {
+            Id = 26,
+            NotionPageId = "local:inv-26",
+            Name = "Hake fillet",
+            Category = "Lagertha Inbox",
+            IconEmoji = "🐟",
+            Store = "ATB",
+            Price = 179m,
+            CurrentQuantity = 1.54m,
+            NotionSyncStatus = FoodSyncStatus.Pending
+        };
+        var foodRepo = new FakeFoodItemRepository { PendingItems = [pendingItem] };
+        var notion = new FakeNotionFoodClient();
+        var sut = CreateSut(notion: notion, foodRepo: foodRepo);
+
+        var synced = await sut.SyncInventoryChangesToNotionAsync(take: 10);
+
+        Assert.Equal(1, synced);
+        Assert.Equal("fake-inv-page-id", pendingItem.NotionPageId);
+        Assert.Equal("fake-inv-page-id", notion.LastQuantityPageId);
+        Assert.Equal("Hake fillet", notion.LastCreatedName);
+        Assert.Equal("Lagertha Inbox", notion.LastCreatedInventoryCategory);
+        Assert.Equal("🐟", notion.LastCreatedInventoryIcon);
+        Assert.Equal("1.54", notion.LastCreatedQuantity);
+    }
+
+    [Fact]
     public async Task SyncInventoryChangesToNotionAsync_ShouldMarkFailed_WhenNotionThrows()
     {
         var pendingItem = new FoodItem
@@ -1333,6 +1363,8 @@ public sealed class FoodSyncServiceTests
         public string? LastCreatedName { get; private set; }
         public string? LastCreatedQuantity { get; private set; }
         public string? LastCreatedStore { get; private set; }
+        public string? LastCreatedInventoryCategory { get; private set; }
+        public string? LastCreatedInventoryIcon { get; private set; }
 
         public Task<IReadOnlyList<NotionPage>> GetInventoryAsync(CancellationToken cancellationToken = default)
         {
@@ -1376,8 +1408,22 @@ public sealed class FoodSyncServiceTests
             return Task.FromResult(UpdateInventoryTimestamp);
         }
 
-        public Task<string> CreateInventoryItemAsync(string name, string? store, decimal? price, string? quantityText, CancellationToken cancellationToken = default)
-            => Task.FromResult("fake-inv-page-id");
+        public Task<string> CreateInventoryItemAsync(
+            string name,
+            string? store,
+            decimal? price,
+            string? quantityText,
+            string? category = null,
+            string? iconEmoji = null,
+            CancellationToken cancellationToken = default)
+        {
+            LastCreatedName = name;
+            LastCreatedQuantity = quantityText;
+            LastCreatedStore = store;
+            LastCreatedInventoryCategory = category;
+            LastCreatedInventoryIcon = iconEmoji;
+            return Task.FromResult("fake-inv-page-id");
+        }
 
         public Task ArchivePageAsync(string notionPageId, CancellationToken cancellationToken = default)
         {

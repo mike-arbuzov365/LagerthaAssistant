@@ -209,6 +209,8 @@ public sealed class NotionFoodClient : INotionFoodClient
         string? store,
         decimal? price,
         string? quantityText,
+        string? category = null,
+        string? iconEmoji = null,
         CancellationToken cancellationToken = default)
     {
         var url = $"{_options.ApiBaseUrl}/pages";
@@ -221,6 +223,11 @@ public sealed class NotionFoodClient : INotionFoodClient
         if (!string.IsNullOrWhiteSpace(store))
         {
             properties["Store"] = new { select = new { name = store.Trim() } };
+        }
+
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            properties["Category"] = new { select = new { name = category.Trim() } };
         }
 
         if (price.HasValue)
@@ -236,11 +243,22 @@ public sealed class NotionFoodClient : INotionFoodClient
             };
         }
 
-        var body = JsonSerializer.Serialize(new
+        var payload = new Dictionary<string, object>
         {
-            parent = new { database_id = _options.InventoryDatabaseId },
-            properties
-        });
+            ["parent"] = new { database_id = _options.InventoryDatabaseId },
+            ["properties"] = properties
+        };
+
+        if (!string.IsNullOrWhiteSpace(iconEmoji))
+        {
+            payload["icon"] = new
+            {
+                type = "emoji",
+                emoji = iconEmoji.Trim()
+            };
+        }
+
+        var body = JsonSerializer.Serialize(payload);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {

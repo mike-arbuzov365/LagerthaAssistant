@@ -37,5 +37,12 @@ public interface INotionFoodClient
     /// Creates a new page in the Notion Inventory database.
     /// Returns the new page ID.
     /// </summary>
-    Task<string> CreateInventoryItemAsync(string name, string? store, decimal? price, string? quantityText, CancellationToken cancellationToken = default);
+    Task<string> CreateInventoryItemAsync(
+        string name,
+        string? store,
+        decimal? price,
+        string? quantityText,
+        string? category = null,
+        string? iconEmoji = null,
+        CancellationToken cancellationToken = default);
 }

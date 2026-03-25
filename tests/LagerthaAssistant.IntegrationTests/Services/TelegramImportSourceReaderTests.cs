@@ -203,8 +203,8 @@ public sealed class TelegramImportSourceReaderTests
 
         Assert.True(result.Success);
         Assert.Single(result.Candidates);
-        Assert.Equal(189.50m, result.Candidates[0].PriceTotal);
-        Assert.Equal(94.75m, result.Candidates[0].PricePerUnit);
+        Assert.Equal(190m, result.Candidates[0].PriceTotal);
+        Assert.Equal(95m, result.Candidates[0].PricePerUnit);
     }
 
     [Fact]
@@ -226,7 +226,7 @@ public sealed class TelegramImportSourceReaderTests
         Assert.Single(result.Unknown);
         Assert.Equal("Сосиски", result.Unknown[0].Name);
         Assert.Equal("Sausages", result.Unknown[0].NameEn);
-        Assert.Equal(74.80m, result.Unknown[0].PriceTotal);
+        Assert.Equal(75m, result.Unknown[0].PriceTotal);
         Assert.Equal(200.00m, result.Unknown[0].PricePerUnit);
     }
 

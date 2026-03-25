@@ -184,6 +184,7 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         prompt.AppendLine("- Receipt items in Ukrainian; inventory names in English. Match Ukrainian receipt text to English inventory names.");
         prompt.AppendLine("- store: detect store/shop name from receipt header. name=original language, nameEn=English translation. Omit if not a receipt or store not detected.");
         prompt.AppendLine("- priceTotal: total price for the line item from receipt. pricePerUnit: price per kg/L/pcs. Omit both if not a receipt or prices not visible.");
+        prompt.AppendLine("- If both regular and discounted prices are present, ALWAYS return the discounted/final paid price.");
         prompt.AppendLine("- For unknown items: name=original language from receipt, nameEn=English translation (concise product name, no brand). isNonProduct=true for bags, packaging, delivery fees, discounts, loyalty cards — anything that is NOT an actual food/household product.");
         prompt.AppendLine("- Do NOT include non-product items in the unknown list. Only include actual food or household products that could be added to inventory.");
         if (!string.IsNullOrWhiteSpace(ocrText))
@@ -916,7 +917,7 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
             result.Add(new TelegramInventoryPhotoCandidate(
                 itemId,
                 name,
-                Math.Round(quantity, 3, MidpointRounding.AwayFromZero),
+                Math.Round(quantity, 2, MidpointRounding.AwayFromZero),
                 unit,
                 Math.Clamp(confidence, 0d, 1d),
                 priceTotal,
@@ -963,7 +964,7 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
             result.Add(new TelegramInventoryPhotoUnknown(
                 Name: name.Trim(),
                 NameEn: nameEn?.Trim(),
-                Quantity: Math.Round(quantity, 3, MidpointRounding.AwayFromZero),
+                Quantity: Math.Round(quantity, 2, MidpointRounding.AwayFromZero),
                 Unit: unit,
                 Confidence: Math.Clamp(confidence, 0d, 1d),
                 PriceTotal: priceTotal,
@@ -1024,7 +1025,7 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
     private static decimal? TryGetNullableDecimal(JsonElement element, string propertyName)
     {
         return TryGetDecimal(element, propertyName, out var value) && value > 0m
-            ? Math.Round(value, 2, MidpointRounding.AwayFromZero)
+            ? Math.Round(value, 0, MidpointRounding.AwayFromZero)
             : null;
     }
 

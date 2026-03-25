@@ -89,8 +89,10 @@ public sealed class TelegramController : ControllerBase
         ["Home & Cleaning"] = "🧽",
         ["Meat & Seafood"] = "🥩",
         ["Pantry"] = "🥖",
-        ["Produce"] = "🥬"
+        ["Produce"] = "🥬",
+        ["Lagertha Inbox"] = "📥"
     };
+    private const string DefaultUnknownInventoryCategory = "Lagertha Inbox";
 
     private readonly TelegramPendingStateStore _pendingStateStore;
 
@@ -4006,16 +4008,24 @@ public sealed class TelegramController : ControllerBase
                 .Where(entry => entry.NameEn is not null || entry.Name is not null)
                 .OrderByDescending(entry => entry.Confidence)
                 .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
-                .Select((entry, index) => new PendingInventoryPhotoUnknown(
-                    Number: index + 1,
-                    entry.Name,
-                    entry.NameEn,
-                    entry.Quantity,
-                    entry.Unit,
-                    entry.Confidence,
-                    entry.PriceTotal,
-                    entry.PricePerUnit,
-                    entry.IsNonProduct))
+                .Select((entry, index) =>
+                {
+                    var resolvedName = string.IsNullOrWhiteSpace(entry.NameEn) ? entry.Name : entry.NameEn!;
+                    var (_, iconEmoji) = ResolveUnknownCategoryAndIcon(resolvedName);
+
+                    return new PendingInventoryPhotoUnknown(
+                        Number: index + 1,
+                        entry.Name,
+                        entry.NameEn,
+                        entry.Quantity,
+                        entry.Unit,
+                        entry.Confidence,
+                        entry.PriceTotal,
+                        entry.PricePerUnit,
+                        entry.IsNonProduct,
+                        Category: DefaultUnknownInventoryCategory,
+                        IconEmoji: iconEmoji);
+                })
                 .ToList();
 
             if (candidates.Count == 0 && unknown.Count == 0)
@@ -4219,7 +4229,7 @@ public sealed class TelegramController : ControllerBase
                             update.Value,
                             cancellationToken);
 
-                    var quantityText = updated.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
+                    var quantityText = updated.CurrentQuantity?.ToString("0.##", CultureInfo.InvariantCulture) ?? "0";
                     var successText = StripLeadingStatusMarkers(
                         _navigationPresenter.GetText("inventory.adjust.done", locale, updated.Name, quantityText),
                         out _);
@@ -4281,7 +4291,7 @@ public sealed class TelegramController : ControllerBase
                         cancellationToken);
 
                     currentMinById[updated.Id] = updated.MinQuantity ?? targetMin;
-                    var minQuantityText = updated.MinQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
+                    var minQuantityText = updated.MinQuantity?.ToString("0.##", CultureInfo.InvariantCulture) ?? "0";
                     var successText = StripLeadingStatusMarkers(
                         _navigationPresenter.GetText("inventory.min.done", locale, updated.Name, minQuantityText),
                         out _);
@@ -5046,7 +5056,7 @@ public sealed class TelegramController : ControllerBase
     {
         if (item.CurrentQuantity.HasValue)
         {
-            return $" [{item.CurrentQuantity.Value.ToString("0.###", CultureInfo.InvariantCulture)}]";
+            return $" [{item.CurrentQuantity.Value.ToString("0.##", CultureInfo.InvariantCulture)}]";
         }
 
         return string.IsNullOrWhiteSpace(item.Quantity)
@@ -5104,6 +5114,80 @@ public sealed class TelegramController : ControllerBase
         return $"📦 {name}";
     }
 
+    private static string BuildUnknownDisplayName(PendingInventoryPhotoUnknown entry)
+    {
+        var iconPrefix = string.IsNullOrWhiteSpace(entry.IconEmoji) ? "📦 " : $"{entry.IconEmoji} ";
+        var original = entry.Name;
+        if (string.IsNullOrWhiteSpace(entry.NameEn))
+        {
+            return iconPrefix + original;
+        }
+
+        var english = entry.NameEn;
+        return $"{iconPrefix}🔹 \"{english}\" ({original})";
+    }
+
+    private static (string Category, string IconEmoji) ResolveUnknownCategoryAndIcon(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return (DefaultUnknownInventoryCategory, "📦");
+        }
+
+        var normalized = name.Trim().ToLowerInvariant();
+        if (normalized.Contains("beer", StringComparison.Ordinal)
+            || normalized.Contains("wine", StringComparison.Ordinal)
+            || normalized.Contains("juice", StringComparison.Ordinal)
+            || normalized.Contains("water", StringComparison.Ordinal))
+        {
+            return ("Beverages", "🍺");
+        }
+
+        if (normalized.Contains("milk", StringComparison.Ordinal)
+            || normalized.Contains("cheese", StringComparison.Ordinal)
+            || normalized.Contains("yogurt", StringComparison.Ordinal)
+            || normalized.Contains("cream", StringComparison.Ordinal))
+        {
+            return ("Dairy", "🧀");
+        }
+
+        if (normalized.Contains("pepper", StringComparison.Ordinal)
+            || normalized.Contains("sauce", StringComparison.Ordinal)
+            || normalized.Contains("mustard", StringComparison.Ordinal)
+            || normalized.Contains("mayo", StringComparison.Ordinal))
+        {
+            return ("Condiments", "🧂");
+        }
+
+        if (normalized.Contains("apple", StringComparison.Ordinal)
+            || normalized.Contains("tomato", StringComparison.Ordinal)
+            || normalized.Contains("onion", StringComparison.Ordinal)
+            || normalized.Contains("potato", StringComparison.Ordinal)
+            || normalized.Contains("cucumber", StringComparison.Ordinal)
+            || normalized.Contains("banana", StringComparison.Ordinal))
+        {
+            return ("Produce", "🥬");
+        }
+
+        if (normalized.Contains("chicken", StringComparison.Ordinal)
+            || normalized.Contains("beef", StringComparison.Ordinal)
+            || normalized.Contains("fish", StringComparison.Ordinal)
+            || normalized.Contains("shrimp", StringComparison.Ordinal))
+        {
+            return ("Meat & Seafood", "🥩");
+        }
+
+        if (normalized.Contains("bread", StringComparison.Ordinal)
+            || normalized.Contains("pasta", StringComparison.Ordinal)
+            || normalized.Contains("flour", StringComparison.Ordinal)
+            || normalized.Contains("rice", StringComparison.Ordinal))
+        {
+            return ("Pantry", "🥖");
+        }
+
+        return (DefaultUnknownInventoryCategory, "📦");
+    }
+
     private string BuildInventoryPhotoPreviewText(
         string locale,
         TelegramInventoryPhotoMode mode,
@@ -5119,6 +5203,7 @@ public sealed class TelegramController : ControllerBase
 
         if (session is { DetectedStoreNameEn: not null })
         {
+            sb.AppendLine();
             sb.AppendLine($"🏪 {_navigationPresenter.GetText("inventory.photo.preview.store", locale, session.DetectedStoreNameEn)}");
         }
 
@@ -5127,10 +5212,10 @@ public sealed class TelegramController : ControllerBase
         foreach (var candidate in candidates)
         {
             var sign = mode == TelegramInventoryPhotoMode.Consumption ? "-" : "+";
-            var quantity = candidate.Quantity.ToString("0.###", CultureInfo.InvariantCulture);
+            var quantity = candidate.Quantity.ToString("0.##", CultureInfo.InvariantCulture);
             var unit = string.IsNullOrWhiteSpace(candidate.Unit) ? string.Empty : $" {candidate.Unit}";
             var priceSuffix = candidate.PricePerUnit.HasValue
-                ? $" 💰{candidate.PricePerUnit.Value:0.##}/{(string.IsNullOrWhiteSpace(candidate.Unit) ? "pcs" : candidate.Unit)}"
+                ? $" 💰{candidate.PricePerUnit.Value:0}/{(string.IsNullOrWhiteSpace(candidate.Unit) ? "pcs" : candidate.Unit)}"
                 : string.Empty;
             sb.AppendLine(_navigationPresenter.GetText(
                 "inventory.photo.preview.item",
@@ -5148,13 +5233,11 @@ public sealed class TelegramController : ControllerBase
             sb.AppendLine(EnsureWarningMarker(_navigationPresenter.GetText("inventory.photo.preview.unknown_title", locale)));
             foreach (var entry in unknown)
             {
-                var displayName = !string.IsNullOrWhiteSpace(entry.NameEn)
-                    ? $"{entry.NameEn} ({entry.Name})"
-                    : entry.Name;
-                var quantity = entry.Quantity.ToString("0.###", CultureInfo.InvariantCulture);
+                var displayName = BuildUnknownDisplayName(entry);
+                var quantity = entry.Quantity.ToString("0.##", CultureInfo.InvariantCulture);
                 var unit = string.IsNullOrWhiteSpace(entry.Unit) ? string.Empty : $" {entry.Unit}";
                 var priceSuffix = entry.PricePerUnit.HasValue
-                    ? $" 💰{entry.PricePerUnit.Value:0.##}/{(string.IsNullOrWhiteSpace(entry.Unit) ? "pcs" : entry.Unit)}"
+                    ? $" 💰{entry.PricePerUnit.Value:0}/{(string.IsNullOrWhiteSpace(entry.Unit) ? "pcs" : entry.Unit)}"
                     : string.Empty;
                 sb.AppendLine(_navigationPresenter.GetText(
                     "inventory.photo.preview.unknown_item",
@@ -5214,12 +5297,13 @@ public sealed class TelegramController : ControllerBase
                     candidate.ItemId, candidate.PricePerUnit, session.ResolvedStoreName, cancellationToken);
             }
 
-            var quantityText = updated.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
+            var quantityText = updated.CurrentQuantity?.ToString("0.##", CultureInfo.InvariantCulture) ?? "0";
             summaryLines.Add(_navigationPresenter.GetText("inventory.photo.applied.item", locale, updated.Name, quantityText, signedDelta > 0 ? "+" : "-"));
         }
 
         var summary = new StringBuilder();
         summary.AppendLine($"✅ {_navigationPresenter.GetText("inventory.photo.applied", locale, summaryLines.Count)}");
+        summary.AppendLine();
         foreach (var line in summaryLines)
         {
             summary.AppendLine(line);
@@ -5309,13 +5393,11 @@ public sealed class TelegramController : ControllerBase
             sb.AppendLine($"📦 {_navigationPresenter.GetText("inventory.photo.unknown.offer_title", locale, session.Unknown.Count)}");
             foreach (var entry in session.Unknown)
             {
-                var displayName = !string.IsNullOrWhiteSpace(entry.NameEn)
-                    ? $"{entry.NameEn} ({entry.Name})"
-                    : entry.Name;
-                var quantity = entry.Quantity.ToString("0.###", CultureInfo.InvariantCulture);
+                var displayName = BuildUnknownDisplayName(entry);
+                var quantity = entry.Quantity.ToString("0.##", CultureInfo.InvariantCulture);
                 var unit = string.IsNullOrWhiteSpace(entry.Unit) ? string.Empty : $" {entry.Unit}";
                 var priceSuffix = entry.PricePerUnit.HasValue
-                    ? $", 💰{entry.PricePerUnit.Value:0.##}/{(string.IsNullOrWhiteSpace(entry.Unit) ? "pcs" : entry.Unit)}"
+                    ? $", 💰{entry.PricePerUnit.Value:0}/{(string.IsNullOrWhiteSpace(entry.Unit) ? "pcs" : entry.Unit)}"
                     : string.Empty;
                 sb.AppendLine($"{entry.Number}) {displayName} — {quantity}{unit}{priceSuffix}");
             }
@@ -5377,8 +5459,10 @@ public sealed class TelegramController : ControllerBase
                 session.ResolvedStoreName,
                 unknown.PricePerUnit,
                 unknown.Quantity,
+                unknown.Category,
+                unknown.IconEmoji,
                 cancellationToken);
-            addedLines.Add($"  📦 {created.Name}" + (created.Price.HasValue ? $" 💰{created.Price.Value:0.##}" : string.Empty));
+            addedLines.Add($"  {BuildInventoryItemTitle(created)}" + (created.Price.HasValue ? $" 💰{created.Price.Value:0}" : string.Empty));
         }
 
         _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
