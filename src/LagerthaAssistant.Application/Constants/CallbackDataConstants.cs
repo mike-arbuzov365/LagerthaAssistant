@@ -105,6 +105,13 @@ public static class CallbackDataConstants
         public const string PhotoApplyAll = "inventory:photo:apply_all";
         public const string PhotoSelect = "inventory:photo:select";
         public const string PhotoCancel = "inventory:photo:cancel";
+        public const string PhotoStoreAdd = "inventory:photo:store:add";
+        public const string PhotoStoreSkip = "inventory:photo:store:skip";
+        public const string PhotoStoreSelectPrefix = "inventory:photo:store:sel:";
+        public const string PhotoStorePickExisting = "inventory:photo:store:pick";
+        public const string PhotoUnknownAddAll = "inventory:photo:unknown:add_all";
+        public const string PhotoUnknownSelect = "inventory:photo:unknown:select";
+        public const string PhotoUnknownSkip = "inventory:photo:unknown:skip";
         public const string CartPrefix = "inventory:cart:";
     }
 

@@ -122,7 +122,166 @@ public sealed class TelegramImportSourceReaderTests
         Assert.Contains("API key", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
+    // ── ParseDetectedStore ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldParseDetectedStore_FromJson()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/receipt.jpg", [1, 2, 3, 4]);
+        handler.OpenAiResponseJson = """{"store":{"name":"АТБ","nameEn":"ATB","confidence":0.92},"candidates":[],"unknown":[]}""";
+
+        var sut = CreateSutWithOpenAi(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems: [new TelegramInventoryItemHint(1, "Milk")],
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.DetectedStore);
+        Assert.Equal("АТБ", result.DetectedStore.Name);
+        Assert.Equal("ATB", result.DetectedStore.NameEn);
+        Assert.Equal(0.92, result.DetectedStore.Confidence, 2);
+    }
+
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldReturnNullStore_WhenNoStoreField()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/receipt.jpg", [1, 2, 3, 4]);
+        handler.OpenAiResponseJson = """{"candidates":[],"unknown":[]}""";
+
+        var sut = CreateSutWithOpenAi(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems: [new TelegramInventoryItemHint(1, "Milk")],
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Null(result.DetectedStore);
+    }
+
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldReturnNullStore_WhenStoreNameIsEmpty()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/receipt.jpg", [1, 2, 3, 4]);
+        handler.OpenAiResponseJson = """{"store":{"name":"","nameEn":"","confidence":0.5},"candidates":[],"unknown":[]}""";
+
+        var sut = CreateSutWithOpenAi(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems: [new TelegramInventoryItemHint(1, "Milk")],
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Null(result.DetectedStore);
+    }
+
+    // ── Price fields on candidates and unknown ───────────────────────────────
+
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldParsePrices_OnCandidates()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/receipt.jpg", [1, 2, 3, 4]);
+        handler.OpenAiResponseJson = """{"candidates":[{"itemId":1,"quantity":2,"unit":"pcs","confidence":0.95,"priceTotal":189.50,"pricePerUnit":94.75}],"unknown":[]}""";
+
+        var sut = CreateSutWithOpenAi(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems: [new TelegramInventoryItemHint(1, "Milk")],
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Single(result.Candidates);
+        Assert.Equal(189.50m, result.Candidates[0].PriceTotal);
+        Assert.Equal(94.75m, result.Candidates[0].PricePerUnit);
+    }
+
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldParsePricesAndNameEn_OnUnknownItems()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/receipt.jpg", [1, 2, 3, 4]);
+        handler.OpenAiResponseJson = """{"candidates":[],"unknown":[{"name":"Сосиски","nameEn":"Sausages","quantity":1,"unit":"kg","confidence":0.62,"priceTotal":74.80,"pricePerUnit":200.00}]}""";
+
+        var sut = CreateSutWithOpenAi(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems: [new TelegramInventoryItemHint(1, "Milk")],
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Single(result.Unknown);
+        Assert.Equal("Сосиски", result.Unknown[0].Name);
+        Assert.Equal("Sausages", result.Unknown[0].NameEn);
+        Assert.Equal(74.80m, result.Unknown[0].PriceTotal);
+        Assert.Equal(200.00m, result.Unknown[0].PricePerUnit);
+    }
+
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldSkipUnknown_WhenMarkedAsNonProduct()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/receipt.jpg", [1, 2, 3, 4]);
+        handler.OpenAiResponseJson =
+            """{"candidates":[],"unknown":[{"name":"Bag","nameEn":"Bag","quantity":1,"unit":"pcs","confidence":0.9,"isNonProduct":true},{"name":"Сосиски","nameEn":"Sausages","quantity":1,"unit":"kg","confidence":0.8,"isNonProduct":false}],"nonProducts":["Bag"]}""";
+
+        var sut = CreateSutWithOpenAi(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems: [new TelegramInventoryItemHint(1, "Milk")],
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Single(result.Unknown);
+        Assert.Equal("Sausages", result.Unknown[0].NameEn);
+    }
+
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldParseNonProductsArray()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/receipt.jpg", [1, 2, 3, 4]);
+        handler.OpenAiResponseJson =
+            """{"store":{"name":"АТБ","nameEn":"ATB","confidence":0.9},"candidates":[],"unknown":[],"nonProducts":["Bag","Delivery"]}""";
+
+        var sut = CreateSutWithOpenAi(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems: [new TelegramInventoryItemHint(1, "Milk")],
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(["Bag", "Delivery"], result.NonProducts);
+    }
+
     private static ITelegramImportSourceReader CreateSut(HttpMessageHandler handler)
+    {
+        return CreateSutInternal(handler, apiKey: null);
+    }
+
+    private static ITelegramImportSourceReader CreateSutWithOpenAi(HttpMessageHandler handler)
+    {
+        return CreateSutInternal(handler, apiKey: "test-key");
+    }
+
+    private static ITelegramImportSourceReader CreateSutInternal(HttpMessageHandler handler, string? apiKey)
     {
         var readerType = typeof(TelegramController).Assembly.GetType(
             "LagerthaAssistant.Api.Services.TelegramImportSourceReader",
@@ -142,7 +301,7 @@ public sealed class TelegramImportSourceReaderTests
             }),
             new OpenAiOptions
             {
-                ApiKey = null
+                ApiKey = apiKey
             },
             loggerInstance)!;
     }
@@ -291,6 +450,12 @@ public sealed class TelegramImportSourceReaderTests
     {
         private readonly Dictionary<string, (string Path, byte[] Content)> _files = new(StringComparer.Ordinal);
 
+        /// <summary>
+        /// When set, any POST to an OpenAI chat/completions endpoint will return this JSON
+        /// wrapped in a standard chat completion response envelope.
+        /// </summary>
+        public string? OpenAiResponseJson { get; set; }
+
         public void AddFile(string fileId, string filePath, byte[] bytes)
         {
             _files[fileId] = (filePath, bytes);
@@ -300,6 +465,24 @@ public sealed class TelegramImportSourceReaderTests
         {
             var uri = request.RequestUri ?? throw new InvalidOperationException("Request URI is missing.");
             var pathAndQuery = uri.PathAndQuery;
+
+            // Intercept OpenAI chat/completions calls
+            if (OpenAiResponseJson is not null
+                && request.Method == HttpMethod.Post
+                && pathAndQuery.Contains("chat/completions", StringComparison.Ordinal))
+            {
+                var envelope = JsonSerializer.Serialize(new
+                {
+                    choices = new[]
+                    {
+                        new { message = new { content = OpenAiResponseJson } }
+                    }
+                });
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(envelope, Encoding.UTF8, "application/json")
+                });
+            }
 
             if (pathAndQuery.Contains("/getFile?", StringComparison.Ordinal))
             {

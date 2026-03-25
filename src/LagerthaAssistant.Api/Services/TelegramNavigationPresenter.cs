@@ -268,6 +268,38 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             ]);
     }
 
+    public TelegramInlineKeyboardMarkup BuildPhotoStoreResolutionKeyboard(string locale, string storeNameEn)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("inventory.photo.store.add", locale, CallbackDataConstants.Inventory.PhotoStoreAdd)],
+                [Button("inventory.photo.store.pick_existing", locale, CallbackDataConstants.Inventory.PhotoStorePickExisting)],
+                [Button("inventory.photo.store.skip", locale, CallbackDataConstants.Inventory.PhotoStoreSkip)]
+            ]);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildPhotoStorePickExistingKeyboard(string locale, IReadOnlyList<string> stores)
+    {
+        var rows = new List<IReadOnlyList<TelegramInlineKeyboardButton>>();
+        foreach (var store in stores)
+        {
+            rows.Add([new TelegramInlineKeyboardButton(store, CallbackDataConstants.Inventory.PhotoStoreSelectPrefix + store)]);
+        }
+        rows.Add([Button("inventory.photo.store.skip", locale, CallbackDataConstants.Inventory.PhotoStoreSkip)]);
+        return new TelegramInlineKeyboardMarkup(rows);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildPhotoUnknownItemsKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("inventory.photo.unknown.add_all", locale, CallbackDataConstants.Inventory.PhotoUnknownAddAll)],
+                [Button("inventory.photo.unknown.select", locale, CallbackDataConstants.Inventory.PhotoUnknownSelect), Button("inventory.photo.unknown.skip", locale, CallbackDataConstants.Inventory.PhotoUnknownSkip)]
+            ]);
+    }
+
     public TelegramInlineKeyboardMarkup BuildNotionKeyboard(string locale)
     {
         return new TelegramInlineKeyboardMarkup(

@@ -412,7 +412,7 @@ public sealed class FoodSyncService : IFoodSyncService
 
                 var quantityText = item.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture);
                 var notionTimestamp = await _notionClient.UpdateInventoryItemAsync(
-                    item.NotionPageId, quantityText, item.MinQuantity, cancellationToken);
+                    item.NotionPageId, quantityText, item.MinQuantity, item.Price, item.Store, cancellationToken);
 
                 item.NotionSyncStatus = FoodSyncStatus.Synced;
                 item.NotionSyncedAt = DateTime.UtcNow;

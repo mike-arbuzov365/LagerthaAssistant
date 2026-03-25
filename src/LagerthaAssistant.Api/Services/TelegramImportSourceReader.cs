@@ -119,12 +119,12 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         var download = await DownloadTelegramFileAsync(photoFileId, MaxPhotoBytes, cancellationToken);
         if (!download.Success)
         {
-            return new TelegramInventoryPhotoAnalysisResult(false, [], [], download.Error);
+            return new TelegramInventoryPhotoAnalysisResult(false, [], [], Error: download.Error);
         }
 
         if (string.IsNullOrWhiteSpace(_openAiOptions.ApiKey))
         {
-            return new TelegramInventoryPhotoAnalysisResult(false, [], [], "OpenAI API key is not configured.");
+            return new TelegramInventoryPhotoAnalysisResult(false, [], [], Error: "OpenAI API key is not configured.");
         }
 
         var inventoryLookup = inventoryItems.ToDictionary(x => x.Id, x => x.Name);
@@ -162,13 +162,18 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         prompt.AppendLine("Use only inventory IDs from the list below.");
         prompt.AppendLine("The image can be either products on a table OR a receipt photo.");
         prompt.AppendLine("Return strict JSON only:");
-        prompt.AppendLine("{\"candidates\":[{\"itemId\":20,\"quantity\":2,\"unit\":\"pcs\",\"confidence\":0.91}],\"unknown\":[{\"name\":\"item\",\"quantity\":1,\"unit\":\"pcs\",\"confidence\":0.62}]}");
+        prompt.AppendLine("{\"store\":{\"name\":\"Store Name\",\"nameEn\":\"Store Name In English\",\"confidence\":0.95},\"candidates\":[{\"itemId\":20,\"quantity\":2,\"unit\":\"pcs\",\"confidence\":0.91,\"priceTotal\":189.50,\"pricePerUnit\":251.66}],\"unknown\":[{\"name\":\"Sausages\",\"nameEn\":\"Sausages\",\"quantity\":1,\"unit\":\"kg\",\"confidence\":0.62,\"priceTotal\":74.80,\"pricePerUnit\":200.00,\"isNonProduct\":false}],\"nonProducts\":[\"Bag\"]}");
         prompt.AppendLine("Rules:");
         prompt.AppendLine("- quantity must be > 0.");
         prompt.AppendLine("- if image is a receipt and mode=restock, infer quantities from line items; if qty is missing, default to 1.");
         prompt.AppendLine("- confidence range 0..1.");
         prompt.AppendLine("- unknown list only for products not present in the inventory list.");
         prompt.AppendLine("- no markdown, no commentary.");
+        prompt.AppendLine("- Receipt items in Ukrainian; inventory names in English. Match Ukrainian receipt text to English inventory names.");
+        prompt.AppendLine("- store: detect store/shop name from receipt header. name=original language, nameEn=English translation. Omit if not a receipt or store not detected.");
+        prompt.AppendLine("- priceTotal: total price for the line item from receipt. pricePerUnit: price per kg/L/pcs. Omit both if not a receipt or prices not visible.");
+        prompt.AppendLine("- For unknown items: name=original language from receipt, nameEn=English translation (concise product name, no brand). isNonProduct=true for bags, packaging, delivery fees, discounts, loyalty cards — anything that is NOT an actual food/household product.");
+        prompt.AppendLine("- Do NOT include non-product items in the unknown list. Only include actual food or household products that could be added to inventory.");
         if (!string.IsNullOrWhiteSpace(ocrText))
         {
             prompt.AppendLine("OCR text extracted from image (use as extra signal):");
@@ -228,7 +233,7 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
                 false,
                 [],
                 [],
-                $"Inventory photo analysis request failed ({(int)response.StatusCode}).");
+                Error: $"Inventory photo analysis request failed ({(int)response.StatusCode}).");
         }
 
         try
@@ -237,7 +242,7 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
             var assistantText = ExtractAssistantText(completionDoc.RootElement);
             if (string.IsNullOrWhiteSpace(assistantText))
             {
-                return new TelegramInventoryPhotoAnalysisResult(false, [], [], "Empty response from Vision API.");
+                return new TelegramInventoryPhotoAnalysisResult(false, [], [], Error: "Empty response from Vision API.");
             }
 
             var normalizedJson = NormalizeJsonPayload(assistantText);
@@ -246,12 +251,19 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
 
             var candidates = ParseInventoryCandidates(root, inventoryLookup);
             var unknown = ParseInventoryUnknown(root);
-            return new TelegramInventoryPhotoAnalysisResult(true, candidates, unknown);
+            var nonProducts = ParseNonProducts(root);
+            var detectedStore = ParseDetectedStore(root);
+            return new TelegramInventoryPhotoAnalysisResult(
+                Success: true,
+                Candidates: candidates,
+                Unknown: unknown,
+                DetectedStore: detectedStore,
+                NonProducts: nonProducts);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to parse inventory photo analysis response.");
-            return new TelegramInventoryPhotoAnalysisResult(false, [], [], "Failed to parse inventory photo response.");
+            return new TelegramInventoryPhotoAnalysisResult(false, [], [], Error: "Failed to parse inventory photo response.");
         }
     }
 
@@ -872,13 +884,17 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
 
             var unit = TryGetString(element, "unit");
             var confidence = TryGetDouble(element, "confidence", 0.75);
+            var priceTotal = TryGetNullableDecimal(element, "priceTotal");
+            var pricePerUnit = TryGetNullableDecimal(element, "pricePerUnit");
 
             result.Add(new TelegramInventoryPhotoCandidate(
                 itemId,
                 name,
                 Math.Round(quantity, 3, MidpointRounding.AwayFromZero),
                 unit,
-                Math.Clamp(confidence, 0d, 1d)));
+                Math.Clamp(confidence, 0d, 1d),
+                priceTotal,
+                pricePerUnit));
         }
 
         return result;
@@ -908,15 +924,108 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
 
             var unit = TryGetString(element, "unit");
             var confidence = TryGetDouble(element, "confidence", 0.5);
+            var nameEn = TryGetString(element, "nameEn");
+            var isNonProduct = TryGetBool(element, "isNonProduct");
+            var priceTotal = TryGetNullableDecimal(element, "priceTotal");
+            var pricePerUnit = TryGetNullableDecimal(element, "pricePerUnit");
+
+            if (isNonProduct)
+            {
+                continue;
+            }
 
             result.Add(new TelegramInventoryPhotoUnknown(
-                name.Trim(),
-                Math.Round(quantity, 3, MidpointRounding.AwayFromZero),
-                unit,
-                Math.Clamp(confidence, 0d, 1d)));
+                Name: name.Trim(),
+                NameEn: nameEn?.Trim(),
+                Quantity: Math.Round(quantity, 3, MidpointRounding.AwayFromZero),
+                Unit: unit,
+                Confidence: Math.Clamp(confidence, 0d, 1d),
+                PriceTotal: priceTotal,
+                PricePerUnit: pricePerUnit,
+                IsNonProduct: isNonProduct));
         }
 
         return result;
+    }
+
+    private static IReadOnlyList<string> ParseNonProducts(JsonElement root)
+    {
+        var result = new List<string>();
+        if (!root.TryGetProperty("nonProducts", out var nonProductsElement)
+            || nonProductsElement.ValueKind != JsonValueKind.Array)
+        {
+            return result;
+        }
+
+        foreach (var element in nonProductsElement.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var value = element.GetString();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            result.Add(value.Trim());
+        }
+
+        return result;
+    }
+
+    private static TelegramInventoryPhotoDetectedStore? ParseDetectedStore(JsonElement root)
+    {
+        if (!root.TryGetProperty("store", out var storeElement)
+            || storeElement.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var name = TryGetString(storeElement, "name");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var nameEn = TryGetString(storeElement, "nameEn");
+        var confidence = TryGetDouble(storeElement, "confidence", 0.5);
+        return new TelegramInventoryPhotoDetectedStore(name.Trim(), nameEn?.Trim(), Math.Clamp(confidence, 0d, 1d));
+    }
+
+    private static decimal? TryGetNullableDecimal(JsonElement element, string propertyName)
+    {
+        return TryGetDecimal(element, propertyName, out var value) && value > 0m
+            ? Math.Round(value, 2, MidpointRounding.AwayFromZero)
+            : null;
+    }
+
+    private static bool TryGetBool(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return false;
+        }
+
+        if (property.ValueKind == JsonValueKind.True)
+        {
+            return true;
+        }
+
+        if (property.ValueKind == JsonValueKind.False)
+        {
+            return false;
+        }
+
+        if (property.ValueKind == JsonValueKind.String
+            && bool.TryParse(property.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return false;
     }
 
     private static string? TryGetString(JsonElement element, string propertyName)

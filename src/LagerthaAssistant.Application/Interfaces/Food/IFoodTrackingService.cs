@@ -23,6 +23,14 @@ public interface IFoodTrackingService
 
     Task<FoodItemDto> SetInventoryMinQuantityAsync(int foodItemId, decimal minQuantity, CancellationToken cancellationToken = default);
 
+    Task<FoodItemDto> UpdateInventoryPriceAndStoreAsync(int foodItemId, decimal? price, string? store, CancellationToken cancellationToken = default);
+
+    /// <summary>Creates a new inventory item locally and in Notion. Returns the created item.</summary>
+    Task<FoodItemDto> AddInventoryItemAsync(string name, string? store, decimal? price, decimal? currentQuantity, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns distinct non-null Store values from inventory.</summary>
+    Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default);
+
     Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default);
 
     /// <summary>Returns inventory items where CurrentQuantity is below MinQuantity.</summary>

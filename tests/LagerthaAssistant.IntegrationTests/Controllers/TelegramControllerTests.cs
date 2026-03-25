@@ -3922,6 +3922,15 @@ public sealed class TelegramControllerTests
                 [new TelegramInlineKeyboardButton("Reset now", CallbackDataConstants.Inventory.ResetStockConfirm)],
                 [new TelegramInlineKeyboardButton("Back", CallbackDataConstants.Food.Inventory)]
             ]);
+
+        public TelegramInlineKeyboardMarkup BuildPhotoStoreResolutionKeyboard(string locale, string storeNameEn)
+            => new([[new TelegramInlineKeyboardButton("Add store", CallbackDataConstants.Inventory.PhotoStoreAdd)]]);
+
+        public TelegramInlineKeyboardMarkup BuildPhotoStorePickExistingKeyboard(string locale, IReadOnlyList<string> stores)
+            => new([[new TelegramInlineKeyboardButton("Pick", CallbackDataConstants.Inventory.PhotoStorePickExisting)]]);
+
+        public TelegramInlineKeyboardMarkup BuildPhotoUnknownItemsKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Add all", CallbackDataConstants.Inventory.PhotoUnknownAddAll)]]);
     }
     private sealed class FakeTelegramFormatter : ITelegramConversationResponseFormatter
     {
@@ -5348,6 +5357,22 @@ public sealed class TelegramControllerTests
             MinOperations.Add((foodItemId, minQuantity));
             return Task.FromResult(found with { MinQuantity = minQuantity });
         }
+
+        public Task<FoodItemDto> UpdateInventoryPriceAndStoreAsync(int foodItemId, decimal? price, string? store, CancellationToken cancellationToken = default)
+        {
+            var found = InventoryItems.FirstOrDefault(x => x.Id == foodItemId)
+                ?? throw new InvalidOperationException($"Food item {foodItemId} not found.");
+            return Task.FromResult(found);
+        }
+
+        public Task<FoodItemDto> AddInventoryItemAsync(string name, string? store, decimal? price, decimal? currentQuantity, CancellationToken cancellationToken = default)
+        {
+            var newItem = new FoodItemDto(InventoryItems.Count + 100, name, null, store, price, null) { CurrentQuantity = currentQuantity };
+            return Task.FromResult(newItem);
+        }
+
+        public Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<string>>(InventoryItems.Where(x => x.Store is not null).Select(x => x.Store!).Distinct().OrderBy(x => x).ToList());
 
         public Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default)
         {

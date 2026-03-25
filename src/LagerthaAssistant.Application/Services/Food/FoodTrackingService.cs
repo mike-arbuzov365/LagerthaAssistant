@@ -203,6 +203,93 @@ public sealed class FoodTrackingService : IFoodTrackingService
         return MapFoodItemToDto(item);
     }
 
+    public async Task<FoodItemDto> UpdateInventoryPriceAndStoreAsync(
+        int foodItemId,
+        decimal? price,
+        string? store,
+        CancellationToken cancellationToken = default)
+    {
+        var item = await _foodItemRepo.GetByIdAsync(foodItemId, cancellationToken)
+            ?? throw new InvalidOperationException($"Food item {foodItemId} not found in inventory.");
+
+        var changed = false;
+
+        if (price.HasValue && price.Value >= 0m)
+        {
+            item.Price = Math.Round(price.Value, 2, MidpointRounding.AwayFromZero);
+            changed = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(store) && !string.Equals(item.Store, store.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            item.Store = store.Trim();
+            changed = true;
+        }
+
+        if (changed)
+        {
+            item.NotionSyncStatus = FoodSyncStatus.Pending;
+            item.NotionUpdatedAt = DateTime.UtcNow;
+            item.NotionLastError = null;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "Updated inventory price/store. FoodItemId={FoodItemId}; Price={Price}; Store={Store}",
+                item.Id, item.Price, item.Store);
+        }
+
+        return MapFoodItemToDto(item);
+    }
+
+    public async Task<FoodItemDto> AddInventoryItemAsync(
+        string name,
+        string? store,
+        decimal? price,
+        decimal? currentQuantity,
+        CancellationToken cancellationToken = default)
+    {
+        string notionPageId;
+        var quantityText = currentQuantity?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+        try
+        {
+            notionPageId = await _notionClient.CreateInventoryItemAsync(name, store, price, quantityText, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create inventory item in Notion; using local id");
+            notionPageId = $"local:{Guid.NewGuid():N}";
+        }
+
+        var item = new FoodItem
+        {
+            Name = name.Trim(),
+            Store = store?.Trim(),
+            Price = price.HasValue ? Math.Round(price.Value, 2, MidpointRounding.AwayFromZero) : null,
+            CurrentQuantity = currentQuantity.HasValue ? Math.Round(currentQuantity.Value, 3, MidpointRounding.AwayFromZero) : null,
+            Quantity = quantityText,
+            NotionPageId = notionPageId,
+            NotionSyncStatus = notionPageId.StartsWith("local:", StringComparison.Ordinal)
+                ? FoodSyncStatus.Pending
+                : FoodSyncStatus.Synced,
+            NotionUpdatedAt = DateTime.UtcNow
+        };
+
+        await _foodItemRepo.AddAsync(item, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Created inventory item. FoodItemId={FoodItemId}; Name={Name}; Store={Store}; Price={Price}",
+            item.Id, item.Name, item.Store, item.Price);
+
+        return MapFoodItemToDto(item);
+    }
+
+    public async Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default)
+    {
+        return await _foodItemRepo.GetDistinctStoresAsync(cancellationToken);
+    }
+
     public async Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(
         int foodItemId,
         string? quantity,

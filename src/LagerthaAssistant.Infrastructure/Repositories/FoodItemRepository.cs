@@ -216,6 +216,25 @@ public sealed class FoodItemRepository : IFoodItemRepository
         }
     }
 
+    public async Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _context.FoodItems
+                .AsNoTracking()
+                .Where(x => x.Store != null)
+                .Select(x => x.Store!)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToListAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for distinct stores", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(FoodItemRepository), RepositoryOperations.GetActive, "Failed to load distinct stores", ex);
+        }
+    }
+
     public async Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
     {
         try

@@ -22,5 +22,7 @@ public interface IFoodItemRepository
 
     Task AddAsync(FoodItem item, CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default);
+
     Task<int> DeleteAllAsync(CancellationToken cancellationToken = default);
 }

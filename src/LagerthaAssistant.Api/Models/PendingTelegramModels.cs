@@ -50,7 +50,9 @@ internal enum PendingChatActionKind
     InventoryAdjustQuantity = 6,
     InventorySetMinQuantity = 7,
     InventoryPhotoAwaitingImage = 8,
-    InventoryPhotoAwaitingSelection = 9
+    InventoryPhotoAwaitingSelection = 9,
+    InventoryPhotoAwaitingStoreResolution = 10,
+    InventoryPhotoAwaitingUnknownSelection = 11
 }
 
 internal sealed record PendingFoodPhotoLog(
@@ -61,7 +63,12 @@ internal sealed record PendingFoodPhotoLog(
 internal sealed record PendingInventoryPhotoSession(
     TelegramInventoryPhotoMode Mode,
     IReadOnlyList<PendingInventoryPhotoCandidate> Candidates,
-    IReadOnlyList<PendingInventoryPhotoUnknown> Unknown);
+    IReadOnlyList<PendingInventoryPhotoUnknown> Unknown,
+    IReadOnlyList<string>? NonProducts = null,
+    string? DetectedStoreName = null,
+    string? DetectedStoreNameEn = null,
+    double? StoreConfidence = null,
+    string? ResolvedStoreName = null);
 
 internal sealed record PendingInventoryPhotoCandidate(
     int Number,
@@ -71,14 +78,20 @@ internal sealed record PendingInventoryPhotoCandidate(
     string? Unit,
     double Confidence,
     string? IconEmoji = null,
-    string? Category = null);
+    string? Category = null,
+    decimal? PriceTotal = null,
+    decimal? PricePerUnit = null);
 
 internal sealed record PendingInventoryPhotoUnknown(
     int Number,
     string Name,
+    string? NameEn,
     decimal Quantity,
     string? Unit,
-    double Confidence);
+    double Confidence,
+    decimal? PriceTotal = null,
+    decimal? PricePerUnit = null,
+    bool IsNonProduct = false);
 
 internal sealed record PendingShoppingDeleteSession(
     IReadOnlyList<PendingShoppingDeleteCandidate> Candidates);
