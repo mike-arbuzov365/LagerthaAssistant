@@ -40,7 +40,7 @@ builder.Services.AddHttpClient("telegram", client =>
 });
 builder.Services.AddHttpClient("vocab-discovery", client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(20);
+    client.Timeout = TimeSpan.FromSeconds(60);
 });
 builder.Services.AddHttpClient<LagerthaAssistant.Application.Interfaces.Food.INotionFoodClient, LagerthaAssistant.Infrastructure.Services.Food.NotionFoodClient>("notion-food", (sp, client) =>
 {

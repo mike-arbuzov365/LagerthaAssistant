@@ -271,6 +271,45 @@ public sealed class TelegramImportSourceReaderTests
         Assert.Equal(["Bag", "Delivery"], result.NonProducts);
     }
 
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldReturnTimeoutError_WhenOpenAiTimesOut()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/receipt.jpg", [1, 2, 3, 4]);
+        handler.TimeoutOnAllOpenAiCalls = true;
+
+        var sut = CreateSutWithOpenAi(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Consumption,
+            inventoryItems: [new TelegramInventoryItemHint(1, "Milk")],
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("inventory.photo.timeout", result.Error);
+    }
+
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldContinue_WhenOcrTimesOutInRestockMode()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/receipt.jpg", [1, 2, 3, 4]);
+        handler.TimeoutOnOpenAiCallNumber = 1; // OCR call
+        handler.OpenAiResponseJson = """{"candidates":[{"itemId":1,"quantity":1,"unit":"pcs","confidence":0.9}],"unknown":[]}""";
+
+        var sut = CreateSutWithOpenAi(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems: [new TelegramInventoryItemHint(1, "Milk")],
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Single(result.Candidates);
+        Assert.Equal("Milk", result.Candidates[0].Name);
+    }
     private static ITelegramImportSourceReader CreateSut(HttpMessageHandler handler)
     {
         return CreateSutInternal(handler, apiKey: null);
@@ -449,12 +488,15 @@ public sealed class TelegramImportSourceReaderTests
     private sealed class StubTelegramFileHttpMessageHandler : HttpMessageHandler
     {
         private readonly Dictionary<string, (string Path, byte[] Content)> _files = new(StringComparer.Ordinal);
+        private int _openAiCalls;
 
         /// <summary>
         /// When set, any POST to an OpenAI chat/completions endpoint will return this JSON
         /// wrapped in a standard chat completion response envelope.
         /// </summary>
         public string? OpenAiResponseJson { get; set; }
+        public bool TimeoutOnAllOpenAiCalls { get; set; }
+        public int? TimeoutOnOpenAiCallNumber { get; set; }
 
         public void AddFile(string fileId, string filePath, byte[] bytes)
         {
@@ -471,6 +513,12 @@ public sealed class TelegramImportSourceReaderTests
                 && request.Method == HttpMethod.Post
                 && pathAndQuery.Contains("chat/completions", StringComparison.Ordinal))
             {
+                _openAiCalls++;
+                if (TimeoutOnAllOpenAiCalls
+                    || (TimeoutOnOpenAiCallNumber.HasValue && TimeoutOnOpenAiCallNumber.Value == _openAiCalls))
+                {
+                    throw new TaskCanceledException("Simulated timeout.");
+                }
                 var envelope = JsonSerializer.Serialize(new
                 {
                     choices = new[]
@@ -484,6 +532,17 @@ public sealed class TelegramImportSourceReaderTests
                 });
             }
 
+            if ((TimeoutOnAllOpenAiCalls || TimeoutOnOpenAiCallNumber.HasValue)
+                && request.Method == HttpMethod.Post
+                && pathAndQuery.Contains("chat/completions", StringComparison.Ordinal))
+            {
+                _openAiCalls++;
+                if (TimeoutOnAllOpenAiCalls
+                    || (TimeoutOnOpenAiCallNumber.HasValue && TimeoutOnOpenAiCallNumber.Value == _openAiCalls))
+                {
+                    throw new TaskCanceledException("Simulated timeout.");
+                }
+            }
             if (pathAndQuery.Contains("/getFile?", StringComparison.Ordinal))
             {
                 var fileId = GetQueryValue(uri.Query, "file_id");
