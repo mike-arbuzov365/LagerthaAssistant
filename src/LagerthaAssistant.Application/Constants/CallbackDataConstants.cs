@@ -92,6 +92,8 @@ public static class CallbackDataConstants
     {
         public const string Prefix = "inventory:";
         public const string List = "inventory:list";
+        public const string ListAvailable = "inventory:list:available";
+        public const string ListMissing = "inventory:list:missing";
         public const string Search = "inventory:search";
         public const string Add = "inventory:add";
         public const string Stats = "inventory:stats";
