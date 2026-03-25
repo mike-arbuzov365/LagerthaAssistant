@@ -3582,7 +3582,9 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
         }
 
-        if (string.Equals(callbackData, CallbackDataConstants.Inventory.List, StringComparison.Ordinal))
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.List, StringComparison.Ordinal)
+            || string.Equals(callbackData, CallbackDataConstants.Inventory.ListAvailable, StringComparison.Ordinal)
+            || string.Equals(callbackData, CallbackDataConstants.Inventory.ListMissing, StringComparison.Ordinal))
         {
             var items = await _foodTrackingService.GetAllInventoryAsync(0, cancellationToken);
             if (items.Count == 0)
@@ -3593,10 +3595,11 @@ public sealed class TelegramController : ControllerBase
                     InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
             }
 
+            var showMissing = string.Equals(callbackData, CallbackDataConstants.Inventory.ListMissing, StringComparison.Ordinal);
             return new TelegramRouteResponse(
                 "inventory.list",
-                BuildInventoryCatalogText(items, locale),
-                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+                BuildInventoryListText(items, locale, showMissing),
+                InlineKeyboard(BuildInventoryListKeyboard(locale, showMissing)));
         }
 
         if (string.Equals(callbackData, CallbackDataConstants.Inventory.Search, StringComparison.Ordinal))
@@ -4008,24 +4011,17 @@ public sealed class TelegramController : ControllerBase
                 .Where(entry => entry.NameEn is not null || entry.Name is not null)
                 .OrderByDescending(entry => entry.Confidence)
                 .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
-                .Select((entry, index) =>
-                {
-                    var resolvedName = string.IsNullOrWhiteSpace(entry.NameEn) ? entry.Name : entry.NameEn!;
-                    var (_, iconEmoji) = ResolveUnknownCategoryAndIcon(resolvedName);
-
-                    return new PendingInventoryPhotoUnknown(
-                        Number: index + 1,
-                        entry.Name,
-                        entry.NameEn,
-                        entry.Quantity,
-                        entry.Unit,
-                        entry.Confidence,
-                        entry.PriceTotal,
-                        entry.PricePerUnit,
-                        entry.IsNonProduct,
-                        Category: DefaultUnknownInventoryCategory,
-                        IconEmoji: iconEmoji);
-                })
+                .Select((entry, index) => new PendingInventoryPhotoUnknown(
+                    Number: index + 1,
+                    entry.Name,
+                    entry.NameEn,
+                    entry.Quantity,
+                    entry.Unit,
+                    entry.Confidence,
+                    entry.PriceTotal,
+                    entry.PricePerUnit,
+                    entry.IsNonProduct,
+                    Category: DefaultUnknownInventoryCategory))
                 .ToList();
 
             if (candidates.Count == 0 && unknown.Count == 0)
@@ -5091,6 +5087,79 @@ public sealed class TelegramController : ControllerBase
         return sb.ToString().TrimEnd();
     }
 
+    private string BuildInventoryListText(IReadOnlyList<FoodItemDto> items, string locale, bool showMissing)
+    {
+        var available = items
+            .Where(IsInventoryItemAvailable)
+            .ToList();
+
+        var filtered = showMissing
+            ? items.Where(item => !IsInventoryItemAvailable(item)).ToList()
+            : available;
+
+        var sb = new StringBuilder();
+        var header = showMissing
+            ? _navigationPresenter.GetText("inventory.list.header.missing", locale, filtered.Count, items.Count)
+            : _navigationPresenter.GetText("inventory.list.header.available", locale, available.Count, items.Count);
+        sb.AppendLine(header);
+        sb.AppendLine();
+
+        if (filtered.Count == 0)
+        {
+            var emptyText = showMissing
+                ? _navigationPresenter.GetText("inventory.list.empty.missing", locale)
+                : _navigationPresenter.GetText("inventory.list.empty.available", locale);
+            sb.AppendLine(EnsureInfoMarker(emptyText));
+            sb.AppendLine();
+        }
+        else
+        {
+            var groups = filtered
+                .GroupBy(item => string.IsNullOrWhiteSpace(item.Category)
+                    ? _navigationPresenter.GetText("inventory.category.uncategorized", locale)
+                    : item.Category!.Trim())
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var group in groups)
+            {
+                sb.AppendLine(BuildInventoryCategoryTitle(group.Key));
+                foreach (var item in group.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    sb.AppendLine($"  [{item.Id}] {BuildInventoryItemTitle(item)}{BuildInventoryQuantitySuffix(item)}");
+                }
+
+                sb.AppendLine();
+            }
+        }
+
+        sb.AppendLine(EnsureQuestionMarker(showMissing
+            ? _navigationPresenter.GetText("inventory.list.prompt.available", locale)
+            : _navigationPresenter.GetText("inventory.list.prompt.missing", locale)));
+        return sb.ToString().TrimEnd();
+    }
+
+    private TelegramInlineKeyboardMarkup BuildInventoryListKeyboard(string locale, bool showingMissing)
+    {
+        var toggleButton = showingMissing
+            ? new TelegramInlineKeyboardButton(
+                _navigationPresenter.GetText("inventory.list.button.available", locale),
+                CallbackDataConstants.Inventory.ListAvailable)
+            : new TelegramInlineKeyboardButton(
+                _navigationPresenter.GetText("inventory.list.button.missing", locale),
+                CallbackDataConstants.Inventory.ListMissing);
+
+        var baseRows = _navigationPresenter.BuildInventoryKeyboard(locale).InlineKeyboard;
+        var rows = new List<IReadOnlyList<TelegramInlineKeyboardButton>>(baseRows.Count + 1)
+        {
+            new[] { toggleButton }
+        };
+        rows.AddRange(baseRows);
+        return new TelegramInlineKeyboardMarkup(rows);
+    }
+
+    private static bool IsInventoryItemAvailable(FoodItemDto item)
+        => item.CurrentQuantity.GetValueOrDefault() > 0;
+
     private static string BuildInventoryCategoryTitle(string category)
     {
         if (CategoryEmojis.TryGetValue(category, out var emoji))
@@ -5116,76 +5185,14 @@ public sealed class TelegramController : ControllerBase
 
     private static string BuildUnknownDisplayName(PendingInventoryPhotoUnknown entry)
     {
-        var iconPrefix = string.IsNullOrWhiteSpace(entry.IconEmoji) ? "📦 " : $"{entry.IconEmoji} ";
         var original = entry.Name;
         if (string.IsNullOrWhiteSpace(entry.NameEn))
         {
-            return iconPrefix + original;
+            return $"🔹{original}";
         }
 
         var english = entry.NameEn;
-        return $"{iconPrefix}🔹 \"{english}\" ({original})";
-    }
-
-    private static (string Category, string IconEmoji) ResolveUnknownCategoryAndIcon(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return (DefaultUnknownInventoryCategory, "📦");
-        }
-
-        var normalized = name.Trim().ToLowerInvariant();
-        if (normalized.Contains("beer", StringComparison.Ordinal)
-            || normalized.Contains("wine", StringComparison.Ordinal)
-            || normalized.Contains("juice", StringComparison.Ordinal)
-            || normalized.Contains("water", StringComparison.Ordinal))
-        {
-            return ("Beverages", "🍺");
-        }
-
-        if (normalized.Contains("milk", StringComparison.Ordinal)
-            || normalized.Contains("cheese", StringComparison.Ordinal)
-            || normalized.Contains("yogurt", StringComparison.Ordinal)
-            || normalized.Contains("cream", StringComparison.Ordinal))
-        {
-            return ("Dairy", "🧀");
-        }
-
-        if (normalized.Contains("pepper", StringComparison.Ordinal)
-            || normalized.Contains("sauce", StringComparison.Ordinal)
-            || normalized.Contains("mustard", StringComparison.Ordinal)
-            || normalized.Contains("mayo", StringComparison.Ordinal))
-        {
-            return ("Condiments", "🧂");
-        }
-
-        if (normalized.Contains("apple", StringComparison.Ordinal)
-            || normalized.Contains("tomato", StringComparison.Ordinal)
-            || normalized.Contains("onion", StringComparison.Ordinal)
-            || normalized.Contains("potato", StringComparison.Ordinal)
-            || normalized.Contains("cucumber", StringComparison.Ordinal)
-            || normalized.Contains("banana", StringComparison.Ordinal))
-        {
-            return ("Produce", "🥬");
-        }
-
-        if (normalized.Contains("chicken", StringComparison.Ordinal)
-            || normalized.Contains("beef", StringComparison.Ordinal)
-            || normalized.Contains("fish", StringComparison.Ordinal)
-            || normalized.Contains("shrimp", StringComparison.Ordinal))
-        {
-            return ("Meat & Seafood", "🥩");
-        }
-
-        if (normalized.Contains("bread", StringComparison.Ordinal)
-            || normalized.Contains("pasta", StringComparison.Ordinal)
-            || normalized.Contains("flour", StringComparison.Ordinal)
-            || normalized.Contains("rice", StringComparison.Ordinal))
-        {
-            return ("Pantry", "🥖");
-        }
-
-        return (DefaultUnknownInventoryCategory, "📦");
+        return $"🔹\"{english}\" ({original})";
     }
 
     private string BuildInventoryPhotoPreviewText(
@@ -5253,10 +5260,11 @@ public sealed class TelegramController : ControllerBase
         if (session?.NonProducts is { Count: > 0 })
         {
             sb.AppendLine();
-            sb.AppendLine(EnsureWarningMarker(_navigationPresenter.GetText(
-                "inventory.photo.preview.non_products",
-                locale,
-                string.Join(", ", session.NonProducts))));
+            sb.AppendLine(EnsureWarningMarker(_navigationPresenter.GetText("inventory.photo.preview.non_products", locale)));
+            for (var index = 0; index < session.NonProducts.Count; index++)
+            {
+                sb.AppendLine($"  {index + 1})🔹{session.NonProducts[index]}");
+            }
         }
 
         sb.AppendLine();
@@ -5460,8 +5468,7 @@ public sealed class TelegramController : ControllerBase
                 unknown.PricePerUnit,
                 unknown.Quantity,
                 unknown.Category,
-                unknown.IconEmoji,
-                cancellationToken);
+                cancellationToken: cancellationToken);
             addedLines.Add($"  {BuildInventoryItemTitle(created)}" + (created.Price.HasValue ? $" 💰{created.Price.Value:0}" : string.Empty));
         }
 
