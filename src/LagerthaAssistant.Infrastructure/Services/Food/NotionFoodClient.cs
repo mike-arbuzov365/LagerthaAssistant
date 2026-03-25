@@ -140,6 +140,7 @@ public sealed class NotionFoodClient : INotionFoodClient
         string name,
         string? quantity,
         string? store,
+        string? inventoryNotionPageId = null,
         CancellationToken cancellationToken = default)
     {
         var url = $"{_options.ApiBaseUrl}/pages";
@@ -160,6 +161,12 @@ public sealed class NotionFoodClient : INotionFoodClient
         if (!string.IsNullOrWhiteSpace(store))
         {
             properties["Store"] = new { select = new { name = store } };
+        }
+
+        if (!string.IsNullOrWhiteSpace(inventoryNotionPageId)
+            && !inventoryNotionPageId.StartsWith("local:", StringComparison.Ordinal))
+        {
+            properties["Inventory"] = new { relation = new[] { new { id = inventoryNotionPageId } } };
         }
 
         var body = JsonSerializer.Serialize(new

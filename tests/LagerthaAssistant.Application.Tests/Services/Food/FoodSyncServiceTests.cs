@@ -1254,7 +1254,7 @@ public sealed class FoodSyncServiceTests
             return Task.CompletedTask;
         }
 
-        public Task<string> CreateGroceryItemAsync(string name, string? quantity, string? store, CancellationToken cancellationToken = default)
+        public Task<string> CreateGroceryItemAsync(string name, string? quantity, string? store, string? inventoryNotionPageId = null, CancellationToken cancellationToken = default)
         {
             if (ShouldThrowOnCreate)
             {

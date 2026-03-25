@@ -30,5 +30,5 @@ public interface INotionFoodClient
     /// Creates a new page in the Notion Grocery List database.
     /// Returns the new page ID.
     /// </summary>
-    Task<string> CreateGroceryItemAsync(string name, string? quantity, string? store, CancellationToken cancellationToken = default);
+    Task<string> CreateGroceryItemAsync(string name, string? quantity, string? store, string? inventoryNotionPageId = null, CancellationToken cancellationToken = default);
 }

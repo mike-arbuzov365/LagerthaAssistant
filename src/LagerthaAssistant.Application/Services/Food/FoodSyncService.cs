@@ -312,10 +312,19 @@ public sealed class FoodSyncService : IFoodSyncService
             {
                 if (IsLocalPageId(item.NotionPageId))
                 {
+                    // Resolve the inventory Notion page ID for the relation link.
+                    string? inventoryNotionPageId = null;
+                    if (item.FoodItemId.HasValue)
+                    {
+                        var foodItem = await _foodItemRepo.GetByIdAsync(item.FoodItemId.Value, cancellationToken);
+                        inventoryNotionPageId = foodItem?.NotionPageId;
+                    }
+
                     var createdPageId = await _notionClient.CreateGroceryItemAsync(
                         item.Name,
                         item.Quantity,
                         item.Store,
+                        inventoryNotionPageId,
                         cancellationToken);
 
                     if (string.IsNullOrWhiteSpace(createdPageId))

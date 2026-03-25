@@ -62,6 +62,9 @@ public sealed class TelegramController : ControllerBase
     private static readonly Regex InventoryPotentialOperationHintRegex = new(
         @"[+\-=]\s*\d",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex InventoryQuantityTokenRegex = new(
+        @"^\d+(?:[.,]\d+)?(?:\s?[a-zA-Z\u0430-\u044f\u0410-\u042f\u0456\u0457\u0454\u0491\u0490]{1,8})?$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex ShoppingDeleteLeadingNumberRegex = new(
         @"^\s*[^\d]*(?<number>\d+)\s*[\)\].:\-]?\s*(?<tail>.*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -5052,6 +5055,11 @@ public sealed class TelegramController : ControllerBase
             ? _navigationPresenter.GetText("food.weekly.view.calories_suffix", locale, caloriesPerServing.Value)
             : string.Empty;
 
+    /// <summary>
+    /// Parses inventory cart selection in formats:
+    /// "45 2" — plain ID + optional quantity
+    /// "[45] 🥛 Milk 2" — bracketed ID (copied from catalog) + optional trailing quantity
+    /// </summary>
     private static bool TryParseInventoryCartSelection(
         string input,
         out int itemId,
@@ -5065,7 +5073,34 @@ public sealed class TelegramController : ControllerBase
             return false;
         }
 
-        var parts = input.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        var trimmed = input.Trim();
+
+        // Try bracketed format first: [45] ... trailing-quantity
+        if (trimmed.StartsWith('['))
+        {
+            var closeBracket = trimmed.IndexOf(']');
+            if (closeBracket > 1
+                && int.TryParse(trimmed.AsSpan(1, closeBracket - 1), NumberStyles.None, CultureInfo.InvariantCulture, out itemId)
+                && itemId > 0)
+            {
+                // Everything after "]" — extract trailing quantity token (last word if it looks numeric)
+                var tail = trimmed[(closeBracket + 1)..].Trim();
+                if (tail.Length > 0)
+                {
+                    var lastSpace = tail.LastIndexOf(' ');
+                    var lastToken = lastSpace >= 0 ? tail[(lastSpace + 1)..] : tail;
+                    if (InventoryQuantityTokenRegex.IsMatch(lastToken))
+                    {
+                        quantity = lastToken;
+                    }
+                }
+
+                return true;
+            }
+        }
+
+        // Plain format: 45 2kg
+        var parts = trimmed.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0 || !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out itemId) || itemId <= 0)
         {
             return false;
