@@ -58,4 +58,10 @@ public interface ITelegramNavigationPresenter
     TelegramInlineKeyboardMarkup BuildInventoryPhotoConfirmKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildInventoryResetStockConfirmationKeyboard(string locale);
+
+    TelegramInlineKeyboardMarkup BuildPhotoStoreResolutionKeyboard(string locale, string storeNameEn);
+
+    TelegramInlineKeyboardMarkup BuildPhotoStorePickExistingKeyboard(string locale, IReadOnlyList<string> stores);
+
+    TelegramInlineKeyboardMarkup BuildPhotoUnknownItemsKeyboard(string locale);
 }

@@ -1074,6 +1074,124 @@ public sealed class FoodTrackingServiceTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => sut.SetInventoryMinQuantityAsync(31, -1m));
     }
 
+    // ── UpdateInventoryPriceAndStoreAsync ───────────────────────────────────
+
+    [Fact]
+    public async Task UpdateInventoryPriceAndStoreAsync_ShouldSetPrice_AndMarkPending()
+    {
+        var item = new FoodItem { Id = 5, Name = "Butter", Price = null, NotionSyncStatus = FoodSyncStatus.Synced };
+        var repo = new FakeFoodItemRepository { AllItems = [item] };
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(foodItemRepo: repo, unitOfWork: uow);
+
+        var result = await sut.UpdateInventoryPriceAndStoreAsync(5, price: 3.99m, store: null);
+
+        Assert.Equal(3.99m, result.Price);
+        Assert.Equal(3.99m, item.Price);
+        Assert.Equal(FoodSyncStatus.Pending, item.NotionSyncStatus);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task UpdateInventoryPriceAndStoreAsync_ShouldSetStore_AndMarkPending()
+    {
+        var item = new FoodItem { Id = 6, Name = "Milk", Store = "Costco", NotionSyncStatus = FoodSyncStatus.Synced };
+        var repo = new FakeFoodItemRepository { AllItems = [item] };
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(foodItemRepo: repo, unitOfWork: uow);
+
+        var result = await sut.UpdateInventoryPriceAndStoreAsync(6, price: null, store: "Walmart");
+
+        Assert.Equal("Walmart", result.Store);
+        Assert.Equal("Walmart", item.Store);
+        Assert.Equal(FoodSyncStatus.Pending, item.NotionSyncStatus);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task UpdateInventoryPriceAndStoreAsync_ShouldNotMarkPending_WhenNoChanges()
+    {
+        var item = new FoodItem { Id = 7, Name = "Eggs", Store = "Costco", Price = 5m, NotionSyncStatus = FoodSyncStatus.Synced };
+        var repo = new FakeFoodItemRepository { AllItems = [item] };
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(foodItemRepo: repo, unitOfWork: uow);
+
+        var result = await sut.UpdateInventoryPriceAndStoreAsync(7, price: null, store: "Costco");
+
+        Assert.Equal(FoodSyncStatus.Synced, item.NotionSyncStatus);
+        Assert.Equal(0, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task UpdateInventoryPriceAndStoreAsync_ShouldThrow_WhenItemNotFound()
+    {
+        var sut = CreateSut();
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.UpdateInventoryPriceAndStoreAsync(999, price: 1m, store: null));
+    }
+
+    // ── AddInventoryItemAsync ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AddInventoryItemAsync_ShouldCreateItem_WithCorrectFields()
+    {
+        var repo = new FakeFoodItemRepository();
+        var uow = new FakeUnitOfWork();
+        var sut = CreateSut(foodItemRepo: repo, unitOfWork: uow);
+
+        var result = await sut.AddInventoryItemAsync("Cheese", "Walmart", 4.50m, 2m);
+
+        Assert.Equal("Cheese", result.Name);
+        Assert.Equal("Walmart", result.Store);
+        Assert.Equal(4.50m, result.Price);
+        Assert.Equal(2m, result.CurrentQuantity);
+        Assert.Single(repo.AllItems);
+        Assert.Equal("Cheese", repo.AllItems[0].Name);
+        Assert.Equal("Walmart", repo.AllItems[0].Store);
+        Assert.Equal(4.50m, repo.AllItems[0].Price);
+        Assert.Equal(2m, repo.AllItems[0].CurrentQuantity);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task AddInventoryItemAsync_ShouldCallCreateInventoryItemAsync_OnNotionClient()
+    {
+        var repo = new FakeFoodItemRepository();
+        var notion = new FakeNotionFoodClient();
+        var sut = CreateSut(foodItemRepo: repo, notionClient: notion);
+
+        await sut.AddInventoryItemAsync("Rice", "Costco", 9.99m, 1m);
+
+        Assert.Equal("fake-inv-page-id", repo.AllItems[0].NotionPageId);
+        Assert.Equal(FoodSyncStatus.Synced, repo.AllItems[0].NotionSyncStatus);
+    }
+
+    [Fact]
+    public async Task AddInventoryItemAsync_ShouldUseLocalPrefix_WhenNotionFails()
+    {
+        var repo = new FakeFoodItemRepository();
+        var notion = new FakeNotionFoodClient { ShouldThrow = true };
+        var sut = CreateSut(foodItemRepo: repo, notionClient: notion);
+
+        await sut.AddInventoryItemAsync("Flour", null, null, null);
+
+        Assert.StartsWith("local:", repo.AllItems[0].NotionPageId, StringComparison.Ordinal);
+        Assert.Equal(FoodSyncStatus.Pending, repo.AllItems[0].NotionSyncStatus);
+    }
+
+    // ── GetDistinctStoresAsync ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetDistinctStoresAsync_ShouldDelegateToRepository()
+    {
+        var repo = new FakeFoodItemRepository();
+        var sut = CreateSut(foodItemRepo: repo);
+
+        var result = await sut.GetDistinctStoresAsync();
+
+        Assert.Empty(result);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static FoodTrackingService CreateSut(
@@ -1141,6 +1259,9 @@ public sealed class FoodTrackingServiceTests
             AllItems.Clear();
             return Task.FromResult(count);
         }
+
+        public Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<string>>([]);
     }
 
     private sealed class FakeMealRepository : IMealRepository
@@ -1315,8 +1436,16 @@ public sealed class FoodTrackingServiceTests
             string notionPageId,
             string? quantityText,
             decimal? minQuantity,
+            decimal? price = null,
+            string? store = null,
             CancellationToken cancellationToken = default)
             => Task.FromResult(DateTime.UtcNow);
+
+        public Task<string> CreateInventoryItemAsync(string name, string? store, decimal? price, string? quantityText, CancellationToken cancellationToken = default)
+        {
+            if (ShouldThrow) throw new HttpRequestException("Notion unavailable");
+            return Task.FromResult("fake-inv-page-id");
+        }
 
         public Task ArchivePageAsync(string notionPageId, CancellationToken cancellationToken = default)
             => Task.CompletedTask;

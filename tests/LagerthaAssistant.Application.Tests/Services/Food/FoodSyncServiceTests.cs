@@ -1361,6 +1361,8 @@ public sealed class FoodSyncServiceTests
             string notionPageId,
             string? quantityText,
             decimal? minQuantity,
+            decimal? price = null,
+            string? store = null,
             CancellationToken cancellationToken = default)
         {
             if (ShouldThrowOnUpdateInventory || notionPageId == FailPageId)
@@ -1373,6 +1375,9 @@ public sealed class FoodSyncServiceTests
             LastMinQuantityValue = minQuantity;
             return Task.FromResult(UpdateInventoryTimestamp);
         }
+
+        public Task<string> CreateInventoryItemAsync(string name, string? store, decimal? price, string? quantityText, CancellationToken cancellationToken = default)
+            => Task.FromResult("fake-inv-page-id");
 
         public Task ArchivePageAsync(string notionPageId, CancellationToken cancellationToken = default)
         {
@@ -1443,6 +1448,9 @@ public sealed class FoodSyncServiceTests
             => Task.FromResult<IReadOnlyList<int>>(Added.Concat(Existing is null ? [] : [Existing]).Select(x => x.Id).ToList());
 
         public Task<int> DeleteAllAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+
+        public Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<string>>([]);
     }
 
     private sealed class FakeMealRepository : IMealRepository

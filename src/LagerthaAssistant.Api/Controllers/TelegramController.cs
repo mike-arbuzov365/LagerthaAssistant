@@ -3743,32 +3743,7 @@ public sealed class TelegramController : ControllerBase
                     InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
             }
 
-            var summaryLines = new List<string>();
-            foreach (var candidate in session.Candidates.OrderBy(x => x.Number))
-            {
-                var signedDelta = session.Mode == TelegramInventoryPhotoMode.Consumption
-                    ? -candidate.Quantity
-                    : candidate.Quantity;
-
-                var updated = await _foodTrackingService.AdjustInventoryQuantityAsync(candidate.ItemId, signedDelta, cancellationToken);
-                var quantityText = updated.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
-                summaryLines.Add(_navigationPresenter.GetText("inventory.photo.applied.item", locale, updated.Name, quantityText, signedDelta > 0 ? "+" : "-"));
-            }
-
-            _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
-            _pendingStateStore.InventoryPhotoSessions.TryRemove(pendingKey, out _);
-
-            var summary = new StringBuilder();
-            summary.AppendLine($"✅ {_navigationPresenter.GetText("inventory.photo.applied", locale, summaryLines.Count)}");
-            foreach (var line in summaryLines)
-            {
-                summary.AppendLine(line);
-            }
-
-            return new TelegramRouteResponse(
-                "inventory.photo.applied",
-                summary.ToString().TrimEnd(),
-                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+            return await ApplyInventoryPhotoCandidatesAsync(scope, locale, pendingKey, session, session.Candidates, cancellationToken);
         }
 
         if (string.Equals(callbackData, CallbackDataConstants.Inventory.Suggest, StringComparison.Ordinal))
@@ -3814,6 +3789,95 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "inventory.suggest",
                 sb.ToString().TrimEnd(),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        // ── Photo: store resolution callbacks ─────────────────────────────────
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.PhotoStoreAdd, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            if (_pendingStateStore.InventoryPhotoSessions.TryGetValue(pendingKey, out var session)
+                && !string.IsNullOrWhiteSpace(session.DetectedStoreNameEn))
+            {
+                _pendingStateStore.InventoryPhotoSessions[pendingKey] = session with { ResolvedStoreName = session.DetectedStoreNameEn };
+                return await TransitionToUnknownItemsOrFinishAsync(scope, locale, pendingKey, cancellationToken);
+            }
+            return ExpiredPhotoSession(locale);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.PhotoStoreSkip, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            if (_pendingStateStore.InventoryPhotoSessions.ContainsKey(pendingKey))
+            {
+                return await TransitionToUnknownItemsOrFinishAsync(scope, locale, pendingKey, cancellationToken);
+            }
+            return ExpiredPhotoSession(locale);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.PhotoStorePickExisting, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            if (_pendingStateStore.InventoryPhotoSessions.ContainsKey(pendingKey))
+            {
+                var stores = await _foodTrackingService.GetDistinctStoresAsync(cancellationToken);
+                if (stores.Count == 0)
+                {
+                    return await TransitionToUnknownItemsOrFinishAsync(scope, locale, pendingKey, cancellationToken);
+                }
+                return new TelegramRouteResponse(
+                    "inventory.photo.store.pick",
+                    EnsureQuestionMarker(_navigationPresenter.GetText("inventory.photo.store.pick_prompt", locale)),
+                    InlineKeyboard(_navigationPresenter.BuildPhotoStorePickExistingKeyboard(locale, stores)));
+            }
+            return ExpiredPhotoSession(locale);
+        }
+
+        if (callbackData.StartsWith(CallbackDataConstants.Inventory.PhotoStoreSelectPrefix, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            if (_pendingStateStore.InventoryPhotoSessions.TryGetValue(pendingKey, out var session))
+            {
+                var selectedStore = callbackData[CallbackDataConstants.Inventory.PhotoStoreSelectPrefix.Length..];
+                _pendingStateStore.InventoryPhotoSessions[pendingKey] = session with { ResolvedStoreName = selectedStore };
+                return await TransitionToUnknownItemsOrFinishAsync(scope, locale, pendingKey, cancellationToken);
+            }
+            return ExpiredPhotoSession(locale);
+        }
+
+        // ── Photo: unknown items callbacks ─────────────────────────────────
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.PhotoUnknownAddAll, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            if (_pendingStateStore.InventoryPhotoSessions.TryGetValue(pendingKey, out var session))
+            {
+                return await AddUnknownItemsToInventoryAsync(locale, pendingKey, session, session.Unknown, cancellationToken);
+            }
+            return ExpiredPhotoSession(locale);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.PhotoUnknownSelect, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            if (_pendingStateStore.InventoryPhotoSessions.ContainsKey(pendingKey))
+            {
+                _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventoryPhotoAwaitingUnknownSelection;
+                return new TelegramRouteResponse(
+                    "inventory.photo.unknown.select_prompt",
+                    EnsureQuestionMarker(_navigationPresenter.GetText("inventory.photo.unknown.select_prompt", locale)),
+                    InlineKeyboard(_navigationPresenter.BuildPhotoUnknownItemsKeyboard(locale)));
+            }
+            return ExpiredPhotoSession(locale);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.PhotoUnknownSkip, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+            _pendingStateStore.InventoryPhotoSessions.TryRemove(pendingKey, out _);
+            return new TelegramRouteResponse(
+                "inventory.photo.done",
+                EnsureInfoMarker(_navigationPresenter.GetText("inventory.photo.done", locale)),
                 InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
         }
 
@@ -3925,19 +3989,25 @@ public sealed class TelegramController : ControllerBase
                         candidate.Unit,
                         candidate.Confidence,
                         matchedInventoryItem?.IconEmoji,
-                        matchedInventoryItem?.Category);
+                        matchedInventoryItem?.Category,
+                        candidate.PriceTotal,
+                        candidate.PricePerUnit);
                 })
                 .ToList();
 
             var unknown = analysis.Unknown
+                .Where(entry => entry.NameEn is not null || entry.Name is not null)
                 .OrderByDescending(entry => entry.Confidence)
                 .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
                 .Select((entry, index) => new PendingInventoryPhotoUnknown(
                     Number: index + 1,
                     entry.Name,
+                    entry.NameEn,
                     entry.Quantity,
                     entry.Unit,
-                    entry.Confidence))
+                    entry.Confidence,
+                    entry.PriceTotal,
+                    entry.PricePerUnit))
                 .ToList();
 
             if (candidates.Count == 0 && unknown.Count == 0)
@@ -3950,16 +4020,20 @@ public sealed class TelegramController : ControllerBase
                     InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
             }
 
-            _pendingStateStore.InventoryPhotoSessions[pendingKey] = pendingSession with
+            var updatedSession = pendingSession with
             {
                 Candidates = candidates,
-                Unknown = unknown
+                Unknown = unknown,
+                DetectedStoreName = analysis.DetectedStore?.Name,
+                DetectedStoreNameEn = analysis.DetectedStore?.NameEn,
+                StoreConfidence = analysis.DetectedStore?.Confidence
             };
+            _pendingStateStore.InventoryPhotoSessions[pendingKey] = updatedSession;
             _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventoryPhotoAwaitingSelection;
 
             return new TelegramRouteResponse(
                 "inventory.photo.preview",
-                BuildInventoryPhotoPreviewText(locale, pendingSession.Mode, candidates, unknown),
+                BuildInventoryPhotoPreviewText(locale, pendingSession.Mode, candidates, unknown, updatedSession),
                 InlineKeyboard(_navigationPresenter.BuildInventoryPhotoConfirmKeyboard(locale)));
         }
 
@@ -4022,32 +4096,55 @@ public sealed class TelegramController : ControllerBase
                     InlineKeyboard(_navigationPresenter.BuildInventoryPhotoConfirmKeyboard(locale)));
             }
 
-            var summaryLines = new List<string>();
-            foreach (var candidate in selectedCandidates)
-            {
-                var signedDelta = session.Mode == TelegramInventoryPhotoMode.Consumption
-                    ? -candidate.Quantity
-                    : candidate.Quantity;
+            return await ApplyInventoryPhotoCandidatesAsync(scope, locale, pendingKey, session, selectedCandidates, cancellationToken);
+        }
 
-                var updated = await _foodTrackingService.AdjustInventoryQuantityAsync(candidate.ItemId, signedDelta, cancellationToken);
-                var quantityText = updated.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
-                summaryLines.Add(_navigationPresenter.GetText("inventory.photo.applied.item", locale, updated.Name, quantityText, signedDelta > 0 ? "+" : "-"));
+        if (_pendingStateStore.ChatActions.TryGetValue(pendingKey, out var unknownPendingAction)
+            && unknownPendingAction == PendingChatActionKind.InventoryPhotoAwaitingUnknownSelection)
+        {
+            if (!_pendingStateStore.InventoryPhotoSessions.TryGetValue(pendingKey, out var unknownSession))
+            {
+                _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+                return ExpiredPhotoSession(locale);
             }
 
-            _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
-            _pendingStateStore.InventoryPhotoSessions.TryRemove(pendingKey, out _);
-
-            var summary = new StringBuilder();
-            summary.AppendLine($"✅ {_navigationPresenter.GetText("inventory.photo.applied", locale, selectedCandidates.Count)}");
-            foreach (var line in summaryLines)
+            IReadOnlyList<int> selectedUnknownNumbers;
+            if (UrlSelectAllTokens.Contains(text))
             {
-                summary.AppendLine(line);
+                selectedUnknownNumbers = unknownSession.Unknown.Select(x => x.Number).ToList();
+            }
+            else
+            {
+                selectedUnknownNumbers = SelectionNumberRegex
+                    .Matches(text)
+                    .Select(match => match.Value)
+                    .Distinct(StringComparer.Ordinal)
+                    .Select(value => int.TryParse(value, out var parsed) ? parsed : 0)
+                    .Where(number => number > 0)
+                    .ToList();
             }
 
-            return new TelegramRouteResponse(
-                "inventory.photo.applied",
-                summary.ToString().TrimEnd(),
-                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+            if (selectedUnknownNumbers.Count == 0)
+            {
+                return new TelegramRouteResponse(
+                    "inventory.photo.invalid_selection",
+                    EnsureWarningMarker(_navigationPresenter.GetText("inventory.photo.invalid_selection", locale)),
+                    InlineKeyboard(_navigationPresenter.BuildPhotoUnknownItemsKeyboard(locale)));
+            }
+
+            var selectedUnknowns = unknownSession.Unknown
+                .Where(u => selectedUnknownNumbers.Contains(u.Number))
+                .ToList();
+
+            if (selectedUnknowns.Count == 0)
+            {
+                return new TelegramRouteResponse(
+                    "inventory.photo.invalid_selection",
+                    EnsureWarningMarker(_navigationPresenter.GetText("inventory.photo.invalid_selection", locale)),
+                    InlineKeyboard(_navigationPresenter.BuildPhotoUnknownItemsKeyboard(locale)));
+            }
+
+            return await AddUnknownItemsToInventoryAsync(locale, pendingKey, unknownSession, selectedUnknowns, cancellationToken);
         }
 
         if (hasPhoto)
@@ -5002,13 +5099,20 @@ public sealed class TelegramController : ControllerBase
         string locale,
         TelegramInventoryPhotoMode mode,
         IReadOnlyList<PendingInventoryPhotoCandidate> candidates,
-        IReadOnlyList<PendingInventoryPhotoUnknown> unknown)
+        IReadOnlyList<PendingInventoryPhotoUnknown> unknown,
+        PendingInventoryPhotoSession? session = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine(_navigationPresenter.GetText("inventory.photo.preview.title", locale, candidates.Count));
         sb.AppendLine(mode == TelegramInventoryPhotoMode.Consumption
             ? _navigationPresenter.GetText("inventory.photo.preview.mode.consume", locale)
             : _navigationPresenter.GetText("inventory.photo.preview.mode.restock", locale));
+
+        if (session is { DetectedStoreNameEn: not null })
+        {
+            sb.AppendLine($"🏪 {_navigationPresenter.GetText("inventory.photo.preview.store", locale, session.DetectedStoreNameEn)}");
+        }
+
         sb.AppendLine();
 
         foreach (var candidate in candidates)
@@ -5016,6 +5120,9 @@ public sealed class TelegramController : ControllerBase
             var sign = mode == TelegramInventoryPhotoMode.Consumption ? "-" : "+";
             var quantity = candidate.Quantity.ToString("0.###", CultureInfo.InvariantCulture);
             var unit = string.IsNullOrWhiteSpace(candidate.Unit) ? string.Empty : $" {candidate.Unit}";
+            var priceSuffix = candidate.PricePerUnit.HasValue
+                ? $" 💰{candidate.PricePerUnit.Value:0.##}/{(string.IsNullOrWhiteSpace(candidate.Unit) ? "pcs" : candidate.Unit)}"
+                : string.Empty;
             sb.AppendLine(_navigationPresenter.GetText(
                 "inventory.photo.preview.item",
                 locale,
@@ -5023,7 +5130,7 @@ public sealed class TelegramController : ControllerBase
                 BuildInventoryItemTitle(candidate.Name, candidate.IconEmoji),
                 sign,
                 $"{quantity}{unit}",
-                candidate.Confidence));
+                candidate.Confidence) + priceSuffix);
         }
 
         if (unknown.Count > 0)
@@ -5032,22 +5139,220 @@ public sealed class TelegramController : ControllerBase
             sb.AppendLine(EnsureWarningMarker(_navigationPresenter.GetText("inventory.photo.preview.unknown_title", locale)));
             foreach (var entry in unknown)
             {
+                var displayName = !string.IsNullOrWhiteSpace(entry.NameEn)
+                    ? $"{entry.NameEn} ({entry.Name})"
+                    : entry.Name;
                 var quantity = entry.Quantity.ToString("0.###", CultureInfo.InvariantCulture);
                 var unit = string.IsNullOrWhiteSpace(entry.Unit) ? string.Empty : $" {entry.Unit}";
+                var priceSuffix = entry.PricePerUnit.HasValue
+                    ? $" 💰{entry.PricePerUnit.Value:0.##}/{(string.IsNullOrWhiteSpace(entry.Unit) ? "pcs" : entry.Unit)}"
+                    : string.Empty;
                 sb.AppendLine(_navigationPresenter.GetText(
                     "inventory.photo.preview.unknown_item",
                     locale,
                     entry.Number,
-                    entry.Name,
+                    displayName,
                     "+",
                     $"{quantity}{unit}",
-                    entry.Confidence));
+                    entry.Confidence) + priceSuffix);
             }
         }
 
         sb.AppendLine();
         sb.AppendLine(EnsureQuestionMarker(_navigationPresenter.GetText("inventory.photo.preview.confirm", locale)));
         return sb.ToString().TrimEnd();
+    }
+
+    private async Task<TelegramRouteResponse> ApplyInventoryPhotoCandidatesAsync(
+        ConversationScope scope,
+        string locale,
+        string pendingKey,
+        PendingInventoryPhotoSession session,
+        IReadOnlyList<PendingInventoryPhotoCandidate> candidates,
+        CancellationToken cancellationToken)
+    {
+        var summaryLines = new List<string>();
+        foreach (var candidate in candidates.OrderBy(x => x.Number))
+        {
+            var signedDelta = session.Mode == TelegramInventoryPhotoMode.Consumption
+                ? -candidate.Quantity
+                : candidate.Quantity;
+
+            var updated = await _foodTrackingService.AdjustInventoryQuantityAsync(candidate.ItemId, signedDelta, cancellationToken);
+
+            // Update price and store for matched inventory items (restock mode only).
+            if (session.Mode == TelegramInventoryPhotoMode.Restock && candidate.PricePerUnit.HasValue)
+            {
+                await _foodTrackingService.UpdateInventoryPriceAndStoreAsync(
+                    candidate.ItemId, candidate.PricePerUnit, session.ResolvedStoreName, cancellationToken);
+            }
+
+            var quantityText = updated.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture) ?? "0";
+            summaryLines.Add(_navigationPresenter.GetText("inventory.photo.applied.item", locale, updated.Name, quantityText, signedDelta > 0 ? "+" : "-"));
+        }
+
+        var summary = new StringBuilder();
+        summary.AppendLine($"✅ {_navigationPresenter.GetText("inventory.photo.applied", locale, summaryLines.Count)}");
+        foreach (var line in summaryLines)
+        {
+            summary.AppendLine(line);
+        }
+
+        // Check if store needs resolution.
+        if (session.Mode == TelegramInventoryPhotoMode.Restock
+            && session.ResolvedStoreName is null
+            && !string.IsNullOrWhiteSpace(session.DetectedStoreNameEn))
+        {
+            var existingStores = await _foodTrackingService.GetDistinctStoresAsync(cancellationToken);
+            var matchFound = existingStores.Any(s => string.Equals(s, session.DetectedStoreNameEn, StringComparison.OrdinalIgnoreCase));
+
+            if (matchFound)
+            {
+                // Auto-resolve to the matched existing store.
+                var matched = existingStores.First(s => string.Equals(s, session.DetectedStoreNameEn, StringComparison.OrdinalIgnoreCase));
+                _pendingStateStore.InventoryPhotoSessions[pendingKey] = session with { ResolvedStoreName = matched };
+
+                // Update store for all applied candidates.
+                foreach (var candidate in candidates)
+                {
+                    await _foodTrackingService.UpdateInventoryPriceAndStoreAsync(
+                        candidate.ItemId, null, matched, cancellationToken);
+                }
+
+                return await TransitionToUnknownItemsOrFinishAsync(scope, locale, pendingKey, cancellationToken, summary);
+            }
+
+            // Store not found — ask user.
+            summary.AppendLine();
+            summary.AppendLine($"🏪 {_navigationPresenter.GetText("inventory.photo.store.detected", locale, session.DetectedStoreName ?? session.DetectedStoreNameEn, session.DetectedStoreNameEn)}");
+
+            _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventoryPhotoAwaitingStoreResolution;
+            return new TelegramRouteResponse(
+                "inventory.photo.store.resolve",
+                summary.ToString().TrimEnd(),
+                InlineKeyboard(_navigationPresenter.BuildPhotoStoreResolutionKeyboard(locale, session.DetectedStoreNameEn)));
+        }
+
+        return await TransitionToUnknownItemsOrFinishAsync(scope, locale, pendingKey, cancellationToken, summary);
+    }
+
+    private async Task<TelegramRouteResponse> TransitionToUnknownItemsOrFinishAsync(
+        ConversationScope scope,
+        string locale,
+        string pendingKey,
+        CancellationToken cancellationToken,
+        StringBuilder? existingSummary = null)
+    {
+        if (!_pendingStateStore.InventoryPhotoSessions.TryGetValue(pendingKey, out var session))
+        {
+            _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+            return ExpiredPhotoSession(locale);
+        }
+
+        // If store was resolved, update all applied candidates.
+        if (session.ResolvedStoreName is not null && session.Candidates.Count > 0)
+        {
+            foreach (var candidate in session.Candidates)
+            {
+                try
+                {
+                    await _foodTrackingService.UpdateInventoryPriceAndStoreAsync(
+                        candidate.ItemId, null, session.ResolvedStoreName, cancellationToken);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Item may have been deleted — skip silently.
+                }
+            }
+        }
+
+        if (session.Unknown.Count > 0)
+        {
+            var sb = existingSummary ?? new StringBuilder();
+            sb.AppendLine();
+            sb.AppendLine($"📦 {_navigationPresenter.GetText("inventory.photo.unknown.offer_title", locale, session.Unknown.Count)}");
+            foreach (var entry in session.Unknown)
+            {
+                var displayName = !string.IsNullOrWhiteSpace(entry.NameEn)
+                    ? $"{entry.NameEn} ({entry.Name})"
+                    : entry.Name;
+                var quantity = entry.Quantity.ToString("0.###", CultureInfo.InvariantCulture);
+                var unit = string.IsNullOrWhiteSpace(entry.Unit) ? string.Empty : $" {entry.Unit}";
+                var priceSuffix = entry.PricePerUnit.HasValue
+                    ? $", 💰{entry.PricePerUnit.Value:0.##}/{(string.IsNullOrWhiteSpace(entry.Unit) ? "pcs" : entry.Unit)}"
+                    : string.Empty;
+                sb.AppendLine($"{entry.Number}) {displayName} — {quantity}{unit}{priceSuffix}");
+            }
+            sb.AppendLine();
+            sb.AppendLine(EnsureQuestionMarker(_navigationPresenter.GetText("inventory.photo.unknown.offer_prompt", locale)));
+
+            _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventoryPhotoAwaitingUnknownSelection;
+            return new TelegramRouteResponse(
+                "inventory.photo.unknown.offer",
+                sb.ToString().TrimEnd(),
+                InlineKeyboard(_navigationPresenter.BuildPhotoUnknownItemsKeyboard(locale)));
+        }
+
+        // No unknown items — clean up and finish.
+        _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+        _pendingStateStore.InventoryPhotoSessions.TryRemove(pendingKey, out _);
+
+        if (existingSummary is not null)
+        {
+            return new TelegramRouteResponse(
+                "inventory.photo.applied",
+                existingSummary.ToString().TrimEnd(),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        return new TelegramRouteResponse(
+            "inventory.photo.done",
+            EnsureInfoMarker(_navigationPresenter.GetText("inventory.photo.done", locale)),
+            InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> AddUnknownItemsToInventoryAsync(
+        string locale,
+        string pendingKey,
+        PendingInventoryPhotoSession session,
+        IReadOnlyList<PendingInventoryPhotoUnknown> selectedUnknowns,
+        CancellationToken cancellationToken)
+    {
+        var addedLines = new List<string>();
+        foreach (var unknown in selectedUnknowns.OrderBy(u => u.Number))
+        {
+            var itemName = !string.IsNullOrWhiteSpace(unknown.NameEn) ? unknown.NameEn : unknown.Name;
+            var created = await _foodTrackingService.AddInventoryItemAsync(
+                itemName,
+                session.ResolvedStoreName,
+                unknown.PricePerUnit,
+                unknown.Quantity,
+                cancellationToken);
+            addedLines.Add($"  📦 {created.Name}" + (created.Price.HasValue ? $" 💰{created.Price.Value:0.##}" : string.Empty));
+        }
+
+        _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+        _pendingStateStore.InventoryPhotoSessions.TryRemove(pendingKey, out _);
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"✅ {_navigationPresenter.GetText("inventory.photo.unknown.added", locale, addedLines.Count)}");
+        foreach (var line in addedLines)
+        {
+            sb.AppendLine(line);
+        }
+
+        return new TelegramRouteResponse(
+            "inventory.photo.unknown.added",
+            sb.ToString().TrimEnd(),
+            InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+    }
+
+    private TelegramRouteResponse ExpiredPhotoSession(string locale)
+    {
+        return new TelegramRouteResponse(
+            "inventory.photo.expired",
+            EnsureWarningMarker(_navigationPresenter.GetText("inventory.photo.expired", locale)),
+            InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
     }
 
     private string BuildCaloriesPerServingSuffix(int? caloriesPerServing, string locale)

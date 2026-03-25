@@ -71,6 +71,8 @@ public sealed class NotionFoodClient : INotionFoodClient
         string notionPageId,
         string? quantityText,
         decimal? minQuantity,
+        decimal? price = null,
+        string? store = null,
         CancellationToken cancellationToken = default)
     {
         var url = $"{_options.ApiBaseUrl}/pages/{notionPageId}";
@@ -87,6 +89,16 @@ public sealed class NotionFoodClient : INotionFoodClient
         if (minQuantity.HasValue)
         {
             properties["Min Quantity"] = new { number = (object)minQuantity.Value };
+        }
+
+        if (price.HasValue)
+        {
+            properties["Price"] = new { number = (object)price.Value };
+        }
+
+        if (!string.IsNullOrWhiteSpace(store))
+        {
+            properties["Store"] = new { select = new { name = store.Trim() } };
         }
 
         var body = JsonSerializer.Serialize(new { properties });
@@ -183,6 +195,69 @@ public sealed class NotionFoodClient : INotionFoodClient
 
         var response = await _httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
+
+        using var doc = await JsonDocument.ParseAsync(
+            await response.Content.ReadAsStreamAsync(cancellationToken),
+            cancellationToken: cancellationToken);
+
+        return doc.RootElement.GetProperty("id").GetString()
+            ?? throw new InvalidOperationException("Notion create page response did not include an ID.");
+    }
+
+    public async Task<string> CreateInventoryItemAsync(
+        string name,
+        string? store,
+        decimal? price,
+        string? quantityText,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"{_options.ApiBaseUrl}/pages";
+
+        var properties = new Dictionary<string, object>
+        {
+            ["Item Name"] = new { title = new[] { new { text = new { content = name } } } }
+        };
+
+        if (!string.IsNullOrWhiteSpace(store))
+        {
+            properties["Store"] = new { select = new { name = store.Trim() } };
+        }
+
+        if (price.HasValue)
+        {
+            properties["Price"] = new { number = (object)price.Value };
+        }
+
+        if (!string.IsNullOrWhiteSpace(quantityText))
+        {
+            properties["Item Quantity"] = new
+            {
+                rich_text = new[] { new { text = new { content = quantityText.Trim() } } }
+            };
+        }
+
+        var body = JsonSerializer.Serialize(new
+        {
+            parent = new { database_id = _options.InventoryDatabaseId },
+            properties
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+        AddHeaders(request);
+
+        var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError(
+                "Notion POST inventory page failed: {Status} - {Error}",
+                (int)response.StatusCode,
+                error);
+            response.EnsureSuccessStatusCode();
+        }
 
         using var doc = await JsonDocument.ParseAsync(
             await response.Content.ReadAsStreamAsync(cancellationToken),
