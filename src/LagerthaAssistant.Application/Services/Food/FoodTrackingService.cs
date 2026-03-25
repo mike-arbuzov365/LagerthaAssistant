@@ -98,7 +98,7 @@ public sealed class FoodTrackingService : IFoodTrackingService
         var current = item.CurrentQuantity ?? TryParseLeadingNumber(item.Quantity) ?? 0m;
         var updated = Math.Max(0m, current + delta);
 
-        item.CurrentQuantity = Math.Round(updated, 3, MidpointRounding.AwayFromZero);
+        item.CurrentQuantity = Math.Round(updated, 2, MidpointRounding.AwayFromZero);
         item.NotionSyncStatus = FoodSyncStatus.Pending;
         item.NotionUpdatedAt = DateTime.UtcNow;
         item.NotionLastError = null;
@@ -127,7 +127,7 @@ public sealed class FoodTrackingService : IFoodTrackingService
         var item = await _foodItemRepo.GetByIdAsync(foodItemId, cancellationToken)
             ?? throw new InvalidOperationException($"Food item {foodItemId} not found in inventory.");
 
-        item.CurrentQuantity = Math.Round(quantity, 3, MidpointRounding.AwayFromZero);
+        item.CurrentQuantity = Math.Round(quantity, 2, MidpointRounding.AwayFromZero);
         item.NotionSyncStatus = FoodSyncStatus.Pending;
         item.NotionUpdatedAt = DateTime.UtcNow;
         item.NotionLastError = null;
@@ -188,7 +188,7 @@ public sealed class FoodTrackingService : IFoodTrackingService
         var item = await _foodItemRepo.GetByIdAsync(foodItemId, cancellationToken)
             ?? throw new InvalidOperationException($"Food item {foodItemId} not found in inventory.");
 
-        item.MinQuantity = Math.Round(minQuantity, 3, MidpointRounding.AwayFromZero);
+        item.MinQuantity = Math.Round(minQuantity, 2, MidpointRounding.AwayFromZero);
         item.NotionSyncStatus = FoodSyncStatus.Pending;
         item.NotionUpdatedAt = DateTime.UtcNow;
         item.NotionLastError = null;
@@ -216,7 +216,7 @@ public sealed class FoodTrackingService : IFoodTrackingService
 
         if (price.HasValue && price.Value >= 0m)
         {
-            item.Price = Math.Round(price.Value, 2, MidpointRounding.AwayFromZero);
+            item.Price = Math.Round(price.Value, 0, MidpointRounding.AwayFromZero);
             changed = true;
         }
 
@@ -246,14 +246,23 @@ public sealed class FoodTrackingService : IFoodTrackingService
         string? store,
         decimal? price,
         decimal? currentQuantity,
+        string? category = null,
+        string? iconEmoji = null,
         CancellationToken cancellationToken = default)
     {
         string notionPageId;
-        var quantityText = currentQuantity?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        var quantityText = currentQuantity?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
         try
         {
-            notionPageId = await _notionClient.CreateInventoryItemAsync(name, store, price, quantityText, cancellationToken);
+            notionPageId = await _notionClient.CreateInventoryItemAsync(
+                name,
+                store,
+                price,
+                quantityText,
+                category,
+                iconEmoji,
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -264,9 +273,11 @@ public sealed class FoodTrackingService : IFoodTrackingService
         var item = new FoodItem
         {
             Name = name.Trim(),
+            IconEmoji = string.IsNullOrWhiteSpace(iconEmoji) ? null : iconEmoji.Trim(),
+            Category = string.IsNullOrWhiteSpace(category) ? null : category.Trim(),
             Store = store?.Trim(),
-            Price = price.HasValue ? Math.Round(price.Value, 2, MidpointRounding.AwayFromZero) : null,
-            CurrentQuantity = currentQuantity.HasValue ? Math.Round(currentQuantity.Value, 3, MidpointRounding.AwayFromZero) : null,
+            Price = price.HasValue ? Math.Round(price.Value, 0, MidpointRounding.AwayFromZero) : null,
+            CurrentQuantity = currentQuantity.HasValue ? Math.Round(currentQuantity.Value, 2, MidpointRounding.AwayFromZero) : null,
             Quantity = quantityText,
             NotionPageId = notionPageId,
             NotionSyncStatus = notionPageId.StartsWith("local:", StringComparison.Ordinal)

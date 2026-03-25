@@ -406,11 +406,30 @@ public sealed class FoodSyncService : IFoodSyncService
             {
                 if (IsLocalPageId(item.NotionPageId))
                 {
-                    throw new InvalidOperationException(
-                        $"Cannot sync inventory item {item.Id} with local page ID '{item.NotionPageId}'.");
+                    var createdPageId = await _notionClient.CreateInventoryItemAsync(
+                        item.Name,
+                        item.Store,
+                        item.Price,
+                        item.CurrentQuantity?.ToString("0.##", CultureInfo.InvariantCulture),
+                        item.Category,
+                        item.IconEmoji,
+                        cancellationToken);
+
+                    if (string.IsNullOrWhiteSpace(createdPageId))
+                    {
+                        throw new InvalidOperationException("Notion returned an empty page ID for inventory item creation.");
+                    }
+
+                    item.NotionPageId = createdPageId.Trim();
+                    _logger.LogInformation(
+                        "Upgraded local inventory sync ID to Notion page ID. ItemId={ItemId}; NewNotionPageId={NotionPageId}",
+                        item.Id,
+                        item.NotionPageId);
+
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
                 }
 
-                var quantityText = item.CurrentQuantity?.ToString("0.###", CultureInfo.InvariantCulture);
+                var quantityText = item.CurrentQuantity?.ToString("0.##", CultureInfo.InvariantCulture);
                 var notionTimestamp = await _notionClient.UpdateInventoryItemAsync(
                     item.NotionPageId, quantityText, item.MinQuantity, item.Price, item.Store, cancellationToken);
 

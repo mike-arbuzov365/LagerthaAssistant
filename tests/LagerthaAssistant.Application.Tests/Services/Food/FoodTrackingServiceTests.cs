@@ -1086,8 +1086,8 @@ public sealed class FoodTrackingServiceTests
 
         var result = await sut.UpdateInventoryPriceAndStoreAsync(5, price: 3.99m, store: null);
 
-        Assert.Equal(3.99m, result.Price);
-        Assert.Equal(3.99m, item.Price);
+        Assert.Equal(4m, result.Price);
+        Assert.Equal(4m, item.Price);
         Assert.Equal(FoodSyncStatus.Pending, item.NotionSyncStatus);
         Assert.Equal(1, uow.SaveCount);
     }
@@ -1143,12 +1143,12 @@ public sealed class FoodTrackingServiceTests
 
         Assert.Equal("Cheese", result.Name);
         Assert.Equal("Walmart", result.Store);
-        Assert.Equal(4.50m, result.Price);
+        Assert.Equal(5m, result.Price);
         Assert.Equal(2m, result.CurrentQuantity);
         Assert.Single(repo.AllItems);
         Assert.Equal("Cheese", repo.AllItems[0].Name);
         Assert.Equal("Walmart", repo.AllItems[0].Store);
-        Assert.Equal(4.50m, repo.AllItems[0].Price);
+        Assert.Equal(5m, repo.AllItems[0].Price);
         Assert.Equal(2m, repo.AllItems[0].CurrentQuantity);
         Assert.Equal(1, uow.SaveCount);
     }
@@ -1160,10 +1160,12 @@ public sealed class FoodTrackingServiceTests
         var notion = new FakeNotionFoodClient();
         var sut = CreateSut(foodItemRepo: repo, notionClient: notion);
 
-        await sut.AddInventoryItemAsync("Rice", "Costco", 9.99m, 1m);
+        await sut.AddInventoryItemAsync("Rice", "Costco", 9.99m, 1m, category: "Pantry", iconEmoji: "🥖");
 
         Assert.Equal("fake-inv-page-id", repo.AllItems[0].NotionPageId);
         Assert.Equal(FoodSyncStatus.Synced, repo.AllItems[0].NotionSyncStatus);
+        Assert.Equal("Pantry", repo.AllItems[0].Category);
+        Assert.Equal("🥖", repo.AllItems[0].IconEmoji);
     }
 
     [Fact]
@@ -1441,7 +1443,14 @@ public sealed class FoodTrackingServiceTests
             CancellationToken cancellationToken = default)
             => Task.FromResult(DateTime.UtcNow);
 
-        public Task<string> CreateInventoryItemAsync(string name, string? store, decimal? price, string? quantityText, CancellationToken cancellationToken = default)
+        public Task<string> CreateInventoryItemAsync(
+            string name,
+            string? store,
+            decimal? price,
+            string? quantityText,
+            string? category = null,
+            string? iconEmoji = null,
+            CancellationToken cancellationToken = default)
         {
             if (ShouldThrow) throw new HttpRequestException("Notion unavailable");
             return Task.FromResult("fake-inv-page-id");

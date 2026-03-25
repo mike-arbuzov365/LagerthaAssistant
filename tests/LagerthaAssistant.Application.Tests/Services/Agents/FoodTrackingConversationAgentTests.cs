@@ -832,8 +832,15 @@ public sealed class FoodTrackingConversationAgentTests
         public Task<FoodItemDto> UpdateInventoryPriceAndStoreAsync(int foodItemId, decimal? price, string? store, CancellationToken cancellationToken = default)
             => Task.FromResult(new FoodItemDto(foodItemId, "Item", null, store, price, null));
 
-        public Task<FoodItemDto> AddInventoryItemAsync(string name, string? store, decimal? price, decimal? currentQuantity, CancellationToken cancellationToken = default)
-            => Task.FromResult(new FoodItemDto(1, name, null, store, price, null));
+        public Task<FoodItemDto> AddInventoryItemAsync(
+            string name,
+            string? store,
+            decimal? price,
+            decimal? currentQuantity,
+            string? category = null,
+            string? iconEmoji = null,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new FoodItemDto(1, name, category, store, price, null) { IconEmoji = iconEmoji, CurrentQuantity = currentQuantity });
 
         public Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<string>>([]);

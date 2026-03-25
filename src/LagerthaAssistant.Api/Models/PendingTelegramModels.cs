@@ -91,7 +91,9 @@ internal sealed record PendingInventoryPhotoUnknown(
     double Confidence,
     decimal? PriceTotal = null,
     decimal? PricePerUnit = null,
-    bool IsNonProduct = false);
+    bool IsNonProduct = false,
+    string? Category = null,
+    string? IconEmoji = null);
 
 internal sealed record PendingShoppingDeleteSession(
     IReadOnlyList<PendingShoppingDeleteCandidate> Candidates);
