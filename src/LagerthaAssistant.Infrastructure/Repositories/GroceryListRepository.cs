@@ -83,6 +83,20 @@ public sealed class GroceryListRepository : IGroceryListRepository
         }
     }
 
+    public async Task<int> CountPermanentlyFailedNotionSyncAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _context.GroceryListItems
+                .CountAsync(x => x.NotionSyncStatus == FoodSyncStatus.PermanentlyFailed, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for permanently-failed grocery sync count", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.GetActive, "Failed to count permanently-failed grocery sync items", ex);
+        }
+    }
+
     public async Task<IReadOnlyList<GroceryListItem>> ClaimPendingNotionSyncAsync(
         int take,
         DateTime claimedAt,
@@ -222,15 +236,17 @@ public sealed class GroceryListRepository : IGroceryListRepository
     {
         try
         {
-            _logger.LogDebug("Executing {Operation} for deleting bought grocery items", RepositoryOperations.Delete);
+            _logger.LogDebug("Executing {Operation} for soft-deleting bought grocery items", RepositoryOperations.Delete);
             return await _context.GroceryListItems
                 .Where(x => x.IsBought && x.NotionSyncStatus == FoodSyncStatus.Synced)
-                .ExecuteDeleteAsync(cancellationToken);
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(x => x.ArchivedAt, DateTime.UtcNow),
+                    cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in {Operation} for deleting bought grocery items", RepositoryOperations.Delete);
-            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Delete, "Failed to delete bought grocery items", ex);
+            _logger.LogError(ex, "Error in {Operation} for soft-deleting bought grocery items", RepositoryOperations.Delete);
+            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Delete, "Failed to soft-delete bought grocery items", ex);
         }
     }
 
@@ -244,18 +260,20 @@ public sealed class GroceryListRepository : IGroceryListRepository
         try
         {
             _logger.LogDebug(
-                "Executing {Operation} for deleting selected grocery items; Count={Count}",
+                "Executing {Operation} for soft-deleting selected grocery items; Count={Count}",
                 RepositoryOperations.Delete,
                 itemIds.Count);
 
             return await _context.GroceryListItems
                 .Where(x => itemIds.Contains(x.Id) && !x.IsBought)
-                .ExecuteDeleteAsync(cancellationToken);
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(x => x.ArchivedAt, DateTime.UtcNow),
+                    cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in {Operation} for deleting selected grocery items", RepositoryOperations.Delete);
-            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Delete, "Failed to delete selected grocery items", ex);
+            _logger.LogError(ex, "Error in {Operation} for soft-deleting selected grocery items", RepositoryOperations.Delete);
+            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Delete, "Failed to soft-delete selected grocery items", ex);
         }
     }
 
@@ -269,18 +287,55 @@ public sealed class GroceryListRepository : IGroceryListRepository
         try
         {
             _logger.LogDebug(
-                "Executing {Operation} for deleting grocery items (any state); Count={Count}",
+                "Executing {Operation} for soft-deleting grocery items (any state); Count={Count}",
                 RepositoryOperations.Delete,
                 itemIds.Count);
 
             return await _context.GroceryListItems
                 .Where(x => itemIds.Contains(x.Id))
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(x => x.ArchivedAt, DateTime.UtcNow),
+                    cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for soft-deleting grocery items (any state)", RepositoryOperations.Delete);
+            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Delete, "Failed to soft-delete grocery items", ex);
+        }
+    }
+
+    public async Task<bool> ExistsArchivedByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _context.GroceryListItems
+                .IgnoreQueryFilters()
+                .AnyAsync(x => x.NotionPageId == notionPageId && x.ArchivedAt != null, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking archived tombstone for NotionPageId {NotionPageId}", notionPageId);
+            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.GetByKey, "Failed to check archived grocery item", ex);
+        }
+    }
+
+    public async Task<int> PurgeArchivedAsync(DateTime olderThan, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Executing {Operation} for purging archived grocery items older than {Cutoff:u}",
+                RepositoryOperations.Delete, olderThan);
+
+            return await _context.GroceryListItems
+                .IgnoreQueryFilters()
+                .Where(x => x.ArchivedAt != null && x.ArchivedAt < olderThan)
                 .ExecuteDeleteAsync(cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in {Operation} for deleting grocery items (any state)", RepositoryOperations.Delete);
-            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Delete, "Failed to delete grocery items", ex);
+            _logger.LogError(ex, "Error in {Operation} for purging archived grocery items", RepositoryOperations.Delete);
+            throw new RepositoryException(nameof(GroceryListRepository), RepositoryOperations.Delete, "Failed to purge archived grocery items", ex);
         }
     }
+
 }

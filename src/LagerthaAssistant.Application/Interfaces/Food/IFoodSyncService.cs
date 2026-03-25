@@ -19,4 +19,22 @@ public interface IFoodSyncService
     /// Pushes locally-changed Inventory quantities back to Notion.
     /// </summary>
     Task<int> SyncInventoryChangesToNotionAsync(int take, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Archives active Notion Grocery List pages that have no corresponding local record.
+    /// Items edited within the grace period are skipped to avoid races with in-flight operations.
+    /// Returns the number of pages archived.
+    /// </summary>
+    Task<int> ReconcileNotionGroceryOrphansAsync(TimeSpan? gracePeriod = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns a snapshot of sync queue health for both Inventory and Grocery.
+    /// </summary>
+    Task<FoodSyncStatusSummary> GetSyncStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hard-deletes grocery tombstones older than the configured retention period.
+    /// Returns the number of purged records.
+    /// </summary>
+    Task<int> PurgeArchivedGroceryAsync(CancellationToken cancellationToken = default);
 }

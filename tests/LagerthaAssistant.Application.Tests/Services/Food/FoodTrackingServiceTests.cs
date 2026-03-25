@@ -1056,6 +1056,9 @@ public sealed class FoodTrackingServiceTests
         public Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(0);
 
+        public Task<int> CountPermanentlyFailedNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
         public Task<IReadOnlyList<FoodItem>> ClaimPendingNotionSyncAsync(
             int take,
             DateTime claimedAt,
@@ -1140,6 +1143,9 @@ public sealed class FoodTrackingServiceTests
         public Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(0);
 
+        public Task<int> CountPermanentlyFailedNotionSyncAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
         public Task<IReadOnlyList<GroceryListItem>> ClaimPendingNotionSyncAsync(int take, DateTime claimedAt, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<GroceryListItem>>([]);
 
@@ -1188,6 +1194,12 @@ public sealed class FoodTrackingServiceTests
 
         public Task<int> DeleteByIdsAnyStateAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default)
             => DeleteByIdsAsync(itemIds, cancellationToken);
+
+        public Task<bool> ExistsArchivedByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
+
+        public Task<int> PurgeArchivedAsync(DateTime olderThan, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
     }
 
     private sealed class FakeMealHistoryRepository : IMealHistoryRepository
@@ -1233,11 +1245,12 @@ public sealed class FoodTrackingServiceTests
         public Task MarkGroceryItemBoughtAsync(string notionPageId, bool bought, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
-        public Task UpdateInventoryItemQuantityAsync(
+        public Task<DateTime> UpdateInventoryItemAsync(
             string notionPageId,
             string? quantityText,
+            decimal? minQuantity,
             CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+            => Task.FromResult(DateTime.UtcNow);
 
         public Task ArchivePageAsync(string notionPageId, CancellationToken cancellationToken = default)
             => Task.CompletedTask;

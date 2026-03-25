@@ -121,6 +121,20 @@ public sealed class FoodItemRepository : IFoodItemRepository
         }
     }
 
+    public async Task<int> CountPermanentlyFailedNotionSyncAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _context.FoodItems
+                .CountAsync(x => x.NotionSyncStatus == FoodSyncStatus.PermanentlyFailed, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for permanently-failed food sync count", RepositoryOperations.GetActive);
+            throw new RepositoryException(nameof(FoodItemRepository), RepositoryOperations.GetActive, "Failed to count permanently-failed food sync items", ex);
+        }
+    }
+
     public async Task<IReadOnlyList<FoodItem>> ClaimPendingNotionSyncAsync(
         int take,
         DateTime claimedAt,

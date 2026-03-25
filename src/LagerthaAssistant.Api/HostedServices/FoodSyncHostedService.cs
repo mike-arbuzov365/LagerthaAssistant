@@ -69,6 +69,9 @@ public sealed class FoodSyncHostedService : BackgroundService
                 var backoffMultiplier = Math.Pow(backoffFactor, fromNotionFailureStreak);
                 var backoffSeconds = Math.Min(maxBackoff.TotalSeconds, fromNotionInterval.TotalSeconds * backoffMultiplier);
                 nextFromNotion = DateTime.UtcNow.AddSeconds(backoffSeconds);
+
+                // Purge old grocery tombstones on the same cadence as pull-sync.
+                await RunPurgeAsync(stoppingToken);
             }
         }
     }
@@ -130,6 +133,24 @@ public sealed class FoodSyncHostedService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Food sync (DB->Notion) run failed");
+        }
+    }
+
+    private async Task RunPurgeAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var syncService = scope.ServiceProvider.GetRequiredService<IFoodSyncService>();
+            await syncService.PurgeArchivedGroceryAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Graceful shutdown.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Grocery tombstone purge failed");
         }
     }
 }

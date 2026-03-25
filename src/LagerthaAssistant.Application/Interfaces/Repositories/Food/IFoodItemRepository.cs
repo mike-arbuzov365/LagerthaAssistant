@@ -16,6 +16,8 @@ public interface IFoodItemRepository
 
     Task<int> CountPendingNotionSyncAsync(CancellationToken cancellationToken = default);
 
+    Task<int> CountPermanentlyFailedNotionSyncAsync(CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<FoodItem>> ClaimPendingNotionSyncAsync(int take, DateTime claimedAt, CancellationToken cancellationToken = default);
 
     Task AddAsync(FoodItem item, CancellationToken cancellationToken = default);
