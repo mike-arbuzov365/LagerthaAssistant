@@ -149,10 +149,22 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         // For restock mode, OCR helps when users send a receipt photo instead of product photo.
         if (mode == TelegramInventoryPhotoMode.Restock)
         {
-            var ocr = await ExtractTextFromImageAsync(download.Content!, "image/jpeg", cancellationToken);
-            if (ocr.Success && !string.IsNullOrWhiteSpace(ocr.Text))
+            try
             {
-                ocrText = ocr.Text.Trim();
+                var ocr = await ExtractTextFromImageAsync(download.Content!, "image/jpeg", cancellationToken);
+                if (ocr.Success && !string.IsNullOrWhiteSpace(ocr.Text))
+                {
+                    ocrText = ocr.Text.Trim();
+                }
+            }
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                // OCR is an auxiliary signal for receipt parsing; continue without it on timeout.
+                _logger.LogWarning(ex, "Receipt OCR timed out. Continuing inventory photo analysis without OCR text.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Receipt OCR failed. Continuing inventory photo analysis without OCR text.");
             }
         }
 
@@ -223,17 +235,31 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _openAiOptions.ApiKey);
 
         using var client = _httpClientFactory.CreateClient("vocab-discovery");
-        using var response = await client.SendAsync(request, cancellationToken);
-        var raw = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        if (!response.IsSuccessStatusCode)
+        string raw;
+        try
         {
-            _logger.LogWarning("Inventory photo analysis failed with status {StatusCode}: {Body}", (int)response.StatusCode, raw);
+            using var response = await client.SendAsync(request, cancellationToken);
+            raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Inventory photo analysis failed with status {StatusCode}: {Body}", (int)response.StatusCode, raw);
+                return new TelegramInventoryPhotoAnalysisResult(
+                    Success: false,
+                    Candidates: [],
+                    Unknown: [],
+                    Error: $"Inventory photo analysis request failed ({(int)response.StatusCode}).");
+            }
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Inventory photo analysis timed out.");
             return new TelegramInventoryPhotoAnalysisResult(
-                false,
-                [],
-                [],
-                Error: $"Inventory photo analysis request failed ({(int)response.StatusCode}).");
+                Success: false,
+                Candidates: [],
+                Unknown: [],
+                Error: "inventory.photo.timeout");
         }
 
         try

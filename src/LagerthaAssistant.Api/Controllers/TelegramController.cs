@@ -3969,9 +3969,16 @@ public sealed class TelegramController : ControllerBase
 
             if (!analysis.Success)
             {
+                var errorMessage = analysis.Error;
+                if (!string.IsNullOrWhiteSpace(errorMessage)
+                    && errorMessage.StartsWith("inventory.", StringComparison.Ordinal))
+                {
+                    errorMessage = _navigationPresenter.GetText(errorMessage, locale);
+                }
+
                 return new TelegramRouteResponse(
                     "inventory.photo.failed",
-                    EnsureWarningMarker(analysis.Error ?? _navigationPresenter.GetText("inventory.photo.failed", locale)),
+                    EnsureWarningMarker(errorMessage ?? _navigationPresenter.GetText("inventory.photo.failed", locale)),
                     InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
             }
 
