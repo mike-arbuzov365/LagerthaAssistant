@@ -230,6 +230,47 @@ public sealed class TelegramImportSourceReaderTests
         Assert.Equal(200.00m, result.Unknown[0].PricePerUnit);
     }
 
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldSkipUnknown_WhenMarkedAsNonProduct()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/receipt.jpg", [1, 2, 3, 4]);
+        handler.OpenAiResponseJson =
+            """{"candidates":[],"unknown":[{"name":"Bag","nameEn":"Bag","quantity":1,"unit":"pcs","confidence":0.9,"isNonProduct":true},{"name":"Сосиски","nameEn":"Sausages","quantity":1,"unit":"kg","confidence":0.8,"isNonProduct":false}],"nonProducts":["Bag"]}""";
+
+        var sut = CreateSutWithOpenAi(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems: [new TelegramInventoryItemHint(1, "Milk")],
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Single(result.Unknown);
+        Assert.Equal("Sausages", result.Unknown[0].NameEn);
+    }
+
+    [Fact]
+    public async Task AnalyzeInventoryPhotoAsync_ShouldParseNonProductsArray()
+    {
+        using var handler = new StubTelegramFileHttpMessageHandler();
+        handler.AddFile("photo-id", "photos/receipt.jpg", [1, 2, 3, 4]);
+        handler.OpenAiResponseJson =
+            """{"store":{"name":"АТБ","nameEn":"ATB","confidence":0.9},"candidates":[],"unknown":[],"nonProducts":["Bag","Delivery"]}""";
+
+        var sut = CreateSutWithOpenAi(handler);
+
+        var result = await sut.AnalyzeInventoryPhotoAsync(
+            photoFileId: "photo-id",
+            mode: TelegramInventoryPhotoMode.Restock,
+            inventoryItems: [new TelegramInventoryItemHint(1, "Milk")],
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(["Bag", "Delivery"], result.NonProducts);
+    }
+
     private static ITelegramImportSourceReader CreateSut(HttpMessageHandler handler)
     {
         return CreateSutInternal(handler, apiKey: null);

@@ -4007,7 +4007,8 @@ public sealed class TelegramController : ControllerBase
                     entry.Unit,
                     entry.Confidence,
                     entry.PriceTotal,
-                    entry.PricePerUnit))
+                    entry.PricePerUnit,
+                    entry.IsNonProduct))
                 .ToList();
 
             if (candidates.Count == 0 && unknown.Count == 0)
@@ -4024,6 +4025,7 @@ public sealed class TelegramController : ControllerBase
             {
                 Candidates = candidates,
                 Unknown = unknown,
+                NonProducts = analysis.NonProducts,
                 DetectedStoreName = analysis.DetectedStore?.Name,
                 DetectedStoreNameEn = analysis.DetectedStore?.NameEn,
                 StoreConfidence = analysis.DetectedStore?.Confidence
@@ -5158,6 +5160,15 @@ public sealed class TelegramController : ControllerBase
             }
         }
 
+        if (session?.NonProducts is { Count: > 0 })
+        {
+            sb.AppendLine();
+            sb.AppendLine(EnsureWarningMarker(_navigationPresenter.GetText(
+                "inventory.photo.preview.non_products",
+                locale,
+                string.Join(", ", session.NonProducts))));
+        }
+
         sb.AppendLine();
         sb.AppendLine(EnsureQuestionMarker(_navigationPresenter.GetText("inventory.photo.preview.confirm", locale)));
         return sb.ToString().TrimEnd();
@@ -5171,6 +5182,15 @@ public sealed class TelegramController : ControllerBase
         IReadOnlyList<PendingInventoryPhotoCandidate> candidates,
         CancellationToken cancellationToken)
     {
+        var foodTrackingService = _foodTrackingService;
+        if (foodTrackingService is null)
+        {
+            return new TelegramRouteResponse(
+                "inventory.unavailable",
+                _navigationPresenter.GetText("stub.wip", locale),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
         var summaryLines = new List<string>();
         foreach (var candidate in candidates.OrderBy(x => x.Number))
         {
@@ -5178,12 +5198,12 @@ public sealed class TelegramController : ControllerBase
                 ? -candidate.Quantity
                 : candidate.Quantity;
 
-            var updated = await _foodTrackingService.AdjustInventoryQuantityAsync(candidate.ItemId, signedDelta, cancellationToken);
+            var updated = await foodTrackingService.AdjustInventoryQuantityAsync(candidate.ItemId, signedDelta, cancellationToken);
 
             // Update price and store for matched inventory items (restock mode only).
             if (session.Mode == TelegramInventoryPhotoMode.Restock && candidate.PricePerUnit.HasValue)
             {
-                await _foodTrackingService.UpdateInventoryPriceAndStoreAsync(
+                await foodTrackingService.UpdateInventoryPriceAndStoreAsync(
                     candidate.ItemId, candidate.PricePerUnit, session.ResolvedStoreName, cancellationToken);
             }
 
@@ -5203,7 +5223,7 @@ public sealed class TelegramController : ControllerBase
             && session.ResolvedStoreName is null
             && !string.IsNullOrWhiteSpace(session.DetectedStoreNameEn))
         {
-            var existingStores = await _foodTrackingService.GetDistinctStoresAsync(cancellationToken);
+            var existingStores = await foodTrackingService.GetDistinctStoresAsync(cancellationToken);
             var matchFound = existingStores.Any(s => string.Equals(s, session.DetectedStoreNameEn, StringComparison.OrdinalIgnoreCase));
 
             if (matchFound)
@@ -5215,7 +5235,7 @@ public sealed class TelegramController : ControllerBase
                 // Update store for all applied candidates.
                 foreach (var candidate in candidates)
                 {
-                    await _foodTrackingService.UpdateInventoryPriceAndStoreAsync(
+                    await foodTrackingService.UpdateInventoryPriceAndStoreAsync(
                         candidate.ItemId, null, matched, cancellationToken);
                 }
 
@@ -5243,6 +5263,15 @@ public sealed class TelegramController : ControllerBase
         CancellationToken cancellationToken,
         StringBuilder? existingSummary = null)
     {
+        var foodTrackingService = _foodTrackingService;
+        if (foodTrackingService is null)
+        {
+            return new TelegramRouteResponse(
+                "inventory.unavailable",
+                _navigationPresenter.GetText("stub.wip", locale),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
         if (!_pendingStateStore.InventoryPhotoSessions.TryGetValue(pendingKey, out var session))
         {
             _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
@@ -5256,7 +5285,7 @@ public sealed class TelegramController : ControllerBase
             {
                 try
                 {
-                    await _foodTrackingService.UpdateInventoryPriceAndStoreAsync(
+                    await foodTrackingService.UpdateInventoryPriceAndStoreAsync(
                         candidate.ItemId, null, session.ResolvedStoreName, cancellationToken);
                 }
                 catch (InvalidOperationException)
@@ -5318,12 +5347,26 @@ public sealed class TelegramController : ControllerBase
         IReadOnlyList<PendingInventoryPhotoUnknown> selectedUnknowns,
         CancellationToken cancellationToken)
     {
+        var foodTrackingService = _foodTrackingService;
+        if (foodTrackingService is null)
+        {
+            return new TelegramRouteResponse(
+                "inventory.unavailable",
+                _navigationPresenter.GetText("stub.wip", locale),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
         var addedLines = new List<string>();
         foreach (var unknown in selectedUnknowns.OrderBy(u => u.Number))
         {
-            var itemName = !string.IsNullOrWhiteSpace(unknown.NameEn) ? unknown.NameEn : unknown.Name;
-            var created = await _foodTrackingService.AddInventoryItemAsync(
-                itemName,
+            // Inventory item names must remain in English; skip entries without a resolved English name.
+            if (string.IsNullOrWhiteSpace(unknown.NameEn))
+            {
+                continue;
+            }
+
+            var created = await foodTrackingService.AddInventoryItemAsync(
+                unknown.NameEn.Trim(),
                 session.ResolvedStoreName,
                 unknown.PricePerUnit,
                 unknown.Quantity,
@@ -5333,6 +5376,14 @@ public sealed class TelegramController : ControllerBase
 
         _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
         _pendingStateStore.InventoryPhotoSessions.TryRemove(pendingKey, out _);
+
+        if (addedLines.Count == 0)
+        {
+            return new TelegramRouteResponse(
+                "inventory.photo.unknown.added.none",
+                EnsureWarningMarker(_navigationPresenter.GetText("inventory.photo.unknown.added.none", locale)),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
 
         var sb = new StringBuilder();
         sb.AppendLine($"✅ {_navigationPresenter.GetText("inventory.photo.unknown.added", locale, addedLines.Count)}");

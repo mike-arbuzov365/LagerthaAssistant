@@ -64,6 +64,7 @@ internal sealed record PendingInventoryPhotoSession(
     TelegramInventoryPhotoMode Mode,
     IReadOnlyList<PendingInventoryPhotoCandidate> Candidates,
     IReadOnlyList<PendingInventoryPhotoUnknown> Unknown,
+    IReadOnlyList<string>? NonProducts = null,
     string? DetectedStoreName = null,
     string? DetectedStoreNameEn = null,
     double? StoreConfidence = null,
@@ -89,7 +90,8 @@ internal sealed record PendingInventoryPhotoUnknown(
     string? Unit,
     double Confidence,
     decimal? PriceTotal = null,
-    decimal? PricePerUnit = null);
+    decimal? PricePerUnit = null,
+    bool IsNonProduct = false);
 
 internal sealed record PendingShoppingDeleteSession(
     IReadOnlyList<PendingShoppingDeleteCandidate> Candidates);

@@ -162,7 +162,7 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         prompt.AppendLine("Use only inventory IDs from the list below.");
         prompt.AppendLine("The image can be either products on a table OR a receipt photo.");
         prompt.AppendLine("Return strict JSON only:");
-        prompt.AppendLine("{\"store\":{\"name\":\"Store Name\",\"nameEn\":\"Store Name In English\",\"confidence\":0.95},\"candidates\":[{\"itemId\":20,\"quantity\":2,\"unit\":\"pcs\",\"confidence\":0.91,\"priceTotal\":189.50,\"pricePerUnit\":251.66}],\"unknown\":[{\"name\":\"Сосиски\",\"nameEn\":\"Sausages\",\"quantity\":1,\"unit\":\"kg\",\"confidence\":0.62,\"priceTotal\":74.80,\"pricePerUnit\":200.00,\"isNonProduct\":false}]}");
+        prompt.AppendLine("{\"store\":{\"name\":\"Store Name\",\"nameEn\":\"Store Name In English\",\"confidence\":0.95},\"candidates\":[{\"itemId\":20,\"quantity\":2,\"unit\":\"pcs\",\"confidence\":0.91,\"priceTotal\":189.50,\"pricePerUnit\":251.66}],\"unknown\":[{\"name\":\"Sausages\",\"nameEn\":\"Sausages\",\"quantity\":1,\"unit\":\"kg\",\"confidence\":0.62,\"priceTotal\":74.80,\"pricePerUnit\":200.00,\"isNonProduct\":false}],\"nonProducts\":[\"Bag\"]}");
         prompt.AppendLine("Rules:");
         prompt.AppendLine("- quantity must be > 0.");
         prompt.AppendLine("- if image is a receipt and mode=restock, infer quantities from line items; if qty is missing, default to 1.");
@@ -251,8 +251,14 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
 
             var candidates = ParseInventoryCandidates(root, inventoryLookup);
             var unknown = ParseInventoryUnknown(root);
+            var nonProducts = ParseNonProducts(root);
             var detectedStore = ParseDetectedStore(root);
-            return new TelegramInventoryPhotoAnalysisResult(true, candidates, unknown, detectedStore);
+            return new TelegramInventoryPhotoAnalysisResult(
+                Success: true,
+                Candidates: candidates,
+                Unknown: unknown,
+                DetectedStore: detectedStore,
+                NonProducts: nonProducts);
         }
         catch (Exception ex)
         {
@@ -919,17 +925,52 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
             var unit = TryGetString(element, "unit");
             var confidence = TryGetDouble(element, "confidence", 0.5);
             var nameEn = TryGetString(element, "nameEn");
+            var isNonProduct = TryGetBool(element, "isNonProduct");
             var priceTotal = TryGetNullableDecimal(element, "priceTotal");
             var pricePerUnit = TryGetNullableDecimal(element, "pricePerUnit");
 
+            if (isNonProduct)
+            {
+                continue;
+            }
+
             result.Add(new TelegramInventoryPhotoUnknown(
-                name.Trim(),
-                nameEn?.Trim(),
-                Math.Round(quantity, 3, MidpointRounding.AwayFromZero),
-                unit,
-                Math.Clamp(confidence, 0d, 1d),
-                priceTotal,
-                pricePerUnit));
+                Name: name.Trim(),
+                NameEn: nameEn?.Trim(),
+                Quantity: Math.Round(quantity, 3, MidpointRounding.AwayFromZero),
+                Unit: unit,
+                Confidence: Math.Clamp(confidence, 0d, 1d),
+                PriceTotal: priceTotal,
+                PricePerUnit: pricePerUnit,
+                IsNonProduct: isNonProduct));
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<string> ParseNonProducts(JsonElement root)
+    {
+        var result = new List<string>();
+        if (!root.TryGetProperty("nonProducts", out var nonProductsElement)
+            || nonProductsElement.ValueKind != JsonValueKind.Array)
+        {
+            return result;
+        }
+
+        foreach (var element in nonProductsElement.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var value = element.GetString();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            result.Add(value.Trim());
         }
 
         return result;
@@ -959,6 +1000,32 @@ internal sealed class TelegramImportSourceReader : ITelegramImportSourceReader
         return TryGetDecimal(element, propertyName, out var value) && value > 0m
             ? Math.Round(value, 2, MidpointRounding.AwayFromZero)
             : null;
+    }
+
+    private static bool TryGetBool(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return false;
+        }
+
+        if (property.ValueKind == JsonValueKind.True)
+        {
+            return true;
+        }
+
+        if (property.ValueKind == JsonValueKind.False)
+        {
+            return false;
+        }
+
+        if (property.ValueKind == JsonValueKind.String
+            && bool.TryParse(property.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return false;
     }
 
     private static string? TryGetString(JsonElement element, string propertyName)

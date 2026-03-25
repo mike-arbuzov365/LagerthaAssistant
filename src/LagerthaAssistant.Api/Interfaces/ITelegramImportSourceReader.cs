@@ -50,7 +50,8 @@ public sealed record TelegramInventoryPhotoUnknown(
     string? Unit,
     double Confidence,
     decimal? PriceTotal = null,
-    decimal? PricePerUnit = null);
+    decimal? PricePerUnit = null,
+    bool IsNonProduct = false);
 
 public sealed record TelegramInventoryPhotoDetectedStore(
     string Name,
@@ -62,6 +63,7 @@ public sealed record TelegramInventoryPhotoAnalysisResult(
     IReadOnlyList<TelegramInventoryPhotoCandidate> Candidates,
     IReadOnlyList<TelegramInventoryPhotoUnknown> Unknown,
     TelegramInventoryPhotoDetectedStore? DetectedStore = null,
+    IReadOnlyList<string>? NonProducts = null,
     string? Error = null);
 
 public sealed record TelegramImportInbound(
