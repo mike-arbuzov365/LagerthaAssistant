@@ -1481,11 +1481,11 @@ public sealed class LocalizationService : ILocalizationService
     private static readonly IReadOnlyDictionary<string, string> SupplementalEnglish = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["menu.inventory.stats"] = "📊 Stock stats",
-        ["menu.inventory.adjust"] = "➕➖ Adjust quantity",
+        ["menu.inventory.adjust"] = "✏️ Quantity",
         ["menu.inventory.min"] = "📏 Min stock",
-        ["menu.inventory.reset_stock"] = "🧹 Reset stock",
-        ["menu.inventory.photo_restock"] = "📸 Restock photo",
-        ["menu.inventory.photo_consume"] = "📷 Consumption photo",
+        ["menu.inventory.reset_stock"] = "🧹 Reset",
+        ["menu.inventory.photo_restock"] = "➕ Restock",
+        ["menu.inventory.photo_consume"] = "➖ Consume",
         ["inventory.stats.title"] = "📊 Inventory stats",
         ["inventory.stats.total_items"] = "• Total items: {0}",
         ["inventory.stats.with_current"] = "• With current quantity: {0}",
@@ -1570,11 +1570,11 @@ public sealed class LocalizationService : ILocalizationService
     private static readonly IReadOnlyDictionary<string, string> SupplementalUkrainian = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["menu.inventory.stats"] = "📊 Статистика",
-        ["menu.inventory.adjust"] = "➕➖ Змінити кількість",
+        ["menu.inventory.adjust"] = "✏️ Кількість",
         ["menu.inventory.min"] = "📏 Мін запас",
-        ["menu.inventory.reset_stock"] = "🧹 Обнулити залишки",
-        ["menu.inventory.photo_restock"] = "📸 Фото: поповнення",
-        ["menu.inventory.photo_consume"] = "📷 Фото: списання",
+        ["menu.inventory.reset_stock"] = "🧹 Обнулити",
+        ["menu.inventory.photo_restock"] = "➕ Поповнити",
+        ["menu.inventory.photo_consume"] = "➖ Списати",
         ["inventory.stats.title"] = "📊 Статистика складу",
         ["inventory.stats.total_items"] = "• Усього товарів: {0}",
         ["inventory.stats.with_current"] = "• З поточною кількістю: {0}",
