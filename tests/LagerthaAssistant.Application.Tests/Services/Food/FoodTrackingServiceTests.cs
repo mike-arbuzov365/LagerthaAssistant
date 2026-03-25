@@ -816,6 +816,69 @@ public sealed class FoodTrackingServiceTests
     }
 
     [Fact]
+    public async Task AddToShoppingFromInventoryAsync_ShouldFallBackToInventoryStore_WhenStoreIsNull()
+    {
+        var foodRepo = new FakeFoodItemRepository
+        {
+            AllItems = [new FoodItem { Id = 7, Name = "Butter", Store = "Costco", NotionPageId = "inv-page-1" }]
+        };
+        var groceryRepo = new FakeGroceryListRepository();
+        var notionClient = new FakeNotionFoodClient();
+        var sut = CreateSut(foodItemRepo: foodRepo, groceryRepo: groceryRepo, notionClient: notionClient, unitOfWork: new FakeUnitOfWork());
+
+        var result = await sut.AddToShoppingFromInventoryAsync(7, "2", store: null);
+
+        Assert.Equal("Costco", result.Store);
+        Assert.Equal("Costco", groceryRepo.AddedItems[0].Store);
+    }
+
+    [Fact]
+    public async Task AddToShoppingFromInventoryAsync_ShouldPreferExplicitStore_OverInventoryStore()
+    {
+        var foodRepo = new FakeFoodItemRepository
+        {
+            AllItems = [new FoodItem { Id = 7, Name = "Butter", Store = "Costco", NotionPageId = "inv-page-1" }]
+        };
+        var groceryRepo = new FakeGroceryListRepository();
+        var sut = CreateSut(foodItemRepo: foodRepo, groceryRepo: groceryRepo, unitOfWork: new FakeUnitOfWork());
+
+        var result = await sut.AddToShoppingFromInventoryAsync(7, null, store: "Walmart");
+
+        Assert.Equal("Walmart", result.Store);
+    }
+
+    [Fact]
+    public async Task AddToShoppingFromInventoryAsync_ShouldPassInventoryNotionPageId_ToCreateGroceryItem()
+    {
+        var foodRepo = new FakeFoodItemRepository
+        {
+            AllItems = [new FoodItem { Id = 7, Name = "Butter", NotionPageId = "inv-page-42" }]
+        };
+        var notionClient = new FakeNotionFoodClient();
+        var sut = CreateSut(foodItemRepo: foodRepo, groceryRepo: new FakeGroceryListRepository(), notionClient: notionClient, unitOfWork: new FakeUnitOfWork());
+
+        await sut.AddToShoppingFromInventoryAsync(7, null, store: null);
+
+        Assert.Equal("inv-page-42", notionClient.LastInventoryNotionPageId);
+    }
+
+    [Fact]
+    public async Task AddToShoppingFromInventoryAsync_ShouldLeaveStoreNull_WhenBothStoresAreNull()
+    {
+        var foodRepo = new FakeFoodItemRepository
+        {
+            AllItems = [new FoodItem { Id = 7, Name = "Butter", Store = null }]
+        };
+        var groceryRepo = new FakeGroceryListRepository();
+        var sut = CreateSut(foodItemRepo: foodRepo, groceryRepo: groceryRepo, unitOfWork: new FakeUnitOfWork());
+
+        var result = await sut.AddToShoppingFromInventoryAsync(7, null, store: null);
+
+        Assert.Null(result.Store);
+        Assert.Null(groceryRepo.AddedItems[0].Store);
+    }
+
+    [Fact]
     public async Task AddToShoppingFromInventoryAsync_ShouldThrow_WhenFoodItemNotFound()
     {
         var sut = CreateSut();
@@ -1236,9 +1299,12 @@ public sealed class FoodTrackingServiceTests
         public string CreatedPageId { get; init; } = "notion-fake-id";
         public bool ShouldThrow { get; init; }
 
-        public Task<string> CreateGroceryItemAsync(string name, string? quantity, string? store, CancellationToken cancellationToken = default)
+        public string? LastInventoryNotionPageId { get; private set; }
+
+        public Task<string> CreateGroceryItemAsync(string name, string? quantity, string? store, string? inventoryNotionPageId = null, CancellationToken cancellationToken = default)
         {
             if (ShouldThrow) throw new HttpRequestException("Notion unavailable");
+            LastInventoryNotionPageId = inventoryNotionPageId;
             return Task.FromResult(CreatedPageId);
         }
 

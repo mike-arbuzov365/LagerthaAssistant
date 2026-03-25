@@ -213,10 +213,14 @@ public sealed class FoodTrackingService : IFoodTrackingService
         var foodItem = allItems.FirstOrDefault(x => x.Id == foodItemId)
             ?? throw new InvalidOperationException($"Food item {foodItemId} not found in inventory.");
 
+        // Fall back to the inventory item's store when no explicit store was provided.
+        var effectiveStore = string.IsNullOrWhiteSpace(store) ? foodItem.Store : store;
+
         string notionPageId;
         try
         {
-            notionPageId = await _notionClient.CreateGroceryItemAsync(foodItem.Name, quantity, store, cancellationToken);
+            notionPageId = await _notionClient.CreateGroceryItemAsync(
+                foodItem.Name, quantity, effectiveStore, foodItem.NotionPageId, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -229,7 +233,7 @@ public sealed class FoodTrackingService : IFoodTrackingService
             NotionPageId = notionPageId,
             Name = foodItem.Name,
             Quantity = quantity?.Trim(),
-            Store = store?.Trim(),
+            Store = effectiveStore?.Trim(),
             FoodItemId = foodItemId,
             IsBought = false,
             NotionUpdatedAt = DateTime.UtcNow,
@@ -276,7 +280,7 @@ public sealed class FoodTrackingService : IFoodTrackingService
         string notionPageId;
         try
         {
-            notionPageId = await _notionClient.CreateGroceryItemAsync(name.Trim(), quantity, store, cancellationToken);
+            notionPageId = await _notionClient.CreateGroceryItemAsync(name.Trim(), quantity, store, inventoryNotionPageId: null, cancellationToken);
         }
         catch (Exception ex)
         {

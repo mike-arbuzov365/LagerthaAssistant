@@ -89,7 +89,7 @@ public sealed class FoodSyncService : IFoodSyncService
                         // from being overwritten by an older or concurrent Notion edit.
                         // Structural fields (name, category, store, icon, price) are always refreshed.
                         var hasPendingLocalChanges =
-                            existing.NotionSyncStatus is FoodSyncStatus.Pending or FoodSyncStatus.Processing;
+                            existing.NotionSyncStatus is FoodSyncStatus.Pending or FoodSyncStatus.Processing or FoodSyncStatus.Failed;
 
                         if (hasPendingLocalChanges)
                         {
@@ -312,10 +312,28 @@ public sealed class FoodSyncService : IFoodSyncService
             {
                 if (IsLocalPageId(item.NotionPageId))
                 {
+                    // Resolve the inventory Notion page ID for the relation link.
+                    string? inventoryNotionPageId = null;
+                    if (item.FoodItemId.HasValue)
+                    {
+                        var foodItem = await _foodItemRepo.GetByIdAsync(item.FoodItemId.Value, cancellationToken);
+                        if (foodItem is not null)
+                        {
+                            inventoryNotionPageId = foodItem.NotionPageId;
+                        }
+                        else
+                        {
+                            _logger.LogDebug(
+                                "Grocery item {Id} references deleted FoodItem {FoodItemId}; Inventory relation will be skipped",
+                                item.Id, item.FoodItemId.Value);
+                        }
+                    }
+
                     var createdPageId = await _notionClient.CreateGroceryItemAsync(
                         item.Name,
                         item.Quantity,
                         item.Store,
+                        inventoryNotionPageId,
                         cancellationToken);
 
                     if (string.IsNullOrWhiteSpace(createdPageId))
@@ -624,6 +642,10 @@ public sealed class FoodSyncService : IFoodSyncService
         if (relation.Count > 0 && notionIdToFoodItemId.TryGetValue(relation[0], out var fid))
         {
             item.FoodItemId = fid;
+        }
+        else
+        {
+            item.FoodItemId = null;
         }
     }
 
