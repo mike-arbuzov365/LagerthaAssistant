@@ -110,5 +110,8 @@ public sealed class FoodSyncControllerTests
 
         public Task<FoodSyncStatusSummary> GetSyncStatusAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(StatusResult);
+
+        public Task<int> PurgeArchivedGroceryAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
     }
 }

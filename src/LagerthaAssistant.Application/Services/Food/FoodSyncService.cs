@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 public sealed class FoodSyncService : IFoodSyncService
 {
     private readonly int _maxSyncAttempts;
+    private readonly int _tombstoneRetentionDays;
     private readonly INotionFoodClient _notionClient;
     private readonly IFoodItemRepository _foodItemRepo;
     private readonly IMealRepository _mealRepo;
@@ -30,6 +31,7 @@ public sealed class FoodSyncService : IFoodSyncService
         FoodSyncOptions? options = null)
     {
         _maxSyncAttempts = options?.MaxSyncAttempts ?? 5;
+        _tombstoneRetentionDays = options?.TombstoneRetentionDays ?? 7;
         _notionClient = notionClient;
         _foodItemRepo = foodItemRepo;
         _mealRepo = mealRepo;
@@ -436,6 +438,19 @@ public sealed class FoodSyncService : IFoodSyncService
             InventoryPermanentlyFailed: inventoryPermFailed,
             GroceryPendingOrFailed: groceryPending,
             GroceryPermanentlyFailed: groceryPermFailed);
+    }
+
+    public async Task<int> PurgeArchivedGroceryAsync(CancellationToken cancellationToken = default)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-_tombstoneRetentionDays);
+        var purged = await _groceryRepo.PurgeArchivedAsync(cutoff, cancellationToken);
+
+        if (purged > 0)
+        {
+            _logger.LogInformation("Purged {Count} grocery tombstones older than {Cutoff:u}", purged, cutoff);
+        }
+
+        return purged;
     }
 
     public async Task<int> ReconcileNotionGroceryOrphansAsync(

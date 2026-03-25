@@ -168,7 +168,8 @@ public static class DependencyInjection
         var foodSyncSection = configuration.GetSection("FoodSync");
         var foodSyncOptions = new FoodSyncOptions
         {
-            MaxSyncAttempts = ParseInt(foodSyncSection["MaxSyncAttempts"], 5)
+            MaxSyncAttempts = ParseInt(foodSyncSection["MaxSyncAttempts"], 5),
+            TombstoneRetentionDays = ParseInt(foodSyncSection["TombstoneRetentionDays"], 7)
         };
         services.AddSingleton(foodSyncOptions);
 

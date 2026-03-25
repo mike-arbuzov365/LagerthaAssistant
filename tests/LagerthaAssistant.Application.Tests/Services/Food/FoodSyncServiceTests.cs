@@ -995,6 +995,25 @@ public sealed class FoodSyncServiceTests
         Assert.Equal(0, status.GroceryPermanentlyFailed);
     }
 
+    // ── PurgeArchivedGroceryAsync ────────────────────────────────────────────
+
+    [Fact]
+    public async Task PurgeArchivedGroceryAsync_ShouldDelegateToPurgeArchivedWithRetentionCutoff()
+    {
+        var groceryRepo = new FakeGroceryListRepository();
+        var options = new FoodSyncOptions { TombstoneRetentionDays = 14 };
+        var sut = CreateSut(groceryRepo: groceryRepo, options: options);
+
+        var before = DateTime.UtcNow;
+        await sut.PurgeArchivedGroceryAsync();
+        var after = DateTime.UtcNow;
+
+        // Verify the cutoff was roughly 14 days ago.
+        Assert.NotNull(groceryRepo.LastPurgeCutoff);
+        var expectedCutoff = before.AddDays(-14);
+        Assert.InRange(groceryRepo.LastPurgeCutoff!.Value, expectedCutoff.AddSeconds(-2), after.AddDays(-14).AddSeconds(2));
+    }
+
     [Fact]
     public async Task SyncFromNotionAsync_ShouldArchiveBoughtNotionItems_AndDeleteLocalRows()
     {
@@ -1372,8 +1391,13 @@ public sealed class FoodSyncServiceTests
         public Task<bool> ExistsArchivedByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default)
             => Task.FromResult(ArchivedNotionPageIds.Contains(notionPageId));
 
+        public DateTime? LastPurgeCutoff { get; private set; }
+
         public Task<int> PurgeArchivedAsync(DateTime olderThan, CancellationToken cancellationToken = default)
-            => Task.FromResult(0);
+        {
+            LastPurgeCutoff = olderThan;
+            return Task.FromResult(0);
+        }
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

@@ -31,4 +31,10 @@ public interface IFoodSyncService
     /// Returns a snapshot of sync queue health for both Inventory and Grocery.
     /// </summary>
     Task<FoodSyncStatusSummary> GetSyncStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hard-deletes grocery tombstones older than the configured retention period.
+    /// Returns the number of purged records.
+    /// </summary>
+    Task<int> PurgeArchivedGroceryAsync(CancellationToken cancellationToken = default);
 }
