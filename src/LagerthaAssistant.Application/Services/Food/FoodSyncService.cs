@@ -89,7 +89,7 @@ public sealed class FoodSyncService : IFoodSyncService
                         // from being overwritten by an older or concurrent Notion edit.
                         // Structural fields (name, category, store, icon, price) are always refreshed.
                         var hasPendingLocalChanges =
-                            existing.NotionSyncStatus is FoodSyncStatus.Pending or FoodSyncStatus.Processing;
+                            existing.NotionSyncStatus is FoodSyncStatus.Pending or FoodSyncStatus.Processing or FoodSyncStatus.Failed;
 
                         if (hasPendingLocalChanges)
                         {
@@ -317,7 +317,16 @@ public sealed class FoodSyncService : IFoodSyncService
                     if (item.FoodItemId.HasValue)
                     {
                         var foodItem = await _foodItemRepo.GetByIdAsync(item.FoodItemId.Value, cancellationToken);
-                        inventoryNotionPageId = foodItem?.NotionPageId;
+                        if (foodItem is not null)
+                        {
+                            inventoryNotionPageId = foodItem.NotionPageId;
+                        }
+                        else
+                        {
+                            _logger.LogDebug(
+                                "Grocery item {Id} references deleted FoodItem {FoodItemId}; Inventory relation will be skipped",
+                                item.Id, item.FoodItemId.Value);
+                        }
                     }
 
                     var createdPageId = await _notionClient.CreateGroceryItemAsync(
@@ -633,6 +642,10 @@ public sealed class FoodSyncService : IFoodSyncService
         if (relation.Count > 0 && notionIdToFoodItemId.TryGetValue(relation[0], out var fid))
         {
             item.FoodItemId = fid;
+        }
+        else
+        {
+            item.FoodItemId = null;
         }
     }
 

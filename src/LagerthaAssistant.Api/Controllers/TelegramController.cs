@@ -5060,7 +5060,7 @@ public sealed class TelegramController : ControllerBase
     /// "45 2" — plain ID + optional quantity
     /// "[45] 🥛 Milk 2" — bracketed ID (copied from catalog) + optional trailing quantity
     /// </summary>
-    private static bool TryParseInventoryCartSelection(
+    internal static bool TryParseInventoryCartSelection(
         string input,
         out int itemId,
         out string? quantity)

@@ -863,6 +863,22 @@ public sealed class FoodTrackingServiceTests
     }
 
     [Fact]
+    public async Task AddToShoppingFromInventoryAsync_ShouldLeaveStoreNull_WhenBothStoresAreNull()
+    {
+        var foodRepo = new FakeFoodItemRepository
+        {
+            AllItems = [new FoodItem { Id = 7, Name = "Butter", Store = null }]
+        };
+        var groceryRepo = new FakeGroceryListRepository();
+        var sut = CreateSut(foodItemRepo: foodRepo, groceryRepo: groceryRepo, unitOfWork: new FakeUnitOfWork());
+
+        var result = await sut.AddToShoppingFromInventoryAsync(7, null, store: null);
+
+        Assert.Null(result.Store);
+        Assert.Null(groceryRepo.AddedItems[0].Store);
+    }
+
+    [Fact]
     public async Task AddToShoppingFromInventoryAsync_ShouldThrow_WhenFoodItemNotFound()
     {
         var sut = CreateSut();

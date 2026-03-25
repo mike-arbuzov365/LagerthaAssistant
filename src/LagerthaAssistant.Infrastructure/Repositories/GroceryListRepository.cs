@@ -265,7 +265,7 @@ public sealed class GroceryListRepository : IGroceryListRepository
                 itemIds.Count);
 
             return await _context.GroceryListItems
-                .Where(x => itemIds.Contains(x.Id) && !x.IsBought)
+                .Where(x => itemIds.Contains(x.Id))
                 .ExecuteUpdateAsync(
                     s => s.SetProperty(x => x.ArchivedAt, DateTime.UtcNow),
                     cancellationToken);
