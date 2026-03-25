@@ -310,7 +310,6 @@ public sealed class TelegramImportSourceReaderTests
         Assert.Single(result.Candidates);
         Assert.Equal("Milk", result.Candidates[0].Name);
     }
-
     private static ITelegramImportSourceReader CreateSut(HttpMessageHandler handler)
     {
         return CreateSutInternal(handler, apiKey: null);
@@ -520,7 +519,6 @@ public sealed class TelegramImportSourceReaderTests
                 {
                     throw new TaskCanceledException("Simulated timeout.");
                 }
-
                 var envelope = JsonSerializer.Serialize(new
                 {
                     choices = new[]
@@ -545,7 +543,6 @@ public sealed class TelegramImportSourceReaderTests
                     throw new TaskCanceledException("Simulated timeout.");
                 }
             }
-
             if (pathAndQuery.Contains("/getFile?", StringComparison.Ordinal))
             {
                 var fileId = GetQueryValue(uri.Query, "file_id");
