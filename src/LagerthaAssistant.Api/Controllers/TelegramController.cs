@@ -457,12 +457,12 @@ public sealed class TelegramController : ControllerBase
                 return await BuildVocabularySectionResponseAsync(locale, cancellationToken);
 
             case NavigationRouteKind.MainShoppingButton:
-                await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Shopping, cancellationToken);
+                await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Inventory, cancellationToken);
                 _pendingStateStore.ShoppingDeleteSessions.TryRemove(BuildPendingShoppingDeleteKey(scope), out _);
                 return new TelegramRouteResponse(
-                    "nav.food",
-                    _navigationPresenter.GetText("menu.food.title", locale),
-                    InlineKeyboard(_navigationPresenter.BuildFoodMenuKeyboard(locale)));
+                    "nav.inventory",
+                    _navigationPresenter.GetText("menu.inventory.title", locale),
+                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
 
             case NavigationRouteKind.MainWeeklyMenuButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.WeeklyMenu, cancellationToken);
@@ -987,6 +987,15 @@ public sealed class TelegramController : ControllerBase
                 "nav.main",
                 _navigationPresenter.GetText("menu.main.title", locale),
                 ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Nav.Weekly, StringComparison.Ordinal))
+        {
+            await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.WeeklyMenu, cancellationToken);
+            return new TelegramRouteResponse(
+                "nav.weekly",
+                _navigationPresenter.GetText("menu.weekly.title", locale),
+                InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
         }
 
         if (callbackData.StartsWith(CallbackDataConstants.Lang.Prefix, StringComparison.Ordinal))
@@ -3612,6 +3621,22 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
         }
 
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.Manage, StringComparison.Ordinal))
+        {
+            return new TelegramRouteResponse(
+                "nav.inventory.manage",
+                _navigationPresenter.GetText("menu.inventory.manage", locale),
+                InlineKeyboard(_navigationPresenter.BuildInventoryManageKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.Move, StringComparison.Ordinal))
+        {
+            return new TelegramRouteResponse(
+                "nav.inventory.move",
+                _navigationPresenter.GetText("menu.inventory.move", locale),
+                InlineKeyboard(_navigationPresenter.BuildInventoryMoveKeyboard(locale)));
+        }
+
         if (string.Equals(callbackData, CallbackDataConstants.Inventory.Add, StringComparison.Ordinal))
         {
             return new TelegramRouteResponse(
@@ -4368,6 +4393,14 @@ public sealed class TelegramController : ControllerBase
         ConversationScope scope,
         CancellationToken cancellationToken)
     {
+        if (string.Equals(callbackData, CallbackDataConstants.Weekly.Analytics, StringComparison.Ordinal))
+        {
+            return new TelegramRouteResponse(
+                "nav.weekly.analytics",
+                _navigationPresenter.GetText("menu.weekly.analytics", locale),
+                InlineKeyboard(_navigationPresenter.BuildWeeklyAnalyticsKeyboard(locale)));
+        }
+
         // Handle meal creation confirm/cancel
         if (string.Equals(callbackData, CallbackDataConstants.Weekly.CreateConfirm, StringComparison.Ordinal))
         {

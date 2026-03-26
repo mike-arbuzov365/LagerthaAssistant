@@ -3849,11 +3849,20 @@ public sealed class TelegramControllerTests
         public TelegramInlineKeyboardMarkup BuildInventoryKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Inventory", CallbackDataConstants.Inventory.List)]]);
 
+        public TelegramInlineKeyboardMarkup BuildInventoryMoveKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Move", CallbackDataConstants.Inventory.Move)]]);
+
+        public TelegramInlineKeyboardMarkup BuildInventoryManageKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Manage", CallbackDataConstants.Inventory.Manage)]]);
+
         public TelegramInlineKeyboardMarkup BuildShoppingKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Add", "shop:add")]]);
 
         public TelegramInlineKeyboardMarkup BuildWeeklyMenuKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("View", "weekly:view")]]);
+
+        public TelegramInlineKeyboardMarkup BuildWeeklyAnalyticsKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("Analytics", CallbackDataConstants.Weekly.Analytics)]]);
 
         public TelegramInlineKeyboardMarkup BuildOnboardingLanguageKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("EN", "lang:en")]]);

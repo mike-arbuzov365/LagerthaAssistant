@@ -19,9 +19,15 @@ public interface ITelegramNavigationPresenter
 
     TelegramInlineKeyboardMarkup BuildInventoryKeyboard(string locale);
 
+    TelegramInlineKeyboardMarkup BuildInventoryMoveKeyboard(string locale);
+
+    TelegramInlineKeyboardMarkup BuildInventoryManageKeyboard(string locale);
+
     TelegramInlineKeyboardMarkup BuildShoppingKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildWeeklyMenuKeyboard(string locale);
+
+    TelegramInlineKeyboardMarkup BuildWeeklyAnalyticsKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildOnboardingLanguageKeyboard(string locale);
 
