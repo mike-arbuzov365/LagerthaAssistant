@@ -5,6 +5,7 @@ public static class CallbackDataConstants
     public static class Nav
     {
         public const string Main = "nav:main";
+        public const string Weekly = "nav:weekly";
     }
 
     public static class Lang
@@ -115,6 +116,8 @@ public static class CallbackDataConstants
         public const string PhotoUnknownSelect = "inventory:photo:unknown:select";
         public const string PhotoUnknownSkip = "inventory:photo:unknown:skip";
         public const string CartPrefix = "inventory:cart:";
+        public const string Manage = "inventory:manage";
+        public const string Move = "inventory:move";
     }
 
     public static class Shop
@@ -140,5 +143,6 @@ public static class CallbackDataConstants
         public const string PhotoCancel = "weekly:photo:no";
         public const string DailyGoal = "weekly:goal";
         public const string Diversity = "weekly:diversity";
+        public const string Analytics = "weekly:analytics";
     }
 }

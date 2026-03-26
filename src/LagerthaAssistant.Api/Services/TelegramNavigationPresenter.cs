@@ -88,10 +88,32 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             InlineKeyboard:
             [
                 [Button("menu.inventory.list", locale, CallbackDataConstants.Inventory.List), Button("menu.inventory.search", locale, CallbackDataConstants.Inventory.Search)],
-                [Button("menu.inventory.stats", locale, CallbackDataConstants.Inventory.Stats), Button("menu.inventory.suggest", locale, CallbackDataConstants.Inventory.Suggest)],
-                [Button("menu.inventory.adjust", locale, CallbackDataConstants.Inventory.Adjust), Button("menu.inventory.min", locale, CallbackDataConstants.Inventory.Min), Button("menu.inventory.reset_stock", locale, CallbackDataConstants.Inventory.ResetStock)],
-                [Button("menu.inventory.photo_restock", locale, CallbackDataConstants.Inventory.PhotoRestock), Button("menu.inventory.photo_consume", locale, CallbackDataConstants.Inventory.PhotoConsume)],
-                [Button("menu.inventory.back", locale, CallbackDataConstants.Food.Menu)]
+                [Button("menu.inventory.suggest", locale, CallbackDataConstants.Inventory.Suggest), Button("menu.inventory.stats", locale, CallbackDataConstants.Inventory.Stats)],
+                [Button("menu.inventory.move", locale, CallbackDataConstants.Inventory.Move), Button("menu.inventory.manage", locale, CallbackDataConstants.Inventory.Manage)],
+                [Button("menu.food.shopping", locale, CallbackDataConstants.Food.Shopping)],
+                [Button("menu.inventory.back", locale, CallbackDataConstants.Nav.Main)]
+            ]);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildInventoryMoveKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("menu.inventory.photo_restock", locale, CallbackDataConstants.Inventory.PhotoRestock)],
+                [Button("menu.inventory.photo_consume", locale, CallbackDataConstants.Inventory.PhotoConsume)],
+                [Button("menu.inventory.sub.back", locale, CallbackDataConstants.Food.Inventory)]
+            ]);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildInventoryManageKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("menu.inventory.adjust", locale, CallbackDataConstants.Inventory.Adjust), Button("menu.inventory.min", locale, CallbackDataConstants.Inventory.Min)],
+                [Button("menu.inventory.reset_stock", locale, CallbackDataConstants.Inventory.ResetStock)],
+                [Button("menu.inventory.sub.back", locale, CallbackDataConstants.Food.Inventory)]
             ]);
     }
 
@@ -102,7 +124,7 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             [
                 [Button("menu.shopping.add", locale, CallbackDataConstants.Shop.Add), Button("menu.shopping.list", locale, CallbackDataConstants.Shop.List)],
                 [Button("menu.shopping.delete", locale, CallbackDataConstants.Shop.Delete)],
-                [Button("menu.shopping.back", locale, CallbackDataConstants.Nav.Main)]
+                [Button("menu.shopping.back", locale, CallbackDataConstants.Food.Inventory)]
             ]);
     }
 
@@ -112,10 +134,20 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             InlineKeyboard:
             [
                 [Button("menu.weekly.view", locale, CallbackDataConstants.Weekly.View), Button("menu.weekly.plan", locale, CallbackDataConstants.Weekly.Plan)],
+                [Button("menu.weekly.log", locale, CallbackDataConstants.Weekly.Log), Button("menu.weekly.create", locale, CallbackDataConstants.Weekly.Create)],
+                [Button("menu.weekly.analytics", locale, CallbackDataConstants.Weekly.Analytics)],
+                [Button("menu.weekly.back", locale, CallbackDataConstants.Nav.Main)]
+            ]);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildWeeklyAnalyticsKeyboard(string locale)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
                 [Button("menu.weekly.calories", locale, CallbackDataConstants.Weekly.Calories), Button("menu.weekly.goal", locale, CallbackDataConstants.Weekly.DailyGoal)],
                 [Button("menu.weekly.favourites", locale, CallbackDataConstants.Weekly.Favourites), Button("menu.weekly.diversity", locale, CallbackDataConstants.Weekly.Diversity)],
-                [Button("menu.weekly.log", locale, CallbackDataConstants.Weekly.Log), Button("menu.weekly.create", locale, CallbackDataConstants.Weekly.Create)],
-                [Button("menu.weekly.back", locale, CallbackDataConstants.Nav.Main)]
+                [Button("menu.weekly.analytics.back", locale, CallbackDataConstants.Nav.Weekly)]
             ]);
     }
 
