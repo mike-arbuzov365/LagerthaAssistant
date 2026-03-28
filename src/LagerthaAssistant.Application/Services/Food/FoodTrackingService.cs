@@ -301,6 +301,28 @@ public sealed class FoodTrackingService : IFoodTrackingService
         return await _foodItemRepo.GetDistinctStoresAsync(cancellationToken);
     }
 
+    public async Task<string?> ResolveStoreAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
+    {
+        return await _foodItemRepo.ResolveStoreAliasAsync(detectedPattern, cancellationToken);
+    }
+
+    public async Task SaveStoreAliasAsync(string detectedPattern, string resolvedStoreName, CancellationToken cancellationToken = default)
+    {
+        await _foodItemRepo.SaveStoreAliasAsync(detectedPattern, resolvedStoreName, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<int?> ResolveItemAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
+    {
+        return await _foodItemRepo.ResolveItemAliasAsync(detectedPattern, cancellationToken);
+    }
+
+    public async Task SaveItemAliasAsync(string detectedPattern, int foodItemId, CancellationToken cancellationToken = default)
+    {
+        await _foodItemRepo.SaveItemAliasAsync(detectedPattern, foodItemId, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(
         int foodItemId,
         string? quantity,

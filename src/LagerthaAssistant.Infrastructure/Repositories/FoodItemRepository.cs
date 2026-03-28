@@ -235,6 +235,134 @@ public sealed class FoodItemRepository : IFoodItemRepository
         }
     }
 
+    public async Task<string?> ResolveStoreAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
+    {
+        var normalizedPattern = NormalizeDetectedPattern(detectedPattern);
+        if (normalizedPattern is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _context.StoreAliases
+                .AsNoTracking()
+                .Where(x => x.DetectedPattern == normalizedPattern)
+                .Select(x => x.ResolvedStoreName)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for store alias '{DetectedPattern}'", RepositoryOperations.GetByKey, detectedPattern);
+            throw new RepositoryException(nameof(FoodItemRepository), RepositoryOperations.GetByKey, "Failed to resolve store alias", ex);
+        }
+    }
+
+    public async Task SaveStoreAliasAsync(string detectedPattern, string resolvedStoreName, CancellationToken cancellationToken = default)
+    {
+        var normalizedPattern = NormalizeDetectedPattern(detectedPattern)
+            ?? throw new ArgumentException("Detected pattern cannot be empty.", nameof(detectedPattern));
+
+        var normalizedResolvedStoreName = resolvedStoreName?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedResolvedStoreName))
+        {
+            throw new ArgumentException("Resolved store name cannot be empty.", nameof(resolvedStoreName));
+        }
+
+        try
+        {
+            var existing = await _context.StoreAliases
+                .FirstOrDefaultAsync(x => x.DetectedPattern == normalizedPattern, cancellationToken);
+
+            if (existing is null)
+            {
+                _context.StoreAliases.Add(new StoreAlias
+                {
+                    DetectedPattern = normalizedPattern,
+                    ResolvedStoreName = normalizedResolvedStoreName
+                });
+            }
+            else
+            {
+                existing.ResolvedStoreName = normalizedResolvedStoreName;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for store alias '{DetectedPattern}' -> '{ResolvedStoreName}'", RepositoryOperations.Add, detectedPattern, resolvedStoreName);
+            throw new RepositoryException(nameof(FoodItemRepository), RepositoryOperations.Add, "Failed to save store alias", ex);
+        }
+    }
+
+    public async Task<int?> ResolveItemAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
+    {
+        var normalizedPattern = NormalizeDetectedPattern(detectedPattern);
+        if (normalizedPattern is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var itemId = await _context.ItemAliases
+                .AsNoTracking()
+                .Where(x => x.DetectedPattern == normalizedPattern)
+                .Select(x => (int?)x.FoodItemId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (!itemId.HasValue)
+            {
+                return null;
+            }
+
+            var itemExists = await _context.FoodItems
+                .AsNoTracking()
+                .AnyAsync(x => x.Id == itemId.Value, cancellationToken);
+
+            return itemExists ? itemId : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for item alias '{DetectedPattern}'", RepositoryOperations.GetByKey, detectedPattern);
+            throw new RepositoryException(nameof(FoodItemRepository), RepositoryOperations.GetByKey, "Failed to resolve item alias", ex);
+        }
+    }
+
+    public async Task SaveItemAliasAsync(string detectedPattern, int foodItemId, CancellationToken cancellationToken = default)
+    {
+        var normalizedPattern = NormalizeDetectedPattern(detectedPattern)
+            ?? throw new ArgumentException("Detected pattern cannot be empty.", nameof(detectedPattern));
+
+        if (foodItemId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(foodItemId), "Food item ID must be positive.");
+        }
+
+        try
+        {
+            var existing = await _context.ItemAliases
+                .FirstOrDefaultAsync(x => x.DetectedPattern == normalizedPattern, cancellationToken);
+
+            if (existing is null)
+            {
+                _context.ItemAliases.Add(new ItemAlias
+                {
+                    DetectedPattern = normalizedPattern,
+                    FoodItemId = foodItemId
+                });
+            }
+            else
+            {
+                existing.FoodItemId = foodItemId;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {Operation} for item alias '{DetectedPattern}' -> FoodItemId={FoodItemId}", RepositoryOperations.Add, detectedPattern, foodItemId);
+            throw new RepositoryException(nameof(FoodItemRepository), RepositoryOperations.Add, "Failed to save item alias", ex);
+        }
+    }
+
     public async Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -247,5 +375,15 @@ public sealed class FoodItemRepository : IFoodItemRepository
             _logger.LogError(ex, "Error in {Operation} for all food items", RepositoryOperations.Delete);
             throw new RepositoryException(nameof(FoodItemRepository), RepositoryOperations.Delete, "Failed to delete all food items", ex);
         }
+    }
+
+    private static string? NormalizeDetectedPattern(string? detectedPattern)
+    {
+        if (string.IsNullOrWhiteSpace(detectedPattern))
+        {
+            return null;
+        }
+
+        return detectedPattern.Trim().ToLowerInvariant();
     }
 }

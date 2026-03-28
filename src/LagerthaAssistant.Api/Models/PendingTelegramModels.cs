@@ -52,7 +52,8 @@ internal enum PendingChatActionKind
     InventoryPhotoAwaitingImage = 8,
     InventoryPhotoAwaitingSelection = 9,
     InventoryPhotoAwaitingStoreResolution = 10,
-    InventoryPhotoAwaitingUnknownSelection = 11
+    InventoryPhotoAwaitingUnknownSelection = 11,
+    InventoryPhotoAwaitingItemLink = 12
 }
 
 internal sealed record PendingFoodPhotoLog(

@@ -29,6 +29,8 @@ public sealed class AppDbContext : DbContext
     public DbSet<MealIngredient> MealIngredients => Set<MealIngredient>();
     public DbSet<GroceryListItem> GroceryListItems => Set<GroceryListItem>();
     public DbSet<MealHistory> MealHistory => Set<MealHistory>();
+    public DbSet<StoreAlias> StoreAliases => Set<StoreAlias>();
+    public DbSet<ItemAlias> ItemAliases => Set<ItemAlias>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -50,6 +52,8 @@ public sealed class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new MealIngredientConfiguration());
         modelBuilder.ApplyConfiguration(new GroceryListItemConfiguration());
         modelBuilder.ApplyConfiguration(new MealHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new StoreAliasConfiguration());
+        modelBuilder.ApplyConfiguration(new ItemAliasConfiguration());
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
