@@ -3830,6 +3830,10 @@ public sealed class TelegramController : ControllerBase
                 && !string.IsNullOrWhiteSpace(session.DetectedStoreNameEn))
             {
                 _pendingStateStore.InventoryPhotoSessions[pendingKey] = session with { ResolvedStoreName = session.DetectedStoreNameEn };
+                await _foodTrackingService.SaveStoreAliasAsync(
+                    session.DetectedStoreNameEn,
+                    session.DetectedStoreNameEn,
+                    cancellationToken);
                 return await TransitionToUnknownItemsOrFinishAsync(scope, locale, pendingKey, cancellationToken);
             }
             return ExpiredPhotoSession(locale);
@@ -3870,6 +3874,13 @@ public sealed class TelegramController : ControllerBase
             {
                 var selectedStore = callbackData[CallbackDataConstants.Inventory.PhotoStoreSelectPrefix.Length..];
                 _pendingStateStore.InventoryPhotoSessions[pendingKey] = session with { ResolvedStoreName = selectedStore };
+                if (!string.IsNullOrWhiteSpace(session.DetectedStoreNameEn))
+                {
+                    await _foodTrackingService.SaveStoreAliasAsync(
+                        session.DetectedStoreNameEn,
+                        selectedStore,
+                        cancellationToken);
+                }
                 return await TransitionToUnknownItemsOrFinishAsync(scope, locale, pendingKey, cancellationToken);
             }
             return ExpiredPhotoSession(locale);
@@ -3897,6 +3908,22 @@ public sealed class TelegramController : ControllerBase
                     EnsureQuestionMarker(_navigationPresenter.GetText("inventory.photo.unknown.select_prompt", locale)),
                     InlineKeyboard(_navigationPresenter.BuildPhotoUnknownItemsKeyboard(locale)));
             }
+            return ExpiredPhotoSession(locale);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Inventory.PhotoUnknownLink, StringComparison.Ordinal))
+        {
+            var pendingKey = BuildPendingChatActionKey(scope);
+            if (_pendingStateStore.InventoryPhotoSessions.TryGetValue(pendingKey, out var session)
+                && session.Unknown.Count > 0)
+            {
+                _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventoryPhotoAwaitingItemLink;
+                return new TelegramRouteResponse(
+                    "inventory.photo.unknown.link_prompt",
+                    EnsureQuestionMarker(_navigationPresenter.GetText("inventory.photo.unknown.link_prompt", locale)),
+                    InlineKeyboard(_navigationPresenter.BuildPhotoUnknownItemsKeyboard(locale)));
+            }
+
             return ExpiredPhotoSession(locale);
         }
 
@@ -4049,6 +4076,46 @@ public sealed class TelegramController : ControllerBase
                     Category: DefaultUnknownInventoryCategory))
                 .ToList();
 
+            var aliasPromotedCandidates = new List<PendingInventoryPhotoCandidate>();
+            var unresolvedUnknown = new List<PendingInventoryPhotoUnknown>();
+            foreach (var unknownEntry in unknown)
+            {
+                var aliasItemId = string.IsNullOrWhiteSpace(unknownEntry.NameEn)
+                    ? null
+                    : await _foodTrackingService.ResolveItemAliasAsync(unknownEntry.NameEn, cancellationToken);
+
+                if (aliasItemId.HasValue && inventoryById.TryGetValue(aliasItemId.Value, out var aliasedItem))
+                {
+                    aliasPromotedCandidates.Add(new PendingInventoryPhotoCandidate(
+                        Number: 0,
+                        ItemId: aliasedItem.Id,
+                        Name: aliasedItem.Name,
+                        Quantity: unknownEntry.Quantity,
+                        Unit: unknownEntry.Unit,
+                        Confidence: unknownEntry.Confidence,
+                        IconEmoji: aliasedItem.IconEmoji,
+                        Category: aliasedItem.Category,
+                        PriceTotal: unknownEntry.PriceTotal,
+                        PricePerUnit: unknownEntry.PricePerUnit));
+                    continue;
+                }
+
+                unresolvedUnknown.Add(unknownEntry);
+            }
+
+            candidates = candidates
+                .Concat(aliasPromotedCandidates)
+                .OrderByDescending(candidate => candidate.Confidence)
+                .ThenBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
+                .Select((candidate, index) => candidate with { Number = index + 1 })
+                .ToList();
+
+            unknown = unresolvedUnknown
+                .OrderByDescending(entry => entry.Confidence)
+                .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+                .Select((entry, index) => entry with { Number = index + 1 })
+                .ToList();
+
             if (candidates.Count == 0 && unknown.Count == 0)
             {
                 _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
@@ -4185,6 +4252,136 @@ public sealed class TelegramController : ControllerBase
             }
 
             return await AddUnknownItemsToInventoryAsync(locale, pendingKey, unknownSession, selectedUnknowns, cancellationToken);
+        }
+
+        if (_pendingStateStore.ChatActions.TryGetValue(pendingKey, out var itemLinkPendingAction)
+            && itemLinkPendingAction == PendingChatActionKind.InventoryPhotoAwaitingItemLink)
+        {
+            if (!_pendingStateStore.InventoryPhotoSessions.TryGetValue(pendingKey, out var linkSession))
+            {
+                _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+                return ExpiredPhotoSession(locale);
+            }
+
+            if (!TryParseInventoryUnknownItemLinks(text, out var links))
+            {
+                return new TelegramRouteResponse(
+                    "inventory.photo.unknown.link_invalid",
+                    EnsureWarningMarker(_navigationPresenter.GetText("inventory.photo.unknown.link_invalid", locale)),
+                    InlineKeyboard(_navigationPresenter.BuildPhotoUnknownItemsKeyboard(locale)));
+            }
+
+            var unknownByNumber = linkSession.Unknown.ToDictionary(x => x.Number);
+            var availableInventoryItems = await _foodTrackingService.GetAllInventoryAsync(0, cancellationToken);
+            var inventoryById = availableInventoryItems.ToDictionary(x => x.Id);
+
+            var appliedLines = new List<string>();
+            var linkedCount = 0;
+            var missingIds = new HashSet<int>();
+            var resolvedUnknownNumbers = new HashSet<int>();
+
+            foreach (var (unknownNumber, targetItemId) in links)
+            {
+                if (!unknownByNumber.TryGetValue(unknownNumber, out var unknownEntry))
+                {
+                    continue;
+                }
+
+                if (!inventoryById.TryGetValue(targetItemId, out var targetItem))
+                {
+                    missingIds.Add(targetItemId);
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(unknownEntry.NameEn))
+                {
+                    continue;
+                }
+
+                await _foodTrackingService.SaveItemAliasAsync(unknownEntry.NameEn, targetItemId, cancellationToken);
+
+                var signedDelta = linkSession.Mode == TelegramInventoryPhotoMode.Consumption
+                    ? -unknownEntry.Quantity
+                    : unknownEntry.Quantity;
+
+                var updated = await _foodTrackingService.AdjustInventoryQuantityAsync(targetItemId, signedDelta, cancellationToken);
+                if (linkSession.Mode == TelegramInventoryPhotoMode.Restock && unknownEntry.PricePerUnit.HasValue)
+                {
+                    await _foodTrackingService.UpdateInventoryPriceAndStoreAsync(
+                        targetItemId,
+                        unknownEntry.PricePerUnit,
+                        linkSession.ResolvedStoreName,
+                        cancellationToken);
+                }
+
+                resolvedUnknownNumbers.Add(unknownNumber);
+                linkedCount++;
+                appliedLines.Add(_navigationPresenter.GetText(
+                    "inventory.photo.applied.item",
+                    locale,
+                    BuildInventoryItemTitle(targetItem),
+                    updated.CurrentQuantity?.ToString("0.##", CultureInfo.InvariantCulture) ?? "0",
+                    signedDelta > 0 ? "+" : "-"));
+            }
+
+            if (linkedCount == 0)
+            {
+                return new TelegramRouteResponse(
+                    "inventory.photo.unknown.link_invalid",
+                    EnsureWarningMarker(_navigationPresenter.GetText("inventory.photo.unknown.link_invalid", locale)),
+                    InlineKeyboard(_navigationPresenter.BuildPhotoUnknownItemsKeyboard(locale)));
+            }
+
+            var remainingUnknown = linkSession.Unknown
+                .Where(x => !resolvedUnknownNumbers.Contains(x.Number))
+                .OrderByDescending(x => x.Confidence)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Select((entry, index) => entry with { Number = index + 1 })
+                .ToList();
+
+            var updatedSession = linkSession with { Unknown = remainingUnknown };
+            _pendingStateStore.InventoryPhotoSessions[pendingKey] = updatedSession;
+
+            var summary = new StringBuilder();
+            summary.AppendLine(EnsureInfoMarker(_navigationPresenter.GetText("inventory.photo.unknown.link_done", locale, linkedCount)));
+            foreach (var line in appliedLines)
+            {
+                summary.AppendLine(line);
+            }
+
+            foreach (var missingId in missingIds.OrderBy(x => x))
+            {
+                summary.AppendLine(EnsureWarningMarker(_navigationPresenter.GetText("inventory.photo.unknown.link_not_found", locale, missingId)));
+            }
+
+            if (remainingUnknown.Count > 0)
+            {
+                summary.AppendLine();
+                summary.AppendLine($"📦 {_navigationPresenter.GetText("inventory.photo.unknown.offer_title", locale, remainingUnknown.Count)}");
+                foreach (var entry in remainingUnknown)
+                {
+                    var displayName = BuildUnknownDisplayName(entry);
+                    var entryQuantity = entry.Quantity.ToString("0.##", CultureInfo.InvariantCulture);
+                    var unit = string.IsNullOrWhiteSpace(entry.Unit) ? string.Empty : $" {entry.Unit}";
+                    summary.AppendLine($"{entry.Number}) {displayName} — {entryQuantity}{unit}");
+                }
+
+                summary.AppendLine();
+                summary.AppendLine(EnsureQuestionMarker(_navigationPresenter.GetText("inventory.photo.unknown.offer_prompt", locale)));
+                _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventoryPhotoAwaitingUnknownSelection;
+
+                return new TelegramRouteResponse(
+                    "inventory.photo.unknown.offer",
+                    summary.ToString().TrimEnd(),
+                    InlineKeyboard(_navigationPresenter.BuildPhotoUnknownItemsKeyboard(locale)));
+            }
+
+            _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+            _pendingStateStore.InventoryPhotoSessions.TryRemove(pendingKey, out _);
+            return new TelegramRouteResponse(
+                "inventory.photo.unknown.link_done",
+                summary.ToString().TrimEnd(),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
         }
 
         if (hasPhoto)
@@ -5296,7 +5493,7 @@ public sealed class TelegramController : ControllerBase
             sb.AppendLine(EnsureWarningMarker(_navigationPresenter.GetText("inventory.photo.preview.non_products", locale)));
             for (var index = 0; index < session.NonProducts.Count; index++)
             {
-                sb.AppendLine($"  {index + 1})🔹{session.NonProducts[index]}");
+                sb.AppendLine($"{index + 1}) 🔹{session.NonProducts[index]}");
             }
         }
 
@@ -5355,6 +5552,13 @@ public sealed class TelegramController : ControllerBase
             && session.ResolvedStoreName is null
             && !string.IsNullOrWhiteSpace(session.DetectedStoreNameEn))
         {
+            var storeAlias = await foodTrackingService.ResolveStoreAliasAsync(session.DetectedStoreNameEn, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(storeAlias))
+            {
+                _pendingStateStore.InventoryPhotoSessions[pendingKey] = session with { ResolvedStoreName = storeAlias };
+                return await TransitionToUnknownItemsOrFinishAsync(scope, locale, pendingKey, cancellationToken, summary);
+            }
+
             var existingStores = await foodTrackingService.GetDistinctStoresAsync(cancellationToken);
             var matchFound = existingStores.Any(s => string.Equals(s, session.DetectedStoreNameEn, StringComparison.OrdinalIgnoreCase));
 
@@ -5363,6 +5567,7 @@ public sealed class TelegramController : ControllerBase
                 // Auto-resolve to the matched existing store.
                 var matched = existingStores.First(s => string.Equals(s, session.DetectedStoreNameEn, StringComparison.OrdinalIgnoreCase));
                 _pendingStateStore.InventoryPhotoSessions[pendingKey] = session with { ResolvedStoreName = matched };
+                await foodTrackingService.SaveStoreAliasAsync(session.DetectedStoreNameEn, matched, cancellationToken);
 
                 // Update store for all applied candidates.
                 foreach (var candidate in candidates)
@@ -5640,6 +5845,48 @@ public sealed class TelegramController : ControllerBase
         }
 
         updates = parsed;
+        return true;
+    }
+
+    private static bool TryParseInventoryUnknownItemLinks(
+        string input,
+        out IReadOnlyList<(int UnknownNumber, int ItemId)> links)
+    {
+        links = [];
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        var parsed = new List<(int UnknownNumber, int ItemId)>();
+        var tokens = input.Split([',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var token in tokens)
+        {
+            var pair = token.Split('=', 2, StringSplitOptions.TrimEntries);
+            if (pair.Length != 2)
+            {
+                return false;
+            }
+
+            if (!int.TryParse(pair[0], NumberStyles.None, CultureInfo.InvariantCulture, out var unknownNumber) || unknownNumber <= 0)
+            {
+                return false;
+            }
+
+            if (!int.TryParse(pair[1], NumberStyles.None, CultureInfo.InvariantCulture, out var itemId) || itemId <= 0)
+            {
+                return false;
+            }
+
+            parsed.Add((unknownNumber, itemId));
+        }
+
+        if (parsed.Count == 0)
+        {
+            return false;
+        }
+
+        links = parsed;
         return true;
     }
 

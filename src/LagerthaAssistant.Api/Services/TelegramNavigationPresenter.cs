@@ -328,7 +328,11 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             InlineKeyboard:
             [
                 [Button("inventory.photo.unknown.add_all", locale, CallbackDataConstants.Inventory.PhotoUnknownAddAll)],
-                [Button("inventory.photo.unknown.select", locale, CallbackDataConstants.Inventory.PhotoUnknownSelect), Button("inventory.photo.unknown.skip", locale, CallbackDataConstants.Inventory.PhotoUnknownSkip)]
+                [
+                    Button("inventory.photo.unknown.select", locale, CallbackDataConstants.Inventory.PhotoUnknownSelect),
+                    Button("inventory.photo.unknown.link", locale, CallbackDataConstants.Inventory.PhotoUnknownLink)
+                ],
+                [Button("inventory.photo.unknown.skip", locale, CallbackDataConstants.Inventory.PhotoUnknownSkip)]
             ]);
     }
 

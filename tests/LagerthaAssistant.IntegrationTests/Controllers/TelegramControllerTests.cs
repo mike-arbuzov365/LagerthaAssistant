@@ -4735,8 +4735,224 @@ public sealed class TelegramControllerTests
         var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
         Assert.Equal("inventory.photo.preview", payload.Intent);
         Assert.Contains("Filtered non-products:", sender.LastText, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("1)&#128313;Bag", sender.LastText, StringComparison.Ordinal);
-        Assert.Contains("2)&#128313;Delivery fee", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("1) &#128313;Bag", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("2) &#128313;Delivery fee", sender.LastText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldAutoResolveStoreUsingAlias_WhenApplyingInventoryPhoto()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            InventoryItems = [new FoodItemDto(1, "Milk", "Dairy", null, null, null) { CurrentQuantity = 3m }]
+        };
+        foodService.StoreAliases["FOP Burda Serhiy"] = "ATB";
+
+        var importReader = new FakeTelegramImportSourceReader
+        {
+            NextInventoryPhotoResult = new TelegramInventoryPhotoAnalysisResult(
+                Success: true,
+                Candidates: [new TelegramInventoryPhotoCandidate(1, "Milk", 2m, "pcs", 0.91)],
+                Unknown: [],
+                DetectedStore: new TelegramInventoryPhotoDetectedStore("ФОП Бурда Сергій", "FOP Burda Serhiy", 0.9))
+        };
+
+        var sender = new FakeTelegramBotSender();
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Inventory },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService,
+            importSourceReader: importReader);
+
+        _ = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.PhotoRestock, null, updateId: 955),
+            CancellationToken.None);
+        _ = await sut.Webhook(
+            BuildPhotoUpdate(1001, 2002, "photo-store-alias", null, updateId: 956),
+            CancellationToken.None);
+
+        var applyResponse = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.PhotoApplyAll, null, updateId: 957),
+            CancellationToken.None);
+
+        var applyOk = Assert.IsType<OkObjectResult>(applyResponse.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(applyOk.Value);
+        Assert.Equal("inventory.photo.applied", payload.Intent);
+        Assert.DoesNotContain("Store from receipt", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, foodService.LastAdjustedInventoryItemId);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldSaveStoreAlias_WhenUserSelectsExistingStoreInPhotoFlow()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            InventoryItems = [new FoodItemDto(1, "Milk", "Dairy", null, null, null) { CurrentQuantity = 3m }]
+        };
+
+        var importReader = new FakeTelegramImportSourceReader
+        {
+            NextInventoryPhotoResult = new TelegramInventoryPhotoAnalysisResult(
+                Success: true,
+                Candidates: [new TelegramInventoryPhotoCandidate(1, "Milk", 2m, "pcs", 0.91)],
+                Unknown: [],
+                DetectedStore: new TelegramInventoryPhotoDetectedStore("ФОП Бурда Сергій", "FOP Burda Serhiy", 0.9))
+        };
+
+        var sender = new FakeTelegramBotSender();
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Inventory },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService,
+            importSourceReader: importReader);
+
+        _ = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.PhotoRestock, null, updateId: 958),
+            CancellationToken.None);
+        _ = await sut.Webhook(
+            BuildPhotoUpdate(1001, 2002, "photo-store-select", null, updateId: 959),
+            CancellationToken.None);
+        _ = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.PhotoApplyAll, null, updateId: 960),
+            CancellationToken.None);
+
+        _ = await sut.Webhook(
+            BuildCallbackUpdate(
+                1001,
+                2002,
+                CallbackDataConstants.Inventory.PhotoStoreSelectPrefix + "ATB",
+                null,
+                updateId: 961),
+            CancellationToken.None);
+
+        Assert.Contains(
+            foodService.SavedStoreAliases,
+            x => string.Equals(x.Detected, "FOP Burda Serhiy", StringComparison.Ordinal)
+                && string.Equals(x.Resolved, "ATB", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldLinkUnknownItems_WhenPhotoUnknownLinkFlowUsed()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            InventoryItems = [new FoodItemDto(1, "Vodka", "Beverages", null, null, null) { CurrentQuantity = 1m }]
+        };
+
+        var importReader = new FakeTelegramImportSourceReader
+        {
+            NextInventoryPhotoResult = new TelegramInventoryPhotoAnalysisResult(
+                Success: true,
+                Candidates: [new TelegramInventoryPhotoCandidate(1, "Vodka", 1m, "pcs", 0.9)],
+                Unknown: [new TelegramInventoryPhotoUnknown("Горілка Гетьман", "Vodka Hetman ICE 30%", 1m, "pcs", 0.85)])
+        };
+
+        var sender = new FakeTelegramBotSender();
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Inventory },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService,
+            importSourceReader: importReader);
+
+        _ = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.PhotoRestock, null, updateId: 962),
+            CancellationToken.None);
+        _ = await sut.Webhook(
+            BuildPhotoUpdate(1001, 2002, "photo-link-unknown", null, updateId: 963),
+            CancellationToken.None);
+        _ = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.PhotoUnknownLink, null, updateId: 964),
+            CancellationToken.None);
+
+        var linkResponse = await sut.Webhook(
+            BuildTextUpdate(1001, 2002, "1=1", null, updateId: 965),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(linkResponse.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("inventory.photo.unknown.link_done", payload.Intent);
+        Assert.Contains(
+            foodService.SavedItemAliases,
+            x => string.Equals(x.Detected, "Vodka Hetman ICE 30%", StringComparison.Ordinal) && x.ItemId == 1);
+        Assert.Contains(foodService.AdjustOperations, x => x.ItemId == 1 && x.Mode == "delta" && x.Value == 1m);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldPromoteUnknownToCandidates_WhenItemAliasExists()
+    {
+        var foodService = new FakeFoodTrackingService
+        {
+            InventoryItems = [new FoodItemDto(1, "Vodka", "Beverages", null, null, null) { CurrentQuantity = 1m }]
+        };
+        foodService.ItemAliases["Vodka Hetman ICE 30%"] = 1;
+
+        var importReader = new FakeTelegramImportSourceReader
+        {
+            NextInventoryPhotoResult = new TelegramInventoryPhotoAnalysisResult(
+                Success: true,
+                Candidates: [],
+                Unknown: [new TelegramInventoryPhotoUnknown("Горілка Гетьман", "Vodka Hetman ICE 30%", 1m, "pcs", 0.85)])
+        };
+
+        var sender = new FakeTelegramBotSender();
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: null,
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Inventory },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter(""),
+            sender,
+            new TelegramOptions { Enabled = true },
+            foodTrackingService: foodService,
+            importSourceReader: importReader);
+
+        _ = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Inventory.PhotoRestock, null, updateId: 966),
+            CancellationToken.None);
+        var preview = await sut.Webhook(
+            BuildPhotoUpdate(1001, 2002, "photo-alias-promote", null, updateId: 967),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(preview.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+        Assert.Equal("inventory.photo.preview", payload.Intent);
+        Assert.Contains("Vodka", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Unknown items", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -5436,6 +5652,10 @@ public sealed class TelegramControllerTests
         public decimal? LastSetMinQuantity { get; private set; }
         public string? LastAddedInventoryCategory { get; private set; }
         public string? LastAddedInventoryIcon { get; private set; }
+        public Dictionary<string, string> StoreAliases { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, int> ItemAliases { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<(string Detected, string Resolved)> SavedStoreAliases { get; } = [];
+        public List<(string Detected, int ItemId)> SavedItemAliases { get; } = [];
         public int ResetAllCalls { get; private set; }
         public int ResetAllUpdatedCount { get; init; }
         public List<(int ItemId, string Mode, decimal Value)> AdjustOperations { get; } = [];
@@ -5546,6 +5766,35 @@ public sealed class TelegramControllerTests
 
         public Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<string>>(InventoryItems.Where(x => x.Store is not null).Select(x => x.Store!).Distinct().OrderBy(x => x).ToList());
+
+        public Task<string?> ResolveStoreAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
+        {
+            StoreAliases.TryGetValue(detectedPattern.Trim(), out var resolved);
+            return Task.FromResult<string?>(resolved);
+        }
+
+        public Task SaveStoreAliasAsync(string detectedPattern, string resolvedStoreName, CancellationToken cancellationToken = default)
+        {
+            var key = detectedPattern.Trim();
+            var resolved = resolvedStoreName.Trim();
+            StoreAliases[key] = resolved;
+            SavedStoreAliases.Add((key, resolved));
+            return Task.CompletedTask;
+        }
+
+        public Task<int?> ResolveItemAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
+        {
+            ItemAliases.TryGetValue(detectedPattern.Trim(), out var itemId);
+            return Task.FromResult(itemId > 0 ? (int?)itemId : null);
+        }
+
+        public Task SaveItemAliasAsync(string detectedPattern, int foodItemId, CancellationToken cancellationToken = default)
+        {
+            var key = detectedPattern.Trim();
+            ItemAliases[key] = foodItemId;
+            SavedItemAliases.Add((key, foodItemId));
+            return Task.CompletedTask;
+        }
 
         public Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default)
         {

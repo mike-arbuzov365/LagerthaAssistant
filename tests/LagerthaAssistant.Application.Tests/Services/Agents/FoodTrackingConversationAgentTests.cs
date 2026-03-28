@@ -844,5 +844,17 @@ public sealed class FoodTrackingConversationAgentTests
 
         public Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<string>>([]);
+
+        public Task<string?> ResolveStoreAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
+            => Task.FromResult<string?>(null);
+
+        public Task SaveStoreAliasAsync(string detectedPattern, string resolvedStoreName, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<int?> ResolveItemAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
+            => Task.FromResult<int?>(null);
+
+        public Task SaveItemAliasAsync(string detectedPattern, int foodItemId, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
     }
 }

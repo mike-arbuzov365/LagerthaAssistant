@@ -38,6 +38,14 @@ public interface IFoodTrackingService
     /// <summary>Returns distinct non-null Store values from inventory.</summary>
     Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default);
 
+    Task<string?> ResolveStoreAliasAsync(string detectedPattern, CancellationToken cancellationToken = default);
+
+    Task SaveStoreAliasAsync(string detectedPattern, string resolvedStoreName, CancellationToken cancellationToken = default);
+
+    Task<int?> ResolveItemAliasAsync(string detectedPattern, CancellationToken cancellationToken = default);
+
+    Task SaveItemAliasAsync(string detectedPattern, int foodItemId, CancellationToken cancellationToken = default);
+
     Task<GroceryListItemDto> AddToShoppingFromInventoryAsync(int foodItemId, string? quantity, string? store, CancellationToken cancellationToken = default);
 
     /// <summary>Returns inventory items where CurrentQuantity is below MinQuantity.</summary>

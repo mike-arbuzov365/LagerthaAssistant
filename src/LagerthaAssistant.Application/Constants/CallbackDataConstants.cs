@@ -114,6 +114,7 @@ public static class CallbackDataConstants
         public const string PhotoStorePickExisting = "inventory:photo:store:pick";
         public const string PhotoUnknownAddAll = "inventory:photo:unknown:add_all";
         public const string PhotoUnknownSelect = "inventory:photo:unknown:select";
+        public const string PhotoUnknownLink = "inventory:photo:unknown:link";
         public const string PhotoUnknownSkip = "inventory:photo:unknown:skip";
         public const string CartPrefix = "inventory:cart:";
         public const string Manage = "inventory:manage";

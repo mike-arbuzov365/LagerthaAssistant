@@ -1194,6 +1194,30 @@ public sealed class FoodTrackingServiceTests
         Assert.Empty(result);
     }
 
+    [Fact]
+    public async Task ResolveStoreAliasAsync_ShouldDelegateToRepository()
+    {
+        var repo = new FakeFoodItemRepository();
+        await repo.SaveStoreAliasAsync("fop burda serhiy", "ATB");
+        var sut = CreateSut(foodItemRepo: repo);
+
+        var resolved = await sut.ResolveStoreAliasAsync("fop burda serhiy");
+
+        Assert.Equal("ATB", resolved);
+    }
+
+    [Fact]
+    public async Task SaveItemAliasAsync_ShouldPersistAliasAndResolve()
+    {
+        var repo = new FakeFoodItemRepository();
+        var sut = CreateSut(foodItemRepo: repo);
+
+        await sut.SaveItemAliasAsync("vodka hetman ice 30%", 42);
+        var resolved = await sut.ResolveItemAliasAsync("vodka hetman ice 30%");
+
+        Assert.Equal(42, resolved);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static FoodTrackingService CreateSut(
@@ -1217,6 +1241,8 @@ public sealed class FoodTrackingServiceTests
     private sealed class FakeFoodItemRepository : IFoodItemRepository
     {
         public List<FoodItem> AllItems { get; init; } = [];
+        public Dictionary<string, string> StoreAliases { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, int> ItemAliases { get; } = new(StringComparer.Ordinal);
         private int _nextId;
 
         public Task<FoodItem?> GetByNotionPageIdAsync(string notionPageId, CancellationToken cancellationToken = default)
@@ -1264,6 +1290,24 @@ public sealed class FoodTrackingServiceTests
 
         public Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<string>>([]);
+
+        public Task<string?> ResolveStoreAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
+            => Task.FromResult(StoreAliases.TryGetValue(detectedPattern.Trim().ToLowerInvariant(), out var store) ? store : null);
+
+        public Task SaveStoreAliasAsync(string detectedPattern, string resolvedStoreName, CancellationToken cancellationToken = default)
+        {
+            StoreAliases[detectedPattern.Trim().ToLowerInvariant()] = resolvedStoreName.Trim();
+            return Task.CompletedTask;
+        }
+
+        public Task<int?> ResolveItemAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
+            => Task.FromResult(ItemAliases.TryGetValue(detectedPattern.Trim().ToLowerInvariant(), out var itemId) ? (int?)itemId : null);
+
+        public Task SaveItemAliasAsync(string detectedPattern, int foodItemId, CancellationToken cancellationToken = default)
+        {
+            ItemAliases[detectedPattern.Trim().ToLowerInvariant()] = foodItemId;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeMealRepository : IMealRepository

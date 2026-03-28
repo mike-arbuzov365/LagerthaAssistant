@@ -24,5 +24,13 @@ public interface IFoodItemRepository
 
     Task<IReadOnlyList<string>> GetDistinctStoresAsync(CancellationToken cancellationToken = default);
 
+    Task<string?> ResolveStoreAliasAsync(string detectedPattern, CancellationToken cancellationToken = default);
+
+    Task SaveStoreAliasAsync(string detectedPattern, string resolvedStoreName, CancellationToken cancellationToken = default);
+
+    Task<int?> ResolveItemAliasAsync(string detectedPattern, CancellationToken cancellationToken = default);
+
+    Task SaveItemAliasAsync(string detectedPattern, int foodItemId, CancellationToken cancellationToken = default);
+
     Task<int> DeleteAllAsync(CancellationToken cancellationToken = default);
 }
