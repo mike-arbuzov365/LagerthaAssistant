@@ -4070,7 +4070,7 @@ public sealed class TelegramController : ControllerBase
             {
                 var selectedStore = callbackData[CallbackDataConstants.Inventory.PhotoStoreSelectPrefix.Length..];
                 _pendingStateStore.InventoryPhotoSessions[pendingKey] = session with { ResolvedStoreName = selectedStore };
-                if (!string.IsNullOrWhiteSpace(session.DetectedStoreNameEn))
+                if (!string.IsNullOrWhiteSpace(session.DetectedStoreNameEn) && !string.IsNullOrWhiteSpace(selectedStore))
                 {
                     await _foodTrackingService.SaveStoreAliasAsync(
                         session.DetectedStoreNameEn,
