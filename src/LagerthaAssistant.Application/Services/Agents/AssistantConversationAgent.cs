@@ -1,4 +1,4 @@
-namespace LagerthaAssistant.Application.Services.Agents;
+﻿namespace LagerthaAssistant.Application.Services.Agents;
 
 using System.Text;
 using LagerthaAssistant.Application.Constants;
@@ -824,30 +824,6 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
             return true;
         }
 
-        if (normalized.Contains("іспан", StringComparison.Ordinal) || normalized.Contains("spanish", StringComparison.Ordinal))
-        {
-            locale = LocalizationConstants.SpanishLocale;
-            return true;
-        }
-
-        if (normalized.Contains("франц", StringComparison.Ordinal) || normalized.Contains("french", StringComparison.Ordinal))
-        {
-            locale = LocalizationConstants.FrenchLocale;
-            return true;
-        }
-
-        if (normalized.Contains("нім", StringComparison.Ordinal) || normalized.Contains("german", StringComparison.Ordinal) || normalized.Contains("deutsch", StringComparison.Ordinal))
-        {
-            locale = LocalizationConstants.GermanLocale;
-            return true;
-        }
-
-        if (normalized.Contains("поль", StringComparison.Ordinal) || normalized.Contains("polish", StringComparison.Ordinal))
-        {
-            locale = LocalizationConstants.PolishLocale;
-            return true;
-        }
-
         return true;
     }
 
@@ -918,12 +894,7 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
     {
         var languageName = locale switch
         {
-            LocalizationConstants.UkrainianLocale => "Ukrainian",
-            LocalizationConstants.SpanishLocale => "Spanish",
-            LocalizationConstants.FrenchLocale => "French",
-            LocalizationConstants.GermanLocale => "German",
-            LocalizationConstants.PolishLocale => "Polish",
-            _ => "English"
+            LocalizationConstants.UkrainianLocale => "Ukrainian",            _ => "English"
         };
 
         var builder = new StringBuilder();
@@ -983,13 +954,12 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
             : "Please specify the save mode: auto, ask, or off.";
     }
 
-    private static string BuildLanguagePrompt(string locale)
+        private static string BuildLanguagePrompt(string locale)
     {
         return locale == LocalizationConstants.UkrainianLocale
-            ? "Уточни, будь ласка, мову: українська, english, español, français, deutsch або polski."
-            : "Please specify the target language: Ukrainian, English, Español, Français, Deutsch, or Polski.";
+            ? "??????, ???? ?????, ????: ?????????? ??? english."
+            : "Please specify the target language: Ukrainian or English.";
     }
-
     private static string BuildVocabularyAddFlowPrompt(string locale)
     {
         return locale == LocalizationConstants.UkrainianLocale
@@ -1115,12 +1085,7 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
         var displayInUkrainian = normalized switch
         {
             LocalizationConstants.UkrainianLocale => "українську",
-            LocalizationConstants.EnglishLocale => "english",
-            LocalizationConstants.SpanishLocale => "español",
-            LocalizationConstants.FrenchLocale => "français",
-            LocalizationConstants.GermanLocale => "deutsch",
-            LocalizationConstants.PolishLocale => "polski",
-            _ => normalized
+            LocalizationConstants.EnglishLocale => "english",            _ => normalized
         };
 
         if (responseLocale == LocalizationConstants.UkrainianLocale)
@@ -1131,12 +1096,7 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
         return normalized switch
         {
             LocalizationConstants.UkrainianLocale => "Ukrainian",
-            LocalizationConstants.EnglishLocale => "English",
-            LocalizationConstants.SpanishLocale => "Español",
-            LocalizationConstants.FrenchLocale => "Français",
-            LocalizationConstants.GermanLocale => "Deutsch",
-            LocalizationConstants.PolishLocale => "Polski",
-            _ => normalized
+            LocalizationConstants.EnglishLocale => "English",            _ => normalized
         };
     }
 
@@ -1152,3 +1112,7 @@ public sealed class AssistantConversationAgent : IConversationAgent, IConversati
         public static MemoryPreference None { get; } = new(MemoryPreferenceType.None, string.Empty);
     }
 }
+
+
+
+

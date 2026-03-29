@@ -1,4 +1,4 @@
-# LagerthaAssistant
+﻿# LagerthaAssistant
 
 Console and Telegram AI assistant built with Clean Architecture and PostgreSQL persistence.
 
@@ -16,7 +16,6 @@ Console and Telegram AI assistant built with Clean Architecture and PostgreSQL p
 - Persistent conversation history (`ConversationSessions`, `ConversationHistoryEntries`).
 - Persistent user memory (`UserMemoryEntries`) injected into next requests.
 - Persistent versioned system prompts (`SystemPromptEntries`).
-- Prompt proposal workflow (`SystemPromptProposals`) with apply/reject flow.
 - Conversation telemetry metrics (`ConversationIntentMetrics`) for channel/agent/intent analysis.
 - Vocabulary workflow with Excel (`.xlsx`) decks in two storage modes:
   - `local` (direct filesystem access)
@@ -111,26 +110,7 @@ Versioned system prompts. Only one entry can be active at a time.
 | CreatedAt / UpdatedAt | datetime | Audit timestamps (UTC). |
 
 Indexes: unique on `Version`; unique filtered index on `IsActive WHERE IsActive = TRUE`.
-
-### SystemPromptProposals
-
-Proposed prompt changes, pending user review.
-
-| Column | Type | Notes |
-|---|---|---|
-| Id | int | PK |
-| ProposedPrompt | varchar(8000) | The proposed text. |
-| Reason | varchar(1000) | Why the change is proposed. |
-| Confidence | double | Model confidence in the proposal. |
-| Source | varchar(64) | Origin: `ai`, `manual`, etc. |
-| Status | varchar(32) | `pending`, `applied`, `rejected`. |
-| CreatedAtUtc | datetimeoffset | |
-| ReviewedAtUtc | datetimeoffset | Nullable. Set when applied or rejected. |
-| AppliedSystemPromptEntryId | int | Nullable. Points to the SystemPromptEntry created on apply. |
-| CreatedAt / UpdatedAt | datetime | Audit timestamps (UTC). |
-
-Index: composite on `(Status, CreatedAtUtc)`.
-
+`r`n
 ### VocabularyCards
 
 SQL index cache of vocabulary entries read from Excel decks. Used for fast duplicate detection before scanning files.
@@ -624,13 +604,8 @@ curl "http://localhost:5000/api/conversation/history?take=20&channel=api&userId=
 curl "http://localhost:5000/api/conversation/memory?take=20&channel=api&userId=anonymous&conversationId=default"
 curl http://localhost:5000/api/conversation/prompt
 curl "http://localhost:5000/api/conversation/prompt/history?take=20"
-curl "http://localhost:5000/api/conversation/prompt/proposals?take=20"
 curl -X PUT http://localhost:5000/api/conversation/prompt -H "Content-Type: application/json" -d "{\"prompt\":\"Keep replies concise\",\"source\":\"manual-api\"}"
 curl -X POST http://localhost:5000/api/conversation/prompt/default
-curl -X POST http://localhost:5000/api/conversation/prompt/proposals -H "Content-Type: application/json" -d "{\"prompt\":\"Focus on practical outputs\",\"reason\":\"reduce verbosity\"}"
-curl -X POST http://localhost:5000/api/conversation/prompt/proposals/improve -H "Content-Type: application/json" -d "{\"goal\":\"make outputs more practical\"}"
-curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/apply
-curl -X POST http://localhost:5000/api/conversation/prompt/proposals/1/reject
 curl -X POST "http://localhost:5000/api/conversation/reset?channel=api&userId=anonymous&conversationId=default"
 curl "http://localhost:5000/api/session/bootstrap?channel=api&userId=anonymous&conversationId=default"
 curl "http://localhost:5000/api/session/bootstrap?channel=api&userId=anonymous&conversationId=default&includeDecks=true"
@@ -815,12 +790,7 @@ For `POST /api/conversation/messages`, you can send natural language command-lik
 Slash command forms are also supported through the same command-agent path, including:
 
 - `/prompt history`
-- `/prompt proposals`
 - `/prompt set <text>`
-- `/prompt propose <reason> || <text>`
-- `/prompt improve <goal>`
-- `/prompt apply <id>`
-- `/prompt reject <id>`
 
 Command catalog endpoints (for external clients):
 - `GET /api/conversation/commands` (flat list: `category`, `command`, `description`)
@@ -829,13 +799,8 @@ Command catalog endpoints (for external clients):
 - `GET /api/conversation/memory?take=20&channel=api&userId=anonymous&conversationId=default` (active memory for exact scope)
 - `GET /api/conversation/prompt` (active system prompt)
 - `GET /api/conversation/prompt/history?take=20` (system prompt versions)
-- `GET /api/conversation/prompt/proposals?take=20` (pending/reviewed prompt proposals)
 - `PUT /api/conversation/prompt` (set active system prompt)
 - `POST /api/conversation/prompt/default` (reset system prompt to default)
-- `POST /api/conversation/prompt/proposals` (create manual prompt proposal)
-- `POST /api/conversation/prompt/proposals/improve` (generate AI prompt proposal)
-- `POST /api/conversation/prompt/proposals/{id}/apply` (apply proposal)
-- `POST /api/conversation/prompt/proposals/{id}/reject` (reject proposal)
 - `POST /api/conversation/reset?channel=api&userId=anonymous&conversationId=default` (reset conversation for exact scope)
 - `GET /api/session/bootstrap?channel=api&userId=anonymous&conversationId=default` (single payload for scope, preferences, Graph status, grouped commands, and POS marker options; optional flags: `includeDecks=true`, `includeCommands=false`, `includePartOfSpeechOptions=false`)
 - `GET /api/graph/status` (get Graph authentication status)
@@ -909,11 +874,6 @@ Use `/help` to see full command reference in the console.
 - `/prompt history`
 - `/prompt set`
 - `/prompt set <text>`
-- `/prompt proposals`
-- `/prompt propose <reason> || <text>`
-- `/prompt improve <goal>`
-- `/prompt apply <id>`
-- `/prompt reject <id>`
 - `/reset`
 - `/exit`
 
@@ -932,4 +892,5 @@ Mode hints:
 dotnet build LagerthaAssistant.sln
 dotnet test LagerthaAssistant.sln -v minimal
 ```
+
 

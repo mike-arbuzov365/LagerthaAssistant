@@ -13,13 +13,6 @@ public static class CallbackDataConstants
         public const string Prefix = "lang:";
         public const string Ukrainian = "lang:uk";
         public const string English = "lang:en";
-        public const string Spanish = "lang:es";
-        public const string French = "lang:fr";
-        public const string German = "lang:de";
-        public const string Polish = "lang:pl";
-        public const string Russian = "lang:ru";
-        public const string GermanPolish = "lang:de_pl";
-        public const string BackOnboarding = "lang:back_onboarding";
     }
 
     public static class Settings
@@ -28,9 +21,23 @@ public static class CallbackDataConstants
         public const string Language = "settings:language";
         public const string SaveMode = "settings:savemode";
         public const string StorageMode = "settings:storagemode";
+        public const string Ai = "settings:ai";
         public const string OneDrive = "settings:onedrive";
         public const string Notion = "settings:notion";
         public const string Back = "settings:back";
+    }
+
+    public static class Ai
+    {
+        public const string Prefix = "ai:";
+        public const string Provider = "ai:provider";
+        public const string Model = "ai:model";
+        public const string KeySet = "ai:key:set";
+        public const string KeyRemove = "ai:key:remove";
+        public const string Back = "ai:back";
+
+        public const string ProviderSetPrefix = "ai:provider:set:";
+        public const string ModelSetPrefix = "ai:model:set:";
     }
 
     public static class SaveMode

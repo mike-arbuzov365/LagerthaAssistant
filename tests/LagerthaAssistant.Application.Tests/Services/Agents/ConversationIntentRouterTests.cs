@@ -27,7 +27,6 @@ public sealed class ConversationIntentRouterTests
             { ConversationSlashCommands.Prompt, ConversationCommandIntentType.PromptShow },
             { ConversationSlashCommands.PromptDefault, ConversationCommandIntentType.PromptResetDefault },
             { ConversationSlashCommands.PromptHistory, ConversationCommandIntentType.PromptHistory },
-            { ConversationSlashCommands.PromptProposals, ConversationCommandIntentType.PromptProposals },
             { ConversationSlashCommands.Sync, ConversationCommandIntentType.SyncStatus },
             { ConversationSlashCommands.SyncStatus, ConversationCommandIntentType.SyncStatus },
             { ConversationSlashCommands.SyncFailed, ConversationCommandIntentType.SyncFailed },
@@ -238,17 +237,6 @@ public sealed class ConversationIntentRouterTests
     }
 
     [Fact]
-    public void TryResolve_ShouldParseSlashPromptProposals()
-    {
-        var sut = new ConversationIntentRouter();
-
-        var handled = sut.TryResolve("/prompt proposals", out var intent);
-
-        Assert.True(handled);
-        Assert.Equal(ConversationCommandIntentType.PromptProposals, intent.Type);
-    }
-
-    [Fact]
     public void TryResolve_ShouldParseSlashPromptSetWithArgument()
     {
         var sut = new ConversationIntentRouter();
@@ -271,68 +259,6 @@ public sealed class ConversationIntentRouterTests
         Assert.True(handled);
         Assert.Equal(ConversationCommandIntentType.PromptSet, intent.Type);
         Assert.Equal($"line one{Environment.NewLine}line two", intent.Argument);
-    }
-
-    [Fact]
-    public void TryResolve_ShouldParseSlashPromptProposeWithReasonAndPrompt()
-    {
-        var sut = new ConversationIntentRouter();
-
-        var handled = sut.TryResolve("/prompt propose Too verbose || Keep replies concise", out var intent);
-
-        Assert.True(handled);
-        Assert.Equal(ConversationCommandIntentType.PromptPropose, intent.Type);
-        Assert.Equal("Too verbose", intent.Argument);
-        Assert.Equal("Keep replies concise", intent.Argument2);
-    }
-
-    [Fact]
-    public void TryResolve_ShouldParseSlashPromptApplyWithId()
-    {
-        var sut = new ConversationIntentRouter();
-
-        var handled = sut.TryResolve("/prompt apply 42", out var intent);
-
-        Assert.True(handled);
-        Assert.Equal(ConversationCommandIntentType.PromptApply, intent.Type);
-        Assert.Equal(42, intent.Number);
-    }
-
-    [Fact]
-    public void TryResolve_ShouldParseSlashPromptApplyWithInvalidIdAsNull()
-    {
-        var sut = new ConversationIntentRouter();
-
-        var handled = sut.TryResolve("/prompt apply xyz", out var intent);
-
-        Assert.True(handled);
-        Assert.Equal(ConversationCommandIntentType.PromptApply, intent.Type);
-        Assert.Null(intent.Number);
-    }
-
-    [Fact]
-    public void TryResolve_ShouldParseSlashPromptRejectWithoutIdAsNull()
-    {
-        var sut = new ConversationIntentRouter();
-
-        var handled = sut.TryResolve("/prompt reject", out var intent);
-
-        Assert.True(handled);
-        Assert.Equal(ConversationCommandIntentType.PromptReject, intent.Type);
-        Assert.Null(intent.Number);
-    }
-
-    [Fact]
-    public void TryResolve_ShouldParseSlashPromptProposeWithoutSeparator()
-    {
-        var sut = new ConversationIntentRouter();
-
-        var handled = sut.TryResolve("/prompt propose only reason", out var intent);
-
-        Assert.True(handled);
-        Assert.Equal(ConversationCommandIntentType.PromptPropose, intent.Type);
-        Assert.Equal("only reason", intent.Argument);
-        Assert.Equal(string.Empty, intent.Argument2);
     }
 
     [Fact]

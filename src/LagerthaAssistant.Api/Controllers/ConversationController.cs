@@ -157,118 +157,6 @@ public sealed class ConversationController : ControllerBase
         return Ok(response);
     }
 
-    [HttpGet("prompt/proposals")]
-    [ProducesResponseType(typeof(IReadOnlyList<ConversationSystemPromptProposalResponse>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<ConversationSystemPromptProposalResponse>>> GetPromptProposals(
-        [FromQuery] int take = 20,
-        CancellationToken cancellationToken = default)
-    {
-        var normalizedTake = Math.Max(1, take);
-        var proposals = await _assistantSessionService.GetSystemPromptProposalsAsync(normalizedTake, cancellationToken);
-
-        var response = proposals
-            .Select(MapPromptProposal)
-            .ToList();
-
-        return Ok(response);
-    }
-
-    [HttpPost("prompt/proposals")]
-    [ProducesResponseType(typeof(ConversationSystemPromptProposalResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<ConversationSystemPromptProposalResponse>> CreatePromptProposal(
-        [FromBody] ConversationCreatePromptProposalRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        if (request is null || string.IsNullOrWhiteSpace(request.Prompt))
-        {
-            return BadRequest("Proposed prompt is required.");
-        }
-
-        if (string.IsNullOrWhiteSpace(request.Reason))
-        {
-            return BadRequest("Proposal reason is required.");
-        }
-
-        var confidence = request.Confidence ?? 0.8;
-        var source = string.IsNullOrWhiteSpace(request.Source)
-            ? "manual"
-            : request.Source.Trim();
-
-        var proposal = await _assistantSessionService.CreateSystemPromptProposalAsync(
-            request.Prompt,
-            request.Reason,
-            confidence,
-            source,
-            cancellationToken);
-
-        return Ok(MapPromptProposal(proposal));
-    }
-
-    [HttpPost("prompt/proposals/improve")]
-    [ProducesResponseType(typeof(ConversationSystemPromptProposalResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<ConversationSystemPromptProposalResponse>> ImprovePromptProposal(
-        [FromBody] ConversationPromptImproveRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        if (request is null || string.IsNullOrWhiteSpace(request.Goal))
-        {
-            return BadRequest("Goal is required.");
-        }
-
-        var proposal = await _assistantSessionService.GenerateSystemPromptProposalAsync(request.Goal, cancellationToken);
-        return Ok(MapPromptProposal(proposal));
-    }
-
-    [HttpPost("prompt/proposals/{proposalId:int}/apply")]
-    [ProducesResponseType(typeof(ConversationSystemPromptResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ConversationSystemPromptResponse>> ApplyPromptProposal(
-        [FromRoute] int proposalId,
-        CancellationToken cancellationToken = default)
-    {
-        if (proposalId <= 0)
-        {
-            return BadRequest("Proposal id must be greater than 0.");
-        }
-
-        try
-        {
-            var updatedPrompt = await _assistantSessionService.ApplySystemPromptProposalAsync(proposalId, cancellationToken);
-            return Ok(new ConversationSystemPromptResponse(updatedPrompt));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return NotFound(ex.Message);
-        }
-    }
-
-    [HttpPost("prompt/proposals/{proposalId:int}/reject")]
-    [ProducesResponseType(typeof(ConversationActionResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ConversationActionResponse>> RejectPromptProposal(
-        [FromRoute] int proposalId,
-        CancellationToken cancellationToken = default)
-    {
-        if (proposalId <= 0)
-        {
-            return BadRequest("Proposal id must be greater than 0.");
-        }
-
-        try
-        {
-            await _assistantSessionService.RejectSystemPromptProposalAsync(proposalId, cancellationToken);
-            return Ok(new ConversationActionResponse($"Proposal #{proposalId} rejected."));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return NotFound(ex.Message);
-        }
-    }
-
     [HttpPost("reset")]
     [ProducesResponseType(typeof(ConversationActionResponse), StatusCodes.Status200OK)]
     public ActionResult<ConversationActionResponse> ResetConversation(
@@ -339,20 +227,6 @@ public sealed class ConversationController : ControllerBase
             item.Source,
             item.IsActive,
             item.CreatedAtUtc);
-    }
-
-    private static ConversationSystemPromptProposalResponse MapPromptProposal(SystemPromptProposal item)
-    {
-        return new ConversationSystemPromptProposalResponse(
-            item.Id,
-            item.ProposedPrompt,
-            item.Reason,
-            item.Confidence,
-            item.Source,
-            item.Status,
-            item.CreatedAtUtc,
-            item.ReviewedAtUtc,
-            item.AppliedSystemPromptEntryId);
     }
 
     private static ConversationMessageItemResponse MapItem(ConversationAgentItemResult item)

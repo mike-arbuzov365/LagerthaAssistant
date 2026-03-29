@@ -13,8 +13,6 @@ using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Domain.AI;
 using LagerthaAssistant.Domain.Entities;
 using LagerthaAssistant.Infrastructure;
-using LagerthaAssistant.Infrastructure.Options;
-using LagerthaAssistant.Infrastructure.Constants;
 using LagerthaAssistant.Infrastructure.Data;
 using LagerthaAssistant.UI.Constants;
 using System.Globalization;
@@ -121,7 +119,6 @@ internal static partial class Program
             throw;
         }
 
-        var aiOptions = services.GetRequiredService<OpenAiOptions>();
         var conversationOrchestrator = services.GetRequiredService<IConversationOrchestrator>();
         var commandCatalogService = services.GetRequiredService<IConversationCommandCatalogService>();
         var vocabularyWorkflowService = services.GetRequiredService<IVocabularyWorkflowService>();
@@ -132,13 +129,6 @@ internal static partial class Program
         var vocabularySessionPreferenceService = services.GetRequiredService<IVocabularySessionPreferenceService>();
         var vocabularyStorageModeProvider = services.GetRequiredService<IVocabularyStorageModeProvider>();
         var graphAuthService = services.GetRequiredService<IGraphAuthService>();
-
-        if (string.IsNullOrWhiteSpace(aiOptions.ApiKey))
-        {
-            Console.WriteLine($"{OpenAiConstants.ApiKeyEnvironmentVariable} is not configured.");
-            Console.WriteLine($"Set environment variable {OpenAiConstants.ApiKeyEnvironmentVariable} and run again.");
-            return;
-        }
 
         await RunConsoleAssistantAsync(
             conversationOrchestrator,
@@ -151,7 +141,7 @@ internal static partial class Program
             vocabularySessionPreferenceService,
             vocabularyStorageModeProvider,
             graphAuthService,
-            aiOptions.Model);
+            model: "dynamic");
     }
 
     private static async Task RunConsoleAssistantAsync(

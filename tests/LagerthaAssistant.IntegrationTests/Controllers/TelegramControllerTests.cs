@@ -1344,39 +1344,6 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
-    public async Task Webhook_LanguageCallback_Lang_ru_MustNotPersistRussian()
-    {
-        var localeState = new FakeUserLocaleStateService { StoredLocale = null, NextLocale = LocalizationConstants.EnglishLocale };
-        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.LanguageOnboarding };
-        var sender = new FakeTelegramBotSender();
-
-        var sut = CreateSut(
-            new FakeConversationOrchestrator(),
-            new FakeConversationScopeAccessor(),
-            new FakeVocabularyStorageModeProvider(),
-            new FakeVocabularyStoragePreferenceService(),
-            assistantSessionService: null,
-            localeStateService: localeState,
-            navigationStateService: navigationState,
-            vocabularyCardRepository: null,
-            navigationPresenter: null,
-            new FakeTelegramFormatter("ignored"),
-            sender,
-            new TelegramOptions { Enabled = true });
-
-        var response = await sut.Webhook(
-            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Lang.Russian, null),
-            CancellationToken.None);
-
-        var ok = Assert.IsType<OkObjectResult>(response.Result);
-        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
-
-        Assert.True(payload.Replied);
-        Assert.Equal("onboarding.language.selected", payload.Intent);
-        Assert.Equal(LocalizationConstants.UkrainianLocale, localeState.StoredLocale);
-    }
-
-    [Fact]
     public async Task Webhook_ShouldOpenSettings_WhenSettingsMainButtonPressed()
     {
         var localeState = new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" };
@@ -2610,6 +2577,7 @@ public sealed class TelegramControllerTests
             vocabularyDeckService ?? new FakeVocabularyDeckService(),
             new VocabularyReplyParser(),
             vocabularyDiscoveryService ?? new FakeVocabularyDiscoveryService(),
+            new FakeAiRuntimeSettingsService(),
             importSourceReader ?? new FakeTelegramImportSourceReader(),
             new VocabularyDeckOptions(),
             graphAuthService ?? new FakeGraphAuthService(),
@@ -2626,7 +2594,7 @@ public sealed class TelegramControllerTests
             notionSyncWorkerOptions: null,
             foodSyncWorkerOptions: null,
             foodTrackingService,
-            new TelegramPendingStateStore());
+            pendingStateStore: new TelegramPendingStateStore());
     }
 
     private static TelegramWebhookUpdateRequest BuildTextUpdate(
@@ -2989,6 +2957,56 @@ public sealed class TelegramControllerTests
 
         public Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<string?>(null);
+    }
+
+    private sealed class FakeAiRuntimeSettingsService : IAiRuntimeSettingsService
+    {
+        public IReadOnlyList<string> SupportedProviders => ["openai", "claude"];
+
+        public bool TryNormalizeProvider(string? value, out string provider)
+        {
+            provider = "openai";
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            var normalized = value.Trim().ToLowerInvariant();
+            if (normalized is "openai" or "claude")
+            {
+                provider = normalized;
+                return true;
+            }
+
+            return false;
+        }
+
+        public IReadOnlyList<string> GetSupportedModels(string provider)
+            => ["gpt-4.1-mini"];
+
+        public Task<string> GetProviderAsync(ConversationScope scope, CancellationToken cancellationToken = default)
+            => Task.FromResult("openai");
+
+        public Task<string> SetProviderAsync(ConversationScope scope, string provider, CancellationToken cancellationToken = default)
+            => Task.FromResult(provider);
+
+        public Task<string> GetModelAsync(ConversationScope scope, string provider, CancellationToken cancellationToken = default)
+            => Task.FromResult("gpt-4.1-mini");
+
+        public Task<string> SetModelAsync(ConversationScope scope, string provider, string model, CancellationToken cancellationToken = default)
+            => Task.FromResult(model);
+
+        public Task<bool> HasStoredApiKeyAsync(ConversationScope scope, string provider, CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
+
+        public Task SetApiKeyAsync(ConversationScope scope, string provider, string apiKey, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task RemoveApiKeyAsync(ConversationScope scope, string provider, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<AiRuntimeSettings> ResolveAsync(ConversationScope scope, CancellationToken cancellationToken = default)
+            => Task.FromResult(new AiRuntimeSettings("openai", "gpt-4.1-mini", string.Empty, AiApiKeySource.Environment));
     }
 
     private static ConversationAgentResult BuildVocabularyUnrecognizedResult()
@@ -3371,21 +3389,6 @@ public sealed class TelegramControllerTests
 
         public Task<IReadOnlyCollection<SystemPromptEntry>> GetSystemPromptHistoryAsync(int take, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyCollection<SystemPromptEntry>>([]);
-
-        public Task<IReadOnlyCollection<SystemPromptProposal>> GetSystemPromptProposalsAsync(int take, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyCollection<SystemPromptProposal>>([]);
-
-        public Task<SystemPromptProposal> CreateSystemPromptProposalAsync(string prompt, string reason, double confidence, string source = "manual", CancellationToken cancellationToken = default)
-            => Task.FromResult(new SystemPromptProposal());
-
-        public Task<SystemPromptProposal> GenerateSystemPromptProposalAsync(string goal, CancellationToken cancellationToken = default)
-            => Task.FromResult(new SystemPromptProposal());
-
-        public Task<string> ApplySystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
-            => Task.FromResult(string.Empty);
-
-        public Task RejectSystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
 
         public Task<string> SetSystemPromptAsync(string prompt, string source = "manual", CancellationToken cancellationToken = default)
             => Task.FromResult(prompt);
@@ -3867,20 +3870,23 @@ public sealed class TelegramControllerTests
         public TelegramInlineKeyboardMarkup BuildOnboardingLanguageKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("EN", "lang:en")]]);
 
-        public TelegramInlineKeyboardMarkup BuildOnboardingSecondaryLanguageKeyboard(string locale)
-            => new([[new TelegramInlineKeyboardButton("DE", "lang:de"), new TelegramInlineKeyboardButton("PL", "lang:pl")]]);
-
         public TelegramInlineKeyboardMarkup BuildSettingsKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Language", "settings:language")]]);
 
         public TelegramInlineKeyboardMarkup BuildSettingsLanguageKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("EN", "lang:en")]]);
 
-        public TelegramInlineKeyboardMarkup BuildSettingsSecondaryLanguageKeyboard(string locale)
-            => new([[new TelegramInlineKeyboardButton("DE", "lang:de"), new TelegramInlineKeyboardButton("PL", "lang:pl")]]);
-
         public TelegramInlineKeyboardMarkup BuildSaveModeKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Ask", "savemode:ask")]]);
+
+        public TelegramInlineKeyboardMarkup BuildAiSettingsKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("AI", CallbackDataConstants.Settings.Ai)]]);
+
+        public TelegramInlineKeyboardMarkup BuildAiProviderKeyboard(string locale)
+            => new([[new TelegramInlineKeyboardButton("OpenAI", CallbackDataConstants.Ai.ProviderSetPrefix + "openai")]]);
+
+        public TelegramInlineKeyboardMarkup BuildAiModelKeyboard(string locale, IReadOnlyList<string> models)
+            => new([[new TelegramInlineKeyboardButton("gpt-4.1-mini", "ai:model:gpt-4.1-mini")]]);
 
         public TelegramInlineKeyboardMarkup BuildStorageModeKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Graph", "storagemode:graph")]]);

@@ -35,15 +35,19 @@ public sealed class TelegramNavigationPresenterTests
     }
 
     [Fact]
-    public void BuildOnboardingLanguageKeyboard_ShouldIncludeCombinedDePlButton()
+    public void BuildOnboardingLanguageKeyboard_ShouldIncludeOnlyUkrainianAndEnglish()
     {
         var sut = new TelegramNavigationPresenter(new LocalizationService());
 
         var keyboard = sut.BuildOnboardingLanguageKeyboard("en");
-        var lastRow = Assert.Single(keyboard.InlineKeyboard.Skip(2).Take(1));
-        var button = Assert.Single(lastRow);
+        var callbacks = keyboard.InlineKeyboard
+            .SelectMany(row => row)
+            .Select(button => button.CallbackData)
+            .ToList();
 
-        Assert.Equal("lang:de_pl", button.CallbackData);
+        Assert.Equal(2, callbacks.Count);
+        Assert.Contains("lang:uk", callbacks);
+        Assert.Contains("lang:en", callbacks);
     }
 
     [Fact]
