@@ -1,8 +1,9 @@
 namespace BaguetteDesign.Api.Controllers;
 
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using BaguetteDesign.Application.Interfaces;
+using BaguetteDesign.Domain.Enums;
+using BaguetteDesign.Domain.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
@@ -10,10 +11,17 @@ using Microsoft.AspNetCore.Mvc;
 public sealed class TelegramController : ControllerBase
 {
     private readonly IStartCommandHandler _startHandler;
+    private readonly IQuestionHandler _questionHandler;
+    private readonly IRoleRouter _roleRouter;
 
-    public TelegramController(IStartCommandHandler startHandler)
+    public TelegramController(
+        IStartCommandHandler startHandler,
+        IQuestionHandler questionHandler,
+        IRoleRouter roleRouter)
     {
         _startHandler = startHandler;
+        _questionHandler = questionHandler;
+        _roleRouter = roleRouter;
     }
 
     [HttpPost("webhook")]
@@ -33,6 +41,13 @@ public sealed class TelegramController : ControllerBase
         if (text.StartsWith("/start", StringComparison.OrdinalIgnoreCase))
         {
             await _startHandler.HandleAsync(chatId, userId, languageCode, cancellationToken);
+            return Ok();
+        }
+
+        var role = _roleRouter.Resolve(userId);
+        if (role == UserRole.Client && !string.IsNullOrWhiteSpace(text))
+        {
+            await _questionHandler.HandleAsync(chatId, userId, text, languageCode, cancellationToken);
         }
 
         return Ok();

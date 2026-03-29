@@ -1,10 +1,13 @@
 using BaguetteDesign.Application.Interfaces;
 using BaguetteDesign.Application.Services;
 using BaguetteDesign.Domain.Interfaces;
+using BaguetteDesign.Infrastructure.AI;
 using BaguetteDesign.Infrastructure.Data;
 using BaguetteDesign.Infrastructure.Options;
+using BaguetteDesign.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
+using SharedBotKernel.Infrastructure.AI;
 using SharedBotKernel.Infrastructure.Telegram;
 using SharedBotKernel.Options;
 
@@ -24,6 +27,17 @@ builder.Services.Configure<TelegramOptions>(
 builder.Services.AddHttpClient("telegram");
 builder.Services.AddSingleton<ITelegramBotSender, TelegramBotSender>();
 builder.Services.AddScoped<IStartCommandHandler, StartCommandHandler>();
+
+var claudeOptions = builder.Configuration
+    .GetSection("Claude")
+    .Get<ClaudeOptions>() ?? new ClaudeOptions();
+builder.Services.AddSingleton(claudeOptions);
+builder.Services.AddSingleton<ClaudeChatClient>(sp =>
+    new ClaudeChatClient(claudeOptions, sp.GetRequiredService<ILogger<ClaudeChatClient>>()));
+builder.Services.AddSingleton<IAiChatClient, ClaudeChatClientAdapter>();
+
+builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
+builder.Services.AddScoped<IQuestionHandler, QuestionHandler>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
