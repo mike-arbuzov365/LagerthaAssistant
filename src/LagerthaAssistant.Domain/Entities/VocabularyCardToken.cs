@@ -1,6 +1,5 @@
 namespace LagerthaAssistant.Domain.Entities;
 
-using LagerthaAssistant.Domain.Common.Base;
 
 public sealed class VocabularyCardToken : BaseEntity
 {

@@ -1,6 +1,5 @@
 namespace LagerthaAssistant.Domain.Entities;
 
-using LagerthaAssistant.Domain.Common.Base;
 
 /// <summary>
 /// Junction table that mirrors the Ingredients Needed relation in Notion Meal Plans ↔ Inventory.

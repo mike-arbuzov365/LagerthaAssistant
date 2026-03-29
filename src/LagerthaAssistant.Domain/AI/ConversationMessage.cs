@@ -2,6 +2,7 @@ namespace LagerthaAssistant.Domain.AI;
 
 using LagerthaAssistant.Domain.Constants;
 using LagerthaAssistant.Domain.Exceptions;
+using MessageRole = SharedBotKernel.Domain.AI.MessageRole;
 
 public sealed record ConversationMessage
 {

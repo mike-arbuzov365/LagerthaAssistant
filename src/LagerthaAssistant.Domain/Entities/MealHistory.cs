@@ -1,6 +1,5 @@
 namespace LagerthaAssistant.Domain.Entities;
 
-using LagerthaAssistant.Domain.Common.Base;
 
 /// <summary>
 /// Tracks when a user ate a particular meal. Lives only in PostgreSQL — not synced to Notion.

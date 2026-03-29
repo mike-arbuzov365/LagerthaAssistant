@@ -1,6 +1,5 @@
 namespace LagerthaAssistant.Domain.Entities;
 
-using LagerthaAssistant.Domain.Common.Base;
 using LagerthaAssistant.Domain.Enums;
 
 public sealed class VocabularySyncJob : AuditableEntity
