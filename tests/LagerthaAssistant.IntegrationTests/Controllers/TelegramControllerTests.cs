@@ -4853,7 +4853,7 @@ public sealed class TelegramControllerTests
 
         Assert.Contains(
             foodService.SavedStoreAliases,
-            x => string.Equals(x.Detected, "FOP Burda Serhiy", StringComparison.Ordinal)
+            x => string.Equals(x.Detected, "fop burda serhiy", StringComparison.Ordinal)
                 && string.Equals(x.Resolved, "ATB", StringComparison.Ordinal));
     }
 
@@ -4909,7 +4909,7 @@ public sealed class TelegramControllerTests
         Assert.Equal("inventory.photo.unknown.link_done", payload.Intent);
         Assert.Contains(
             foodService.SavedItemAliases,
-            x => string.Equals(x.Detected, "Vodka Hetman ICE 30%", StringComparison.Ordinal) && x.ItemId == 1);
+            x => string.Equals(x.Detected, "vodka hetman ice 30%", StringComparison.Ordinal) && x.ItemId == 1);
         Assert.Contains(foodService.AdjustOperations, x => x.ItemId == 1 && x.Mode == "delta" && x.Value == 1m);
     }
 
@@ -4920,7 +4920,7 @@ public sealed class TelegramControllerTests
         {
             InventoryItems = [new FoodItemDto(1, "Vodka", "Beverages", null, null, null) { CurrentQuantity = 1m }]
         };
-        foodService.ItemAliases["Vodka Hetman ICE 30%"] = 1;
+        foodService.ItemAliases["vodka hetman ice 30%"] = 1;
 
         var importReader = new FakeTelegramImportSourceReader
         {
@@ -5775,13 +5775,13 @@ public sealed class TelegramControllerTests
 
         public Task<string?> ResolveStoreAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
         {
-            StoreAliases.TryGetValue(detectedPattern.Trim(), out var resolved);
+            StoreAliases.TryGetValue(detectedPattern.Trim().ToLowerInvariant(), out var resolved);
             return Task.FromResult<string?>(resolved);
         }
 
         public Task SaveStoreAliasAsync(string detectedPattern, string resolvedStoreName, CancellationToken cancellationToken = default)
         {
-            var key = detectedPattern.Trim();
+            var key = detectedPattern.Trim().ToLowerInvariant();
             var resolved = resolvedStoreName.Trim();
             StoreAliases[key] = resolved;
             SavedStoreAliases.Add((key, resolved));
@@ -5790,13 +5790,13 @@ public sealed class TelegramControllerTests
 
         public Task<int?> ResolveItemAliasAsync(string detectedPattern, CancellationToken cancellationToken = default)
         {
-            ItemAliases.TryGetValue(detectedPattern.Trim(), out var itemId);
+            ItemAliases.TryGetValue(detectedPattern.Trim().ToLowerInvariant(), out var itemId);
             return Task.FromResult(itemId > 0 ? (int?)itemId : null);
         }
 
         public Task SaveItemAliasAsync(string detectedPattern, int foodItemId, CancellationToken cancellationToken = default)
         {
-            var key = detectedPattern.Trim();
+            var key = detectedPattern.Trim().ToLowerInvariant();
             ItemAliases[key] = foodItemId;
             SavedItemAliases.Add((key, foodItemId));
             return Task.CompletedTask;

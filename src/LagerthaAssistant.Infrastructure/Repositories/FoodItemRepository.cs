@@ -304,22 +304,11 @@ public sealed class FoodItemRepository : IFoodItemRepository
 
         try
         {
-            var itemId = await _context.ItemAliases
+            return await _context.ItemAliases
                 .AsNoTracking()
-                .Where(x => x.DetectedPattern == normalizedPattern)
+                .Where(x => x.DetectedPattern == normalizedPattern && _context.FoodItems.Any(f => f.Id == x.FoodItemId))
                 .Select(x => (int?)x.FoodItemId)
                 .FirstOrDefaultAsync(cancellationToken);
-
-            if (!itemId.HasValue)
-            {
-                return null;
-            }
-
-            var itemExists = await _context.FoodItems
-                .AsNoTracking()
-                .AnyAsync(x => x.Id == itemId.Value, cancellationToken);
-
-            return itemExists ? itemId : null;
         }
         catch (Exception ex)
         {
