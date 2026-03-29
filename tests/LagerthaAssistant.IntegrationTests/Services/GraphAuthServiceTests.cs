@@ -314,7 +314,7 @@ public sealed class GraphAuthServiceTests
         await using (var seedScope = provider.CreateAsyncScope())
         {
             var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.GraphAuthTokens.Add(new LagerthaAssistant.Domain.Entities.GraphAuthToken
+            db.GraphAuthTokens.Add(new GraphAuthToken
             {
                 Provider = "onedrive",
                 AccessToken = "db-token",
@@ -371,7 +371,7 @@ public sealed class GraphAuthServiceTests
         await using (var seedScope = provider.CreateAsyncScope())
         {
             var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.GraphAuthTokens.Add(new LagerthaAssistant.Domain.Entities.GraphAuthToken
+            db.GraphAuthTokens.Add(new GraphAuthToken
             {
                 Provider = "onedrive",
                 AccessToken = "db-token",

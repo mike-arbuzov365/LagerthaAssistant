@@ -11,6 +11,7 @@ using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Domain.AI;
 using LagerthaAssistant.Domain.Abstractions;
+using MessageRole = SharedBotKernel.Domain.AI.MessageRole;
 using LagerthaAssistant.Domain.Constants;
 using LagerthaAssistant.Domain.Entities;
 

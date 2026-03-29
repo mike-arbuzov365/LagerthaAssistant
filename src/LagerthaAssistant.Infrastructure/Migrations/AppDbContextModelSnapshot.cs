@@ -22,147 +22,6 @@ namespace LagerthaAssistant.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("LagerthaAssistant.Domain.Entities.ConversationHistoryEntry", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasMaxLength(8000)
-                        .HasColumnType("character varying(8000)");
-
-                    b.Property<int>("ConversationSessionId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<DateTimeOffset>("SentAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ConversationSessionId", "SentAtUtc");
-
-                    b.ToTable("ConversationHistoryEntries", (string)null);
-                });
-
-            modelBuilder.Entity("LagerthaAssistant.Domain.Entities.ConversationIntentMetric", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AgentName")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<string>("Channel")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<int>("Count")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Intent")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<bool>("IsBatch")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTimeOffset>("LastSeenAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("MetricDateUtc")
-                        .HasColumnType("date");
-
-                    b.Property<int>("TotalItems")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MetricDateUtc", "Channel", "Count");
-
-                    b.HasIndex("MetricDateUtc", "Channel", "AgentName", "Intent", "IsBatch")
-                        .IsUnique();
-
-                    b.ToTable("ConversationIntentMetrics", (string)null);
-                });
-
-            modelBuilder.Entity("LagerthaAssistant.Domain.Entities.ConversationSession", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Channel")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<string>("ConversationId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CurrentSection")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<Guid>("SessionKey")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Title")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SessionKey")
-                        .IsUnique();
-
-                    b.HasIndex("Channel", "UserId", "ConversationId", "UpdatedAt");
-
-                    b.ToTable("ConversationSessions", (string)null);
-                });
-
             modelBuilder.Entity("LagerthaAssistant.Domain.Entities.FoodItem", b =>
                 {
                     b.Property<int>("Id")
@@ -234,6 +93,9 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -247,31 +109,6 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                     b.HasIndex("NotionSyncStatus", "NotionUpdatedAt");
 
                     b.ToTable("FoodItems", (string)null);
-                });
-
-            modelBuilder.Entity("LagerthaAssistant.Domain.Entities.GraphAuthToken", b =>
-                {
-                    b.Property<string>("Provider")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<string>("AccessToken")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("AccessTokenExpiresAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("RefreshToken")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Provider");
-
-                    b.ToTable("GraphAuthTokens", (string)null);
                 });
 
             modelBuilder.Entity("LagerthaAssistant.Domain.Entities.GroceryListItem", b =>
@@ -337,6 +174,9 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -372,6 +212,9 @@ namespace LagerthaAssistant.Infrastructure.Migrations
 
                     b.Property<int>("FoodItemId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -449,6 +292,9 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasPrecision(6, 1)
                         .HasColumnType("numeric(6,1)");
 
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -504,6 +350,9 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasPrecision(4, 1)
                         .HasColumnType("numeric(4,1)");
 
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -536,6 +385,9 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                     b.Property<string>("Quantity")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -571,6 +423,9 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -580,145 +435,6 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("StoreAliases", (string)null);
-                });
-
-            modelBuilder.Entity("LagerthaAssistant.Domain.Entities.SystemPromptEntry", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("PromptText")
-                        .IsRequired()
-                        .HasMaxLength(8000)
-                        .HasColumnType("character varying(8000)");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Version")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IsActive")
-                        .IsUnique()
-                        .HasFilter("\"IsActive\" = TRUE");
-
-                    b.HasIndex("Version")
-                        .IsUnique();
-
-                    b.ToTable("SystemPromptEntries", (string)null);
-                });
-
-            modelBuilder.Entity("LagerthaAssistant.Domain.Entities.TelegramProcessedUpdate", b =>
-                {
-                    b.Property<long>("UpdateId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("ProcessedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("UpdateId");
-
-                    b.HasIndex("ProcessedAtUtc");
-
-                    b.ToTable("TelegramProcessedUpdates", (string)null);
-                });
-
-            modelBuilder.Entity("LagerthaAssistant.Domain.Entities.UserAiCredential", b =>
-                {
-                    b.Property<string>("Channel")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<string>("UserId")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<string>("Provider")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("EncryptedApiKey")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Channel", "UserId", "Provider");
-
-                    b.ToTable("UserAiCredentials", (string)null);
-                });
-
-            modelBuilder.Entity("LagerthaAssistant.Domain.Entities.UserMemoryEntry", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Channel")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<double>("Confidence")
-                        .HasColumnType("double precision");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Key")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<DateTimeOffset>("LastSeenAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<string>("Value")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Channel", "UserId", "Key")
-                        .IsUnique();
-
-                    b.HasIndex("Channel", "UserId", "IsActive", "UpdatedAt");
-
-                    b.ToTable("UserMemoryEntries", (string)null);
                 });
 
             modelBuilder.Entity("LagerthaAssistant.Domain.Entities.VocabularyCard", b =>
@@ -808,6 +524,9 @@ namespace LagerthaAssistant.Infrastructure.Migrations
 
                     b.Property<DateTimeOffset?>("SyncedAtUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -917,6 +636,9 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -927,15 +649,324 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                     b.ToTable("VocabularySyncJobs", (string)null);
                 });
 
-            modelBuilder.Entity("LagerthaAssistant.Domain.Entities.ConversationHistoryEntry", b =>
+            modelBuilder.Entity("SharedBotKernel.Domain.Entities.ConversationHistoryEntry", b =>
                 {
-                    b.HasOne("LagerthaAssistant.Domain.Entities.ConversationSession", "ConversationSession")
-                        .WithMany("Messages")
-                        .HasForeignKey("ConversationSessionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
 
-                    b.Navigation("ConversationSession");
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<int>("ConversationSessionId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationSessionId", "SentAtUtc");
+
+                    b.ToTable("ConversationHistoryEntries", (string)null);
+                });
+
+            modelBuilder.Entity("SharedBotKernel.Domain.Entities.ConversationIntentMetric", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AgentName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Intent")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<bool>("IsBatch")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("LastSeenAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("MetricDateUtc")
+                        .HasColumnType("date");
+
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("TotalItems")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MetricDateUtc", "Channel", "Count");
+
+                    b.HasIndex("MetricDateUtc", "Channel", "AgentName", "Intent", "IsBatch")
+                        .IsUnique();
+
+                    b.ToTable("ConversationIntentMetrics", (string)null);
+                });
+
+            modelBuilder.Entity("SharedBotKernel.Domain.Entities.ConversationSession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ConversationId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CurrentSection")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("SessionKey")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionKey")
+                        .IsUnique();
+
+                    b.HasIndex("Channel", "UserId", "ConversationId", "UpdatedAt");
+
+                    b.ToTable("ConversationSessions", (string)null);
+                });
+
+            modelBuilder.Entity("SharedBotKernel.Domain.Entities.GraphAuthToken", b =>
+                {
+                    b.Property<string>("Provider")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("AccessToken")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("AccessTokenExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RefreshToken")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Provider");
+
+                    b.ToTable("GraphAuthTokens", (string)null);
+                });
+
+            modelBuilder.Entity("SharedBotKernel.Domain.Entities.SystemPromptEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("PromptText")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive")
+                        .IsUnique()
+                        .HasFilter("\"IsActive\" = TRUE");
+
+                    b.HasIndex("Version")
+                        .IsUnique();
+
+                    b.ToTable("SystemPromptEntries", (string)null);
+                });
+
+            modelBuilder.Entity("SharedBotKernel.Domain.Entities.TelegramProcessedUpdate", b =>
+                {
+                    b.Property<long>("UpdateId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("ProcessedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UpdateId");
+
+                    b.HasIndex("ProcessedAtUtc");
+
+                    b.ToTable("TelegramProcessedUpdates", (string)null);
+                });
+
+            modelBuilder.Entity("SharedBotKernel.Domain.Entities.UserAiCredential", b =>
+                {
+                    b.Property<string>("Channel")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("EncryptedApiKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Channel", "UserId", "Provider");
+
+                    b.ToTable("UserAiCredentials", (string)null);
+                });
+
+            modelBuilder.Entity("SharedBotKernel.Domain.Entities.UserMemoryEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("LastSeenAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Channel", "UserId", "Key")
+                        .IsUnique();
+
+                    b.HasIndex("Channel", "UserId", "IsActive", "UpdatedAt");
+
+                    b.ToTable("UserMemoryEntries", (string)null);
                 });
 
             modelBuilder.Entity("LagerthaAssistant.Domain.Entities.GroceryListItem", b =>
@@ -1000,9 +1031,15 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                     b.Navigation("VocabularyCard");
                 });
 
-            modelBuilder.Entity("LagerthaAssistant.Domain.Entities.ConversationSession", b =>
+            modelBuilder.Entity("SharedBotKernel.Domain.Entities.ConversationHistoryEntry", b =>
                 {
-                    b.Navigation("Messages");
+                    b.HasOne("SharedBotKernel.Domain.Entities.ConversationSession", "ConversationSession")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ConversationSession");
                 });
 
             modelBuilder.Entity("LagerthaAssistant.Domain.Entities.FoodItem", b =>
@@ -1022,6 +1059,11 @@ namespace LagerthaAssistant.Infrastructure.Migrations
             modelBuilder.Entity("LagerthaAssistant.Domain.Entities.VocabularyCard", b =>
                 {
                     b.Navigation("Tokens");
+                });
+
+            modelBuilder.Entity("SharedBotKernel.Domain.Entities.ConversationSession", b =>
+                {
+                    b.Navigation("Messages");
                 });
 #pragma warning restore 612, 618
         }

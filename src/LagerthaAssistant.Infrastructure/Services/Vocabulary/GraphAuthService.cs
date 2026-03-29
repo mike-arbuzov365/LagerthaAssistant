@@ -714,7 +714,7 @@ public sealed class GraphAuthService : IGraphAuthService
 
             if (token is null)
             {
-                db.GraphAuthTokens.Add(new Domain.Entities.GraphAuthToken
+                db.GraphAuthTokens.Add(new GraphAuthToken
                 {
                     Provider = OneDriveProviderKey,
                     AccessToken = entry.AccessToken,

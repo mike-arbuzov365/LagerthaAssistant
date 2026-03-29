@@ -1,28 +1,27 @@
 namespace LagerthaAssistant.Infrastructure.Data;
 
 using Microsoft.EntityFrameworkCore;
-using LagerthaAssistant.Domain.Common.Base;
+using SharedBotKernel.Domain.Base;
 using LagerthaAssistant.Domain.Entities;
 using LagerthaAssistant.Infrastructure.Configurations;
+using SharedBotKernel.Persistence;
 
-public sealed class AppDbContext : DbContext
+public sealed class AppDbContext : KernelDbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options)
         : base(options)
     {
     }
 
-    public DbSet<ConversationSession> ConversationSessions => Set<ConversationSession>();
-    public DbSet<ConversationHistoryEntry> ConversationHistoryEntries => Set<ConversationHistoryEntry>();
-    public DbSet<UserMemoryEntry> UserMemoryEntries => Set<UserMemoryEntry>();
-    public DbSet<SystemPromptEntry> SystemPromptEntries => Set<SystemPromptEntry>();
+    // ── Kernel DbSets inherited from KernelDbContext ──────────────────────
+    // ConversationSessions, ConversationHistoryEntries, UserMemoryEntries,
+    // SystemPromptEntries, ConversationIntentMetrics, TelegramProcessedUpdates,
+    // GraphAuthTokens, UserAiCredentials
+
+    // ── Lagertha-specific ─────────────────────────────────────────────────
     public DbSet<VocabularyCard> VocabularyCards => Set<VocabularyCard>();
     public DbSet<VocabularyCardToken> VocabularyCardTokens => Set<VocabularyCardToken>();
     public DbSet<VocabularySyncJob> VocabularySyncJobs => Set<VocabularySyncJob>();
-    public DbSet<ConversationIntentMetric> ConversationIntentMetrics => Set<ConversationIntentMetric>();
-    public DbSet<TelegramProcessedUpdate> TelegramProcessedUpdates => Set<TelegramProcessedUpdate>();
-    public DbSet<GraphAuthToken> GraphAuthTokens => Set<GraphAuthToken>();
-    public DbSet<UserAiCredential> UserAiCredentials => Set<UserAiCredential>();
 
     public DbSet<FoodItem> FoodItems => Set<FoodItem>();
     public DbSet<Meal> Meals => Set<Meal>();
@@ -34,19 +33,11 @@ public sealed class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        base.OnModelCreating(modelBuilder);
+        base.OnModelCreating(modelBuilder); // applies KernelDbContext configurations
 
-        modelBuilder.ApplyConfiguration(new ConversationSessionConfiguration());
-        modelBuilder.ApplyConfiguration(new ConversationHistoryEntryConfiguration());
-        modelBuilder.ApplyConfiguration(new UserMemoryEntryConfiguration());
-        modelBuilder.ApplyConfiguration(new SystemPromptEntryConfiguration());
         modelBuilder.ApplyConfiguration(new VocabularyCardConfiguration());
         modelBuilder.ApplyConfiguration(new VocabularyCardTokenConfiguration());
         modelBuilder.ApplyConfiguration(new VocabularySyncJobConfiguration());
-        modelBuilder.ApplyConfiguration(new ConversationIntentMetricConfiguration());
-        modelBuilder.ApplyConfiguration(new TelegramProcessedUpdateConfiguration());
-        modelBuilder.ApplyConfiguration(new GraphAuthTokenConfiguration());
-        modelBuilder.ApplyConfiguration(new UserAiCredentialConfiguration());
         modelBuilder.ApplyConfiguration(new FoodItemConfiguration());
         modelBuilder.ApplyConfiguration(new MealConfiguration());
         modelBuilder.ApplyConfiguration(new MealIngredientConfiguration());
