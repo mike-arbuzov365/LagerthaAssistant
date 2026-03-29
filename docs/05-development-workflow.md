@@ -1,49 +1,110 @@
-# Розробка: Процес і Vibe-coding з AI
+# 05 — Development Workflow
 
-> Для соло-розробника: маленькі кроки, постійна верифікація
+> Solo developer + AI pair programming. Small steps, constant verification.
 
 ---
 
-## Git Workflow (для соло)
+## Git Workflow
 
-- `master` — завжди deployable, ніколи не пушити напряму
-- `dev` — основна робоча гілка, всі зміни тут
-- Commit після кожного working стану
-- Conventional commits: `feat` / `fix` / `refactor` / `test` / `docs` / `chore`
-- PR навіть для соло — місце для code review з AI
+| Branch | Purpose |
+|---|---|
+| `master` | Always deployable — production state |
+| `dev` | Main working branch — all changes go here |
 
-## Vibe-coding правильно
+**Rules:**
+- Never push directly to `master`
+- All work happens on `dev`
+- Create PRs from `dev` → `master`
+- One PR = one logical milestone (not one commit)
+- No new branches without explicit instruction
 
-- Дайте AI контекст: архітектуру, існуючий код, нову задачу
-- Завжди читайте що згенеровано — не копіюйте сліпо
-- Одна задача за раз — не "зроби весь бриф", а "зроби крок 1"
-- Після кожного блоку коду — запустіть і перевірте вручну
-- Якщо AI зациклився — поверніться до ADR, поясніть контекст
+**Commit convention:** `feat` / `fix` / `refactor` / `test` / `docs` / `chore`
 
-## Code Review з AI (перед merge)
-
-```
-Prompt для Claude Code:
-"Зроби code review цього PR.
-Перевір:
-1. Чи відповідає Clean Architecture принципам
-2. Чи є можливі null reference exceptions
-3. Чи правильно обробляються Telegram API errors
-4. Чи є race conditions в async коді
-5. Чи є що рефакторити для читабельності"
+```bash
+# Typical session
+git add src/BaguetteDesign.Application/Services/QuestionHandler.cs
+git commit -m "feat: QuestionHandler with conversation history (M1 #013)"
+git push origin dev
+# → open PR dev → master
 ```
 
-## Definition of Done (для кожного issue)
+---
 
-- [ ] Код написаний і проревьюваний (з AI)
-- [ ] Unit тести для бізнес-логіки (якщо є domain logic)
-- [ ] Протестовано вручну в Telegram (скріншот/відео)
-- [ ] `dotnet build` зелений
-- [ ] `dotnet test` зелений
-- [ ] Issue закрито, PR merged в `dev` → `master`
+## AI-Assisted Development (Claude Code)
 
-## Результат кожної ітерації
+This project is built with Claude Code as the primary pair programming tool.
 
-- Merged PR з описом що зроблено і скріншотом/відео тесту
-- Закрите GitHub Issue з позначкою Done
-- Staging деплой — бот живий і протестований
+**How to give Claude context:**
+- Reference the issue number: "Implement M1 #014 BriefFlowService"
+- Point to existing analogues: "Follow the same pattern as QuestionHandler"
+- State what NOT to do: "Don't add error handling for impossible cases"
+
+**Rules we follow:**
+- Always read generated code before committing
+- One issue at a time — not "build the whole brief flow", but "implement step 1"
+- After each block of code — build and test immediately
+- If Claude is going in circles — restart with a clear context dump
+
+**Code review prompt (use before merge):**
+```
+Review this PR.
+Check:
+1. Clean Architecture — no domain logic in Api layer
+2. Null safety — any possible NullReferenceException?
+3. Async correctness — no sync-over-async, ConfigureAwait not needed in app code
+4. Test coverage — is the new business logic unit-tested?
+5. Anything obviously wrong or overcomplicated?
+```
+
+---
+
+## Project Structure
+
+```
+BotPlatform.sln
+├── src/
+│   ├── SharedBotKernel/          # Shared: entities, AI clients, Telegram sender
+│   ├── LagerthaAssistant.Domain/
+│   ├── LagerthaAssistant.Application/
+│   ├── LagerthaAssistant.Infrastructure/
+│   ├── LagerthaAssistant.Api/    # Household bot (production on Railway)
+│   ├── BaguetteDesign.Domain/
+│   ├── BaguetteDesign.Application/
+│   ├── BaguetteDesign.Infrastructure/
+│   └── BaguetteDesign.Api/       # Designer bot (M1 in progress)
+└── tests/
+    ├── LagerthaAssistant.Domain.Tests/
+    ├── LagerthaAssistant.Application.Tests/
+    ├── LagerthaAssistant.IntegrationTests/
+    └── BaguetteDesign.Tests/
+```
+
+**Layer rules:**
+- `Domain` — no external dependencies, pure C# records and entities
+- `Application` — interfaces only, no EF, no HttpClient
+- `Infrastructure` — EF, HTTP clients, Notion/Google adapters
+- `Api` — controllers, Program.cs, DI registration
+
+---
+
+## Definition of Done (per issue)
+
+- [ ] Code written and reviewed (with Claude)
+- [ ] Unit tests for business logic
+- [ ] `dotnet build BotPlatform.sln` — green
+- [ ] `dotnet test BotPlatform.sln` — green
+- [ ] Tested manually in Telegram (screenshot or video)
+- [ ] PR merged `dev` → `master`
+- [ ] Docs updated (this file or relevant doc)
+
+---
+
+## Working with Two Bots
+
+Changes to `SharedBotKernel` affect **both** bots — always run the full solution build and all tests, not just the bot you're working on.
+
+```bash
+# Always run on the full solution
+dotnet build BotPlatform.sln
+dotnet test BotPlatform.sln
+```

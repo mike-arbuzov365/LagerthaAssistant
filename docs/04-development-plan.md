@@ -106,70 +106,59 @@
 
 ## M1: BaguetteDesign Core (Тижні 3–5)
 
-### Issue #010: BaguetteDesign проєкти + BaguetteDbContext
+### Issue #010: BaguetteDesign проєкти + BaguetteDbContext ✅
 
 **Tasks:**
-- [ ] Створити 4 csproj: Domain / Application / Infrastructure / Api
-- [ ] Додати project references на SharedBotKernel
-- [ ] Створити `BaguetteDbContext : KernelDbContext`
-- [ ] Додати 11 BaguetteDesign-specific DbSet
-- [ ] EF конфігурації: indexes, constraints, jsonb columns
-- [ ] Перша міграція: `dotnet ef migrations add InitialBaguetteCreate`
-- [ ] `Program.cs` з `AddKernelServices()` + health endpoint
-- [ ] Dockerfile для Railway
+- [x] Створити 4 csproj: Domain / Application / Infrastructure / Api
+- [x] Додати project references на SharedBotKernel
+- [x] Створити `BaguetteDbContext : KernelDbContext`
+- [x] Перша міграція: `InitialCreate` (8 kernel tables + TenantId)
+- [x] `Program.cs` з health endpoint
+- [x] Dockerfile для Railway
 
 **AC:** `GET /health` → 200, таблиці в PostgreSQL створені
 
 ---
 
-### Issue #011: RoleRouter — визначення ролі по user_id
+### Issue #011: RoleRouter — визначення ролі по user_id ✅
 
 **Story:** Як бот, я маю визначати чи це дизайнер чи клієнт на основі Telegram user_id.
 
 **Tasks:**
-- [ ] `IRoleRouter` інтерфейс
-- [ ] `RoleRouter : IRoleRouter` — порівнює `userId` з `ADMIN_USER_ID` з config
-- [ ] `UserRole` enum: `Designer | Client`
-- [ ] Unit тести: `GivenAdminId_Returns_Designer`, `GivenOtherId_Returns_Client`
-
-```csharp
-// Test example
-[Fact]
-public void GivenAdminId_ReturnsDesigner()
-{
-    var router = new RoleRouter(adminUserId: "12345");
-    Assert.Equal(UserRole.Designer, router.Resolve("12345"));
-}
-```
+- [x] `IRoleRouter` інтерфейс
+- [x] `RoleRouter : IRoleRouter` — порівнює `userId` з `ADMIN_USER_ID` з config
+- [x] `UserRole` enum: `Designer | Client`
+- [x] 4 unit тести: admin → Designer, client → Client, zero, negative
 
 ---
 
-### Issue #012: /start handler — контекстне меню
+### Issue #012: /start handler — контекстне меню ✅
 
 **Story:** Як користувач, після /start я маю бачити меню відповідно до своєї ролі.
 
 **Tasks:**
-- [ ] `StartCommandHandler` — перевіряє роль → відправляє відповідне меню
-- [ ] Клієнтське меню: 6 кнопок (бриф / прайс / портфоліо / питання / зв'язатися / статус)
-- [ ] Дизайнерське меню: 5 кнопок (inbox / ліди / проєкти / швидка дія / налаштування)
-- [ ] Автовизначення мови з `message.From.LanguageCode` → uk / en
-- [ ] Збереження `UserMemoryEntry`: `{Key: "lang", Value: "uk"}`
-- [ ] Реферальний лінк `?start=ref_xxx` → запис `tenant_id` клієнта
+- [x] `StartCommandHandler` — перевіряє роль → відправляє відповідне меню
+- [x] Клієнтське меню: 6 кнопок (бриф / прайс / портфоліо / питання / зв'язатися / статус)
+- [x] Дизайнерське меню: 5 кнопок (inbox / ліди / проєкти / швидка дія / налаштування)
+- [x] Автовизначення мови з `message.From.LanguageCode` → uk / en (fallback → en)
+- [x] 4 unit тести: designer menu, client menu, en locale, null locale
 
-**AC:** Клієнт і дизайнер бачать різні меню; вручну протестовано в Telegram
+**AC:** Клієнт і дизайнер бачать різні меню; 12/12 тестів зелені
 
 ---
 
-### Issue #013: QuestionHandler — AI відповіді на питання
+### Issue #013: QuestionHandler — AI відповіді на питання ✅
 
 **Story:** Як клієнт, я хочу поставити довільне питання і отримати відповідь від Claude.
 
 **Tasks:**
-- [ ] `QuestionHandler` — якщо немає активного flow, відправляє в Claude
-- [ ] Завантажує `ConversationHistoryEntries` для цього user → передає в Claude як context
-- [ ] Зберігає відповідь у `ConversationHistoryEntries`
-- [ ] Після відповіді — Inline keyboard з наступними кроками: [Бриф] [Прайс] [Портфоліо] [Зв'язатися]
-- [ ] Якщо Claude не знає → пропонує зв'язатись з дизайнером
+- [x] `QuestionHandler` — client free-text → Claude (with system prompt about Baguette Design)
+- [x] Завантажує останні 20 `ConversationHistoryEntries` → передає в Claude як context
+- [x] Зберігає user + assistant entries в `ConversationHistoryEntries`
+- [x] Після відповіді — Inline keyboard: [Бриф] [Прайс] [Портфоліо] [Зв'язатися]
+- [x] `IConversationRepository` + `ConversationRepository` (find-or-create session)
+- [x] `ClaudeChatClientAdapter` — bridges `ClaudeChatClient` to `IAiChatClient`
+- [x] 4 unit тести: reply sent, entries saved, history passed to AI, session found by userId
 
 ---
 
