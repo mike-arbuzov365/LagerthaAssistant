@@ -197,14 +197,20 @@
 
 ---
 
-### Issue #016: PortfolioService — портфоліо з Notion
+### Issue #016: PortfolioService — портфоліо з Notion ✅
 
 **Story:** Як клієнт, я хочу переглянути приклади робіт за категоріями.
 
 **Tasks:**
-- [ ] `NotionPortfolioClient.SyncPortfolioCasesAsync()` → PostgreSQL cache
-- [ ] Conversation flow: категорії → кейси → опис + кнопки "Хочу схожий" / "Бриф"
-- [ ] "Хочу схожий" → запускає BriefFlow з pre-filled `style` field
+- [x] `NotionPortfolioClient` — paginated query, maps title/select/rich_text, extracts cover URL (external/file)
+- [x] `NotionPortfolioOptions` — configurable property names
+- [x] `PortfolioService.GetCategoriesAsync / GetByCategoryAsync` — DB cache with Notion sync on empty
+- [x] `PortfolioRepository.UpsertAsync` — upsert + soft-deactivate removed cases
+- [x] `PortfolioHandler` — categories keyboard + one message per case with "🎯 Хочу схожий" button
+- [x] `BriefFlowService.StartWithStyleAsync` — starts brief with pre-filled Style from portfolio case title
+- [x] `PortfolioCase` entity + `portfolio_cases` table migration
+- [x] TelegramController: handles "portfolio", "portfolio_cat_*", "portfolio_similar_*" callbacks
+- [x] 6 unit tests: categories/cases present/empty, locale, description rendering
 
 ---
 
