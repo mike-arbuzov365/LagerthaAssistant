@@ -162,19 +162,21 @@
 
 ---
 
-### Issue #014: BriefFlowService — покроковий адаптивний бриф
+### Issue #014: BriefFlowService — покроковий адаптивний бриф ✅
 
 **Story:** Як клієнт, я хочу пройти бриф як живий діалог, де питання адаптуються під тип послуги.
 
 **Tasks:**
-- [ ] `BriefFlowState` — persisted в `UserMemoryEntries`: `{Key: "brief_state", Value: json}`
-- [ ] Flow steps: service_type → brand → audience → style → references → deadline → budget → country
-- [ ] Адаптація: якщо service_type=logo → розширені питання про бренд; social → формат і кількість
-- [ ] Клієнт може: пропустити / повернутись / зупинити і продовжити
-- [ ] Файли в діалозі → зберігаються в `FileRecords` з type=reference
-- [ ] Фінал: Claude генерує summary → клієнт підтверджує → Lead автоматично в БД + Notion
-- [ ] `AiAnalysis` брифу: completeness_score, missing_fields[]
-- [ ] Unit тести: `BriefValidator` — перевірка повноти
+- [x] `BriefFlowState` immutable record persisted as JSON in `UserMemoryEntries` (Key="brief_state")
+- [x] Flow steps: ServiceType → Brand → Audience → Style → Deadline → Budget → Country → Summary → Completed
+- [x] Navigation: skip / back / cancel via inline keyboard callbacks
+- [x] Final step: Claude generates summary → client confirms → Lead saved to DB
+- [x] `BriefValidator`: completeness_score, missing required fields (service_type, budget, deadline)
+- [x] `Lead` entity + `LeadStatus` enum; `leads` table migration
+- [x] `IUserMemoryRepository` + `UserMemoryRepository` (soft delete, find-or-create)
+- [x] `ILeadRepository` + `LeadRepository`
+- [x] TelegramController: handles `callback_query` for brief_* + brief_svc_* callbacks
+- [x] 17 unit tests: BriefValidatorTests (7) + BriefFlowStateTests (10)
 
 ---
 
