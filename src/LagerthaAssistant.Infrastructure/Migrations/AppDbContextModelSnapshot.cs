@@ -94,8 +94,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("character varying(128)");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -176,8 +175,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("character varying(128)");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -216,8 +214,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -296,8 +293,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("numeric(6,1)");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -355,8 +351,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("numeric(4,1)");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -392,8 +387,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("character varying(64)");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -430,8 +424,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("character varying(256)");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -533,8 +526,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -645,8 +637,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("character varying(1000)");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -686,8 +677,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -738,8 +728,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("date");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<int>("TotalItems")
                         .HasColumnType("integer");
@@ -786,8 +775,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<string>("Title")
                         .HasMaxLength(200)
@@ -864,8 +852,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("character varying(64)");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -957,8 +944,7 @@ namespace LagerthaAssistant.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("TenantId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");

@@ -13,99 +13,85 @@ namespace LagerthaAssistant.Infrastructure.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "VocabularySyncJobs",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "VocabularyCards",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "UserMemoryEntries",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "SystemPromptEntries",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "StoreAliases",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "Meals",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "MealIngredients",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "MealHistory",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "ItemAliases",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "GroceryListItems",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "FoodItems",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "ConversationSessions",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "ConversationIntentMetrics",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TenantId",
                 table: "ConversationHistoryEntries",
-                type: "character varying(64)",
-                maxLength: 64,
+                type: "text",
                 nullable: true);
         }
 

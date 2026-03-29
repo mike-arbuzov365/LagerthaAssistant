@@ -21,14 +21,5 @@ public abstract class KernelDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(KernelDbContext).Assembly);
-
-        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
-        {
-            var tenantIdProp = entityType.FindProperty(nameof(AuditableEntity.TenantId));
-            if (tenantIdProp is not null)
-            {
-                tenantIdProp.SetMaxLength(64);
-            }
-        }
     }
 }
