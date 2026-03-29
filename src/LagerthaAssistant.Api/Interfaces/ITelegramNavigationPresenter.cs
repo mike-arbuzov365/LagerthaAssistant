@@ -31,15 +31,17 @@ public interface ITelegramNavigationPresenter
 
     TelegramInlineKeyboardMarkup BuildOnboardingLanguageKeyboard(string locale);
 
-    TelegramInlineKeyboardMarkup BuildOnboardingSecondaryLanguageKeyboard(string locale);
-
     TelegramInlineKeyboardMarkup BuildSettingsKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildSettingsLanguageKeyboard(string locale);
 
-    TelegramInlineKeyboardMarkup BuildSettingsSecondaryLanguageKeyboard(string locale);
-
     TelegramInlineKeyboardMarkup BuildSaveModeKeyboard(string locale);
+
+    TelegramInlineKeyboardMarkup BuildAiSettingsKeyboard(string locale);
+
+    TelegramInlineKeyboardMarkup BuildAiProviderKeyboard(string locale);
+
+    TelegramInlineKeyboardMarkup BuildAiModelKeyboard(string locale, IReadOnlyList<string> models);
 
     TelegramInlineKeyboardMarkup BuildOneDriveKeyboard(string locale, bool isConnected, bool includeCheckStatusButton = false);
 

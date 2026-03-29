@@ -71,10 +71,6 @@ internal static partial class Program
         WriteCatalogCommandHelp(promptSetWithText, "Set system prompt from a single line.");
 
         Console.WriteLine();
-        Console.WriteLine(ConversationCommandCategories.PromptProposals);
-        WriteCatalogCommandsForCategory(ConversationCommandCategories.PromptProposals);
-
-        Console.WriteLine();
         Console.WriteLine("Saving");
         WriteCommandHelp(ConsoleCommands.Save, $"Show current save mode ({saveModes}).");
         WriteCommandHelp($"{ConsoleCommands.SaveMode} <mode>", $"Set save mode. Supported: {saveModes}. Stored in DB.");

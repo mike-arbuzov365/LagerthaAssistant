@@ -521,21 +521,6 @@ public sealed class VocabularyWorkflowServiceTests
         public Task<IReadOnlyCollection<SystemPromptEntry>> GetSystemPromptHistoryAsync(int take, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyCollection<SystemPromptEntry>>([]);
 
-        public Task<IReadOnlyCollection<SystemPromptProposal>> GetSystemPromptProposalsAsync(int take, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyCollection<SystemPromptProposal>>([]);
-
-        public Task<SystemPromptProposal> CreateSystemPromptProposalAsync(string prompt, string reason, double confidence, string source = "manual", CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
-        public Task<SystemPromptProposal> GenerateSystemPromptProposalAsync(string goal, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
-        public Task<string> ApplySystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
-        public Task RejectSystemPromptProposalAsync(int proposalId, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
-
         public Task<string> SetSystemPromptAsync(string prompt, string source = "manual", CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
 

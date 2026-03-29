@@ -16,8 +16,6 @@ using LagerthaAssistant.Domain.Entities;
 
 public sealed class AssistantSessionService : IAssistantSessionService
 {
-    private const int PromptHistoryTakeForGeneration = 5;
-
     private static readonly Regex MeaningLineRegex = new("^\\((?<pos>[a-z]+)\\)\\s+.+$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly char[] IrregularFormSeparators = ['-', ',', '/', '='];
     private static readonly HashSet<string> PhrasalParticles = new(StringComparer.OrdinalIgnoreCase)
@@ -40,7 +38,6 @@ public sealed class AssistantSessionService : IAssistantSessionService
     private readonly IConversationHistoryRepository _historyRepository;
     private readonly IUserMemoryRepository _userMemoryRepository;
     private readonly ISystemPromptRepository _systemPromptRepository;
-    private readonly ISystemPromptProposalRepository _systemPromptProposalRepository;
     private readonly IConversationMemoryExtractor _memoryExtractor;
     private readonly IUnitOfWork _unitOfWork;
     private readonly AssistantSessionOptions _options;
@@ -62,7 +59,6 @@ public sealed class AssistantSessionService : IAssistantSessionService
         IConversationHistoryRepository historyRepository,
         IUserMemoryRepository userMemoryRepository,
         ISystemPromptRepository systemPromptRepository,
-        ISystemPromptProposalRepository systemPromptProposalRepository,
         IConversationMemoryExtractor memoryExtractor,
         IUnitOfWork unitOfWork,
         AssistantSessionOptions options,
@@ -75,7 +71,6 @@ public sealed class AssistantSessionService : IAssistantSessionService
         _historyRepository = historyRepository;
         _userMemoryRepository = userMemoryRepository;
         _systemPromptRepository = systemPromptRepository;
-        _systemPromptProposalRepository = systemPromptProposalRepository;
         _memoryExtractor = memoryExtractor;
         _unitOfWork = unitOfWork;
         _options = options;
@@ -184,162 +179,6 @@ public sealed class AssistantSessionService : IAssistantSessionService
         await EnsureSystemPromptLoadedAsync(cancellationToken);
 
         return await _systemPromptRepository.GetRecentAsync(normalizedTake, cancellationToken);
-    }
-
-    public async Task<IReadOnlyCollection<SystemPromptProposal>> GetSystemPromptProposalsAsync(
-        int take,
-        CancellationToken cancellationToken = default)
-    {
-        var normalizedTake = Math.Max(1, take);
-        return await _systemPromptProposalRepository.GetRecentAsync(normalizedTake, cancellationToken);
-    }
-
-    public async Task<SystemPromptProposal> CreateSystemPromptProposalAsync(
-        string prompt,
-        string reason,
-        double confidence,
-        string source = "manual",
-        CancellationToken cancellationToken = default)
-    {
-        var normalizedPrompt = prompt?.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedPrompt))
-        {
-            throw new ArgumentException("Proposed prompt cannot be empty.", nameof(prompt));
-        }
-
-        var normalizedReason = string.IsNullOrWhiteSpace(reason)
-            ? "No reason provided."
-            : reason.Trim();
-
-        var boundedConfidence = Math.Clamp(confidence, 0.0, 1.0);
-
-        var proposal = new SystemPromptProposal
-        {
-            ProposedPrompt = normalizedPrompt,
-            Reason = normalizedReason,
-            Confidence = boundedConfidence,
-            Source = string.IsNullOrWhiteSpace(source) ? "manual" : source.Trim(),
-            Status = SystemPromptProposalStatuses.Pending,
-            CreatedAtUtc = _clock.UtcNow
-        };
-
-        await _unitOfWork.BeginTransactionAsync(cancellationToken);
-
-        try
-        {
-            await _systemPromptProposalRepository.AddAsync(proposal, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await _unitOfWork.CommitTransactionAsync(cancellationToken);
-            return proposal;
-        }
-        catch
-        {
-            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            throw;
-        }
-    }
-
-    public async Task<SystemPromptProposal> GenerateSystemPromptProposalAsync(
-        string goal,
-        CancellationToken cancellationToken = default)
-    {
-        await EnsureSystemPromptLoadedAsync(cancellationToken);
-
-        var normalizedGoal = goal?.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedGoal))
-        {
-            throw new ArgumentException("Goal cannot be empty.", nameof(goal));
-        }
-
-        var recentHistory = await _historyRepository.GetRecentBySessionIdAsync(_session?.Id ?? 0, PromptHistoryTakeForGeneration, cancellationToken);
-        var historySummary = recentHistory.Count == 0
-            ? "No recent chat history."
-            : string.Join(Environment.NewLine, recentHistory.Select(x => $"{x.Role}: {x.Content}"));
-
-        var suggestionMessages = new List<ConversationMessage>
-        {
-            ConversationMessage.Create(
-                MessageRole.System,
-                "You design concise system prompts for an AI coding assistant. Return ONLY the improved system prompt text with no explanations.",
-                _clock.UtcNow),
-            ConversationMessage.Create(
-                MessageRole.User,
-                $"Current system prompt:\n{_currentSystemPrompt}\n\nImprovement goal:\n{normalizedGoal}\n\nRecent dialogue context:\n{historySummary}",
-                _clock.UtcNow)
-        };
-
-        var completion = await _aiChatClient.CompleteAsync(suggestionMessages, cancellationToken);
-        var proposedPrompt = completion.Content.Trim();
-
-        return await CreateSystemPromptProposalAsync(
-            proposedPrompt,
-            $"AI-generated from goal: {normalizedGoal}",
-            0.7,
-            "assistant",
-            cancellationToken);
-    }
-
-    public async Task<string> ApplySystemPromptProposalAsync(
-        int proposalId,
-        CancellationToken cancellationToken = default)
-    {
-        var proposal = await _systemPromptProposalRepository.GetByIdAsync(proposalId, cancellationToken)
-            ?? throw new InvalidOperationException($"System prompt proposal with id {proposalId} was not found.");
-
-        if (!proposal.Status.Equals(SystemPromptProposalStatuses.Pending, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException($"Proposal {proposalId} is not pending.");
-        }
-
-        var appliedPrompt = await SetSystemPromptAsync(proposal.ProposedPrompt, proposal.Source, cancellationToken);
-
-        await _unitOfWork.BeginTransactionAsync(cancellationToken);
-
-        try
-        {
-            proposal.Status = SystemPromptProposalStatuses.Applied;
-            proposal.ReviewedAtUtc = _clock.UtcNow;
-
-            var activePrompt = await _systemPromptRepository.GetActiveAsync(cancellationToken);
-            proposal.AppliedSystemPromptEntryId = activePrompt?.Id;
-
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await _unitOfWork.CommitTransactionAsync(cancellationToken);
-            return appliedPrompt;
-        }
-        catch
-        {
-            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            throw;
-        }
-    }
-
-    public async Task RejectSystemPromptProposalAsync(
-        int proposalId,
-        CancellationToken cancellationToken = default)
-    {
-        var proposal = await _systemPromptProposalRepository.GetByIdAsync(proposalId, cancellationToken)
-            ?? throw new InvalidOperationException($"System prompt proposal with id {proposalId} was not found.");
-
-        if (!proposal.Status.Equals(SystemPromptProposalStatuses.Pending, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException($"Proposal {proposalId} is not pending.");
-        }
-
-        await _unitOfWork.BeginTransactionAsync(cancellationToken);
-
-        try
-        {
-            proposal.Status = SystemPromptProposalStatuses.Rejected;
-            proposal.ReviewedAtUtc = _clock.UtcNow;
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await _unitOfWork.CommitTransactionAsync(cancellationToken);
-        }
-        catch
-        {
-            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            throw;
-        }
     }
 
     public async Task<string> SetSystemPromptAsync(
@@ -1114,10 +953,6 @@ public sealed class AssistantSessionService : IAssistantSessionService
                 $"IMPORTANT: Always respond in the user's language ({locale}).",
                 "If locale is \"en\", respond in English.",
                 "If locale is \"uk\", respond in Ukrainian.",
-                "If locale is \"es\", respond in Spanish.",
-                "If locale is \"fr\", respond in French.",
-                "If locale is \"de\", respond in German.",
-                "If locale is \"pl\", respond in Polish.",
                 "NEVER respond in Russian under any circumstances.",
                 "If the user writes in Russian, respond in Ukrainian and continue in Ukrainian."
             ]);

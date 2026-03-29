@@ -52,34 +52,9 @@ public sealed class AssistantSessionServiceTests
             fx.AiClient.LastMessages!,
             x => x.Role == MessageRole.System
                 && x.Content.Contains("User language: uk", StringComparison.Ordinal)
-                && x.Content.Contains("If locale is \"fr\", respond in French.", StringComparison.Ordinal)
+                && x.Content.Contains("If locale is \"en\", respond in English.", StringComparison.Ordinal)
+                && x.Content.Contains("If locale is \"uk\", respond in Ukrainian.", StringComparison.Ordinal)
                 && x.Content.Contains("NEVER respond in Russian", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task AskAsync_ShouldInjectLocaleInstruction_ForFrenchLocaleMemory()
-    {
-        var fx = new Fixture();
-        fx.MemoryRepo.Active.Add(new UserMemoryEntry
-        {
-            Key = LocalizationConstants.LocaleMemoryKey,
-            Value = LocalizationConstants.FrenchLocale,
-            IsActive = true,
-            LastSeenAtUtc = fx.Clock.UtcNow
-        });
-
-        var sut = fx.CreateSut();
-
-        await sut.AskAsync("hello");
-
-        Assert.NotNull(fx.AiClient.LastMessages);
-        Assert.Contains(
-            fx.AiClient.LastMessages!,
-            x => x.Role == MessageRole.System
-                && x.Content.Contains("User language: fr", StringComparison.Ordinal)
-                && x.Content.Contains("If locale is \"es\", respond in Spanish.", StringComparison.Ordinal)
-                && x.Content.Contains("If locale is \"de\", respond in German.", StringComparison.Ordinal)
-                && x.Content.Contains("If locale is \"pl\", respond in Polish.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -292,47 +267,6 @@ Please call back the client after the meeting.
         Assert.Contains("(pv) call in return, phone someone in response", result.Content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("(v) call in return, phone someone in response", result.Content, StringComparison.OrdinalIgnoreCase);
     }
-    [Fact]
-    public async Task GenerateSystemPromptProposalAsync_ShouldSaveAssistantProposal()
-    {
-        var fx = new Fixture();
-        fx.AiClient.NextContent = "You are a better prompt.";
-        var sut = fx.CreateSut();
-
-        var proposal = await sut.GenerateSystemPromptProposalAsync("be stricter with safety");
-
-        Assert.Equal("assistant", proposal.Source);
-        Assert.Equal(SystemPromptProposalStatuses.Pending, proposal.Status);
-        Assert.Equal("You are a better prompt.", proposal.ProposedPrompt);
-        Assert.Contains(fx.ProposalRepo.Proposals, x => x.Id == proposal.Id);
-    }
-
-    [Fact]
-    public async Task ApplySystemPromptProposalAsync_ShouldApplyAndMarkProposal()
-    {
-        var fx = new Fixture();
-        var proposal = new SystemPromptProposal
-        {
-            Id = 12,
-            ProposedPrompt = "Applied prompt",
-            Reason = "Test",
-            Confidence = 0.9,
-            Source = "assistant",
-            Status = SystemPromptProposalStatuses.Pending,
-            CreatedAtUtc = fx.Clock.UtcNow
-        };
-        fx.ProposalRepo.Proposals.Add(proposal);
-
-        var sut = fx.CreateSut();
-
-        var applied = await sut.ApplySystemPromptProposalAsync(12);
-
-        Assert.Equal("Applied prompt", applied);
-        Assert.Equal(SystemPromptProposalStatuses.Applied, proposal.Status);
-        Assert.NotNull(proposal.ReviewedAtUtc);
-        Assert.True(proposal.AppliedSystemPromptEntryId.HasValue);
-    }
-
     private sealed class Fixture
     {
         public FakeAiChatClient AiClient { get; } = new();
@@ -340,7 +274,6 @@ Please call back the client after the meeting.
         public FakeConversationHistoryRepository HistoryRepo { get; } = new();
         public FakeUserMemoryRepository MemoryRepo { get; } = new();
         public FakeSystemPromptRepository SystemPromptRepo { get; } = new();
-        public FakeSystemPromptProposalRepository ProposalRepo { get; } = new();
         public FakeConversationMemoryExtractor MemoryExtractor { get; } = new();
         public FakeUnitOfWork Uow { get; } = new();
         public FakeClock Clock { get; } = new();
@@ -369,7 +302,6 @@ Please call back the client after the meeting.
                 HistoryRepo,
                 MemoryRepo,
                 SystemPromptRepo,
-                ProposalRepo,
                 MemoryExtractor,
                 Uow,
                 new AssistantSessionOptions { SystemPrompt = "system prompt", MaxHistoryMessages = 20 },
@@ -552,33 +484,6 @@ Please call back the client after the meeting.
                 ActivePrompt = entry;
             }
 
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class FakeSystemPromptProposalRepository : ISystemPromptProposalRepository
-    {
-        public readonly List<SystemPromptProposal> Proposals = [];
-
-        public Task<SystemPromptProposal?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(Proposals.FirstOrDefault(x => x.Id == id));
-        }
-
-        public Task<IReadOnlyList<SystemPromptProposal>> GetRecentAsync(int take, CancellationToken cancellationToken = default)
-        {
-            var result = Proposals.OrderByDescending(x => x.CreatedAtUtc).Take(Math.Max(0, take)).ToList();
-            return Task.FromResult<IReadOnlyList<SystemPromptProposal>>(result);
-        }
-
-        public Task AddAsync(SystemPromptProposal proposal, CancellationToken cancellationToken = default)
-        {
-            if (proposal.Id == 0)
-            {
-                proposal.Id = Proposals.Count + 1;
-            }
-
-            Proposals.Add(proposal);
             return Task.CompletedTask;
         }
     }

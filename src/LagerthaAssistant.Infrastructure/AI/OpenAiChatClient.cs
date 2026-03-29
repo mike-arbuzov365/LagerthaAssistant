@@ -4,13 +4,12 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using LagerthaAssistant.Application.Interfaces.AI;
 using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Domain.AI;
 using LagerthaAssistant.Infrastructure.Options;
 using LagerthaAssistant.Infrastructure.Constants;
 
-public sealed class OpenAiChatClient : IAiChatClient
+public sealed class OpenAiChatClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -18,20 +17,26 @@ public sealed class OpenAiChatClient : IAiChatClient
     private readonly OpenAiOptions _options;
     private readonly ILogger<OpenAiChatClient> _logger;
 
-    public OpenAiChatClient(HttpClient httpClient, OpenAiOptions options, ILogger<OpenAiChatClient> logger)
+    public OpenAiChatClient(OpenAiOptions options, ILogger<OpenAiChatClient> logger)
     {
-        _httpClient = httpClient;
         _options = options;
         _logger = logger;
+        _httpClient = new HttpClient
+        {
+            BaseAddress = new Uri(_options.BaseUrl),
+            Timeout = TimeSpan.FromSeconds(OpenAiConstants.HttpTimeoutSeconds)
+        };
     }
 
     public async Task<AssistantCompletionResult> CompleteAsync(
         IReadOnlyCollection<ConversationMessage> messages,
+        string model,
+        string apiKey,
         CancellationToken cancellationToken = default)
     {
         var requestBody = new
         {
-            model = _options.Model,
+            model,
             temperature = _options.Temperature,
             messages = messages.Select(m => new
             {
@@ -46,7 +51,7 @@ public sealed class OpenAiChatClient : IAiChatClient
             Content = new StringContent(payload, Encoding.UTF8, "application/json")
         };
 
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var rawResponse = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -60,7 +65,7 @@ public sealed class OpenAiChatClient : IAiChatClient
         using var jsonDocument = JsonDocument.Parse(rawResponse);
 
         var root = jsonDocument.RootElement;
-        var model = root.GetProperty("model").GetString() ?? _options.Model;
+        var responseModel = root.GetProperty("model").GetString() ?? model;
         var assistantContent = ExtractAssistantContent(root);
 
         if (string.IsNullOrWhiteSpace(assistantContent))
@@ -70,7 +75,7 @@ public sealed class OpenAiChatClient : IAiChatClient
 
         var usage = ExtractUsage(root);
 
-        return new AssistantCompletionResult(assistantContent.Trim(), model, usage);
+        return new AssistantCompletionResult(assistantContent.Trim(), responseModel, usage);
     }
 
     private static AssistantUsage? ExtractUsage(JsonElement root)

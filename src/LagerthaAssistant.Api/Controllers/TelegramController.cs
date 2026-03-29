@@ -17,6 +17,7 @@ using LagerthaAssistant.Application.Interfaces.Food;
 using LagerthaAssistant.Application.Interfaces.Repositories;
 using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
+using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Application.Models.Food;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Navigation;
@@ -112,6 +113,7 @@ public sealed class TelegramController : ControllerBase
     private readonly IVocabularyDeckService _vocabularyDeckService;
     private readonly IVocabularyReplyParser _vocabularyReplyParser;
     private readonly IVocabularyDiscoveryService _vocabularyDiscoveryService;
+    private readonly IAiRuntimeSettingsService _aiRuntimeSettingsService;
     private readonly ITelegramImportSourceReader _importSourceReader;
     private readonly VocabularyDeckOptions _vocabularyDeckOptions;
     private readonly IGraphAuthService _graphAuthService;
@@ -146,6 +148,7 @@ public sealed class TelegramController : ControllerBase
         IVocabularyDeckService vocabularyDeckService,
         IVocabularyReplyParser vocabularyReplyParser,
         IVocabularyDiscoveryService vocabularyDiscoveryService,
+        IAiRuntimeSettingsService aiRuntimeSettingsService,
         ITelegramImportSourceReader importSourceReader,
         VocabularyDeckOptions vocabularyDeckOptions,
         IGraphAuthService graphAuthService,
@@ -181,6 +184,7 @@ public sealed class TelegramController : ControllerBase
         _vocabularyDeckService = vocabularyDeckService;
         _vocabularyReplyParser = vocabularyReplyParser;
         _vocabularyDiscoveryService = vocabularyDiscoveryService;
+        _aiRuntimeSettingsService = aiRuntimeSettingsService;
         _importSourceReader = importSourceReader;
         _vocabularyDeckOptions = vocabularyDeckOptions;
         _graphAuthService = graphAuthService;
@@ -514,8 +518,25 @@ public sealed class TelegramController : ControllerBase
                 return await HandleWeeklyMenuTextAsync(inbound.Text, locale, scope, cancellationToken);
 
             case NavigationRouteKind.SettingsText:
+                {
+                    var pendingChatKey = BuildPendingChatActionKey(scope);
+                    if (_pendingStateStore.ChatActions.TryGetValue(pendingChatKey, out var pendingAction))
+                    {
+                        var pendingResponse = await TryHandlePendingChatActionAsync(
+                            pendingAction,
+                            inbound,
+                            scope,
+                            locale,
+                            cancellationToken);
+                        if (pendingResponse is not null)
+                        {
+                            return pendingResponse;
+                        }
+                    }
+
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
                 return await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken);
+                }
 
             case NavigationRouteKind.LanguageOnboardingText:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.LanguageOnboarding, cancellationToken);
@@ -597,6 +618,64 @@ public sealed class TelegramController : ControllerBase
                     var response = await BuildVocabularyTextResponseAsync(result, scope, locale, text, cancellationToken);
                     _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
                     return await FinalizeChatActionResponseAsync(scope, response, cancellationToken);
+                }
+
+            case PendingChatActionKind.SettingsAiApiKey:
+                {
+                    var text = inbound.Text?.Trim() ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        return null;
+                    }
+
+                    if (UrlCancelTokens.Contains(text))
+                    {
+                        _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+                        var cancelledScreen = await BuildAiSectionResponseAsync(scope, locale, cancellationToken);
+                        return cancelledScreen with
+                        {
+                            Intent = "settings.ai.key.cancelled",
+                            Text = string.Concat(
+                                EnsureInfoMarker(_navigationPresenter.GetText("ai.key.cancelled", locale)),
+                                Environment.NewLine,
+                                Environment.NewLine,
+                                cancelledScreen.Text),
+                            IsHtml = true
+                        };
+                    }
+
+                    var provider = await _aiRuntimeSettingsService.GetProviderAsync(scope, cancellationToken);
+                    try
+                    {
+                        await _aiRuntimeSettingsService.SetApiKeyAsync(scope, provider, text, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(
+                            ex,
+                            "Failed to save AI API key. Channel={Channel}; UserId={UserId}; Provider={Provider}",
+                            scope.Channel,
+                            scope.UserId,
+                            provider);
+
+                        return new TelegramRouteResponse(
+                            "settings.ai.key.failed",
+                            EnsureWarningMarker(_navigationPresenter.GetText("ai.key.save_failed", locale)),
+                            InlineKeyboard(_navigationPresenter.BuildAiSettingsKeyboard(locale)));
+                    }
+
+                    _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+                    var screen = await BuildAiSectionResponseAsync(scope, locale, cancellationToken);
+                    return screen with
+                    {
+                        Intent = "settings.ai.key.saved",
+                        Text = string.Concat(
+                            EnsureInfoMarker(_navigationPresenter.GetText("ai.key.saved", locale, GetAiProviderDisplayName(provider))),
+                            Environment.NewLine,
+                            Environment.NewLine,
+                            screen.Text),
+                        IsHtml = true
+                    };
                 }
 
             default:
@@ -1008,6 +1087,11 @@ public sealed class TelegramController : ControllerBase
             return await HandleSettingsCallbackAsync(callbackData, scope, locale, cancellationToken);
         }
 
+        if (callbackData.StartsWith(CallbackDataConstants.Ai.Prefix, StringComparison.Ordinal))
+        {
+            return await HandleAiCallbackAsync(callbackData, scope, locale, cancellationToken);
+        }
+
         if (callbackData.StartsWith(CallbackDataConstants.SaveMode.Prefix, StringComparison.Ordinal))
         {
             return await HandleSaveModeCallbackAsync(callbackData, scope, locale, cancellationToken);
@@ -1079,27 +1163,6 @@ public sealed class TelegramController : ControllerBase
         string currentSection,
         CancellationToken cancellationToken)
     {
-        if (string.Equals(callbackData, CallbackDataConstants.Lang.GermanPolish, StringComparison.Ordinal))
-        {
-            var section = NavigationSections.Normalize(currentSection);
-            return section == NavigationSections.LanguageOnboarding
-                ? new TelegramRouteResponse(
-                    "onboarding.language.secondary",
-                    BuildBilingualOnboardingText(),
-                    InlineKeyboard(_navigationPresenter.BuildOnboardingSecondaryLanguageKeyboard(locale)))
-                : new TelegramRouteResponse(
-                    "settings.language.secondary",
-                    _navigationPresenter.GetText("language.current", locale, _navigationPresenter.GetLanguageDisplayName(locale)),
-                    InlineKeyboard(_navigationPresenter.BuildSettingsSecondaryLanguageKeyboard(locale)),
-                    IsHtml: true);
-        }
-
-        if (string.Equals(callbackData, CallbackDataConstants.Lang.BackOnboarding, StringComparison.Ordinal))
-        {
-            await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.LanguageOnboarding, cancellationToken);
-            return BuildOnboardingLanguagePickerResponse(locale);
-        }
-
         var selectedLocale = ParseLanguageCallback(callbackData);
         if (selectedLocale is null)
         {
@@ -1152,11 +1215,135 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildSettingsLanguageKeyboard(locale)),
                 IsHtml: true),
             CallbackDataConstants.Settings.SaveMode => await BuildSaveModeResponseAsync(scope, locale, cancellationToken),
+            CallbackDataConstants.Settings.Ai => await BuildAiSectionResponseAsync(scope, locale, cancellationToken),
             CallbackDataConstants.Settings.OneDrive => await BuildOneDriveResponseAsync(scope, locale, includeCheckStatusButton: false, cancellationToken),
             CallbackDataConstants.Settings.Notion => BuildNotionSectionResponse(locale),
             CallbackDataConstants.Settings.Back => await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken),
             _ => await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken)
         };
+    }
+
+    private async Task<TelegramRouteResponse> HandleAiCallbackAsync(
+        string callbackData,
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        await _navigationStateService.SetCurrentSectionAsync(
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
+            NavigationSections.Settings,
+            cancellationToken);
+
+        if (string.Equals(callbackData, CallbackDataConstants.Ai.Back, StringComparison.Ordinal))
+        {
+            return await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Ai.Provider, StringComparison.Ordinal))
+        {
+            var provider = await _aiRuntimeSettingsService.GetProviderAsync(scope, cancellationToken);
+            var title = _navigationPresenter.GetText("ai.provider.title", locale, GetAiProviderDisplayName(provider));
+            return new TelegramRouteResponse(
+                "settings.ai.provider",
+                title,
+                InlineKeyboard(_navigationPresenter.BuildAiProviderKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Ai.Model, StringComparison.Ordinal))
+        {
+            var provider = await _aiRuntimeSettingsService.GetProviderAsync(scope, cancellationToken);
+            var currentModel = await _aiRuntimeSettingsService.GetModelAsync(scope, provider, cancellationToken);
+            var models = _aiRuntimeSettingsService.GetSupportedModels(provider);
+            var text = string.Join(
+                Environment.NewLine,
+                new[]
+                {
+                    _navigationPresenter.GetText("ai.model.title", locale, GetAiProviderDisplayName(provider)),
+                    string.Empty,
+                    $"• <b>{WebUtility.HtmlEncode(_navigationPresenter.GetText("ai.model.current", locale))}:</b> <code>{WebUtility.HtmlEncode(currentModel)}</code>"
+                });
+
+            return new TelegramRouteResponse(
+                "settings.ai.model",
+                text,
+                InlineKeyboard(_navigationPresenter.BuildAiModelKeyboard(locale, models)),
+                IsHtml: true);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Ai.KeySet, StringComparison.Ordinal))
+        {
+            _pendingStateStore.ChatActions[BuildPendingChatActionKey(scope)] = PendingChatActionKind.SettingsAiApiKey;
+            return new TelegramRouteResponse(
+                "settings.ai.key.awaiting",
+                EnsureQuestionMarker(_navigationPresenter.GetText("ai.key.prompt", locale)),
+                InlineKeyboard(_navigationPresenter.BuildAiSettingsKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Ai.KeyRemove, StringComparison.Ordinal))
+        {
+            var provider = await _aiRuntimeSettingsService.GetProviderAsync(scope, cancellationToken);
+            await _aiRuntimeSettingsService.RemoveApiKeyAsync(scope, provider, cancellationToken);
+            var screen = await BuildAiSectionResponseAsync(scope, locale, cancellationToken);
+            return screen with
+            {
+                Intent = "settings.ai.key.removed",
+                Text = string.Concat(
+                    EnsureInfoMarker(_navigationPresenter.GetText("ai.key.removed", locale, GetAiProviderDisplayName(provider))),
+                    Environment.NewLine,
+                    Environment.NewLine,
+                    screen.Text),
+                IsHtml = true
+            };
+        }
+
+        if (callbackData.StartsWith(CallbackDataConstants.Ai.ProviderSetPrefix, StringComparison.Ordinal))
+        {
+            var requestedProvider = callbackData[CallbackDataConstants.Ai.ProviderSetPrefix.Length..];
+            if (!_aiRuntimeSettingsService.TryNormalizeProvider(requestedProvider, out var provider))
+            {
+                return await BuildAiSectionResponseAsync(scope, locale, cancellationToken);
+            }
+
+            await _aiRuntimeSettingsService.SetProviderAsync(scope, provider, cancellationToken);
+            var screen = await BuildAiSectionResponseAsync(scope, locale, cancellationToken);
+            return screen with
+            {
+                Intent = "settings.ai.provider.changed",
+                Text = string.Concat(
+                    EnsureInfoMarker(_navigationPresenter.GetText("ai.provider.changed", locale, GetAiProviderDisplayName(provider))),
+                    Environment.NewLine,
+                    Environment.NewLine,
+                    screen.Text),
+                IsHtml = true
+            };
+        }
+
+        if (callbackData.StartsWith(CallbackDataConstants.Ai.ModelSetPrefix, StringComparison.Ordinal))
+        {
+            var model = callbackData[CallbackDataConstants.Ai.ModelSetPrefix.Length..].Trim();
+            var provider = await _aiRuntimeSettingsService.GetProviderAsync(scope, cancellationToken);
+            if (string.IsNullOrWhiteSpace(model))
+            {
+                return await BuildAiSectionResponseAsync(scope, locale, cancellationToken);
+            }
+
+            await _aiRuntimeSettingsService.SetModelAsync(scope, provider, model, cancellationToken);
+            var screen = await BuildAiSectionResponseAsync(scope, locale, cancellationToken);
+            return screen with
+            {
+                Intent = "settings.ai.model.changed",
+                Text = string.Concat(
+                    EnsureInfoMarker(_navigationPresenter.GetText("ai.model.changed", locale, model)),
+                    Environment.NewLine,
+                    Environment.NewLine,
+                    screen.Text),
+                IsHtml = true
+            };
+        }
+
+        return await BuildAiSectionResponseAsync(scope, locale, cancellationToken);
     }
 
     private async Task<TelegramRouteResponse> HandleSaveModeCallbackAsync(
@@ -2822,7 +3009,7 @@ public sealed class TelegramController : ControllerBase
             InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
     }
 
-    private static string GetPartOfSpeechLabel(string locale, string marker)
+        private static string GetPartOfSpeechLabel(string locale, string marker)
     {
         var normalizedLocale = LocalizationConstants.NormalizeLocaleCode(locale);
 
@@ -2836,46 +3023,6 @@ public sealed class TelegramController : ControllerBase
                 "iv" => "Неправильні дієслова",
                 "adv" => "Прислівники",
                 "prep" => "Прийменники",
-                _ => marker
-            },
-            LocalizationConstants.SpanishLocale => marker switch
-            {
-                "n" => "Sustantivos",
-                "v" => "Verbos",
-                "pv" => "Verbos frasales",
-                "iv" => "Verbos irregulares",
-                "adv" => "Adverbios",
-                "prep" => "Preposiciones",
-                _ => marker
-            },
-            LocalizationConstants.FrenchLocale => marker switch
-            {
-                "n" => "Noms",
-                "v" => "Verbes",
-                "pv" => "Verbes à particule",
-                "iv" => "Verbes irréguliers",
-                "adv" => "Adverbes",
-                "prep" => "Prépositions",
-                _ => marker
-            },
-            LocalizationConstants.GermanLocale => marker switch
-            {
-                "n" => "Substantive",
-                "v" => "Verben",
-                "pv" => "Phrasalverben",
-                "iv" => "Unregelmäßige Verben",
-                "adv" => "Adverbien",
-                "prep" => "Präpositionen",
-                _ => marker
-            },
-            LocalizationConstants.PolishLocale => marker switch
-            {
-                "n" => "Rzeczowniki",
-                "v" => "Czasowniki",
-                "pv" => "Czasowniki frazowe",
-                "iv" => "Czasowniki nieregularne",
-                "adv" => "Przysłówki",
-                "prep" => "Przyimki",
                 _ => marker
             },
             _ => marker switch
@@ -2897,10 +3044,6 @@ public sealed class TelegramController : ControllerBase
         var template = normalizedLocale switch
         {
             LocalizationConstants.UkrainianLocale => "... і ще {0}",
-            LocalizationConstants.SpanishLocale => "... y {0} más",
-            LocalizationConstants.FrenchLocale => "... et encore {0}",
-            LocalizationConstants.GermanLocale => "... und noch {0}",
-            LocalizationConstants.PolishLocale => "... i jeszcze {0}",
             _ => "... and {0} more"
         };
 
@@ -2947,15 +3090,25 @@ public sealed class TelegramController : ControllerBase
         CancellationToken cancellationToken)
     {
         var saveMode = await _saveModePreferenceService.GetModeAsync(scope, cancellationToken);
+        var aiRuntime = await _aiRuntimeSettingsService.ResolveAsync(scope, cancellationToken);
         var storageMode = VocabularyStorageMode.Graph;
         _storageModeProvider.SetMode(storageMode);
         var graphStatus = await _graphAuthService.GetStatusAsync(cancellationToken);
         var languageLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.language", locale));
         var saveModeLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.save_mode", locale));
+        var aiLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.ai", locale));
         var storageModeLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.storage_mode", locale));
         var oneDriveLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.onedrive", locale));
         var notionLabel = StripLeadingDecorations(_navigationPresenter.GetText("settings.notion", locale));
         var notionStatusKey = ResolveNotionSettingsStatusKey();
+        var aiStatus = _navigationPresenter.GetText(
+            aiRuntime.ApiKeySource switch
+            {
+                AiApiKeySource.Stored => "ai.key.status.stored",
+                AiApiKeySource.Environment => "ai.key.status.environment",
+                _ => "ai.key.status.missing"
+            },
+            locale);
         var oneDriveStatus = StripStatusPrefix(
             _navigationPresenter.GetText(
                 graphStatus.IsAuthenticated ? "onedrive.status_connected" : "onedrive.status_disconnected",
@@ -2968,6 +3121,7 @@ public sealed class TelegramController : ControllerBase
             string.Empty,
             $"• <b>{WebUtility.HtmlEncode(languageLabel)}:</b> {WebUtility.HtmlEncode(_navigationPresenter.GetLanguageDisplayName(locale))}",
             $"• <b>{WebUtility.HtmlEncode(saveModeLabel)}:</b> <b>{WebUtility.HtmlEncode(_saveModePreferenceService.ToText(saveMode))}</b>",
+            $"• <b>{WebUtility.HtmlEncode(aiLabel)}:</b> {WebUtility.HtmlEncode(GetAiProviderDisplayName(aiRuntime.Provider))} / <code>{WebUtility.HtmlEncode(aiRuntime.Model)}</code> ({WebUtility.HtmlEncode(aiStatus)})",
             $"• <b>{WebUtility.HtmlEncode(storageModeLabel)}:</b> <b>{WebUtility.HtmlEncode(_storageModeProvider.ToText(storageMode))}</b>",
             $"• <b>{WebUtility.HtmlEncode(oneDriveLabel)}:</b> {WebUtility.HtmlEncode(oneDriveStatus)}",
             $"• <b>{WebUtility.HtmlEncode(notionLabel)}:</b> {WebUtility.HtmlEncode(notionStatus)}"
@@ -2977,6 +3131,44 @@ public sealed class TelegramController : ControllerBase
             "settings.section",
             text,
             InlineKeyboard(_navigationPresenter.BuildSettingsKeyboard(locale)),
+            IsHtml: true);
+    }
+
+    private async Task<TelegramRouteResponse> BuildAiSectionResponseAsync(
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var provider = await _aiRuntimeSettingsService.GetProviderAsync(scope, cancellationToken);
+        var model = await _aiRuntimeSettingsService.GetModelAsync(scope, provider, cancellationToken);
+        var runtime = await _aiRuntimeSettingsService.ResolveAsync(scope, cancellationToken);
+        var providerLabel = StripLeadingDecorations(_navigationPresenter.GetText("ai.provider.label", locale));
+        var modelLabel = StripLeadingDecorations(_navigationPresenter.GetText("ai.model.label", locale));
+        var keyLabel = StripLeadingDecorations(_navigationPresenter.GetText("ai.key.label", locale));
+        var keyStatus = _navigationPresenter.GetText(
+            runtime.ApiKeySource switch
+            {
+                AiApiKeySource.Stored => "ai.key.status.stored",
+                AiApiKeySource.Environment => "ai.key.status.environment",
+                _ => "ai.key.status.missing"
+            },
+            locale);
+
+        var text = string.Join(
+            Environment.NewLine,
+            new[]
+            {
+                _navigationPresenter.GetText("ai.title", locale),
+                string.Empty,
+                $"• <b>{WebUtility.HtmlEncode(providerLabel)}:</b> {WebUtility.HtmlEncode(GetAiProviderDisplayName(provider))}",
+                $"• <b>{WebUtility.HtmlEncode(modelLabel)}:</b> <code>{WebUtility.HtmlEncode(model)}</code>",
+                $"• <b>{WebUtility.HtmlEncode(keyLabel)}:</b> {WebUtility.HtmlEncode(keyStatus)}"
+            });
+
+        return new TelegramRouteResponse(
+            "settings.ai",
+            text,
+            InlineKeyboard(_navigationPresenter.BuildAiSettingsKeyboard(locale)),
             IsHtml: true);
     }
 
@@ -3065,6 +3257,15 @@ public sealed class TelegramController : ControllerBase
 
         var withoutPrefix = LeadingDecorationRegex.Replace(value, string.Empty);
         return withoutPrefix.Trim();
+    }
+
+    private static string GetAiProviderDisplayName(string provider)
+    {
+        return provider switch
+        {
+            AiProviderConstants.Claude => "Claude",
+            _ => "OpenAI"
+        };
     }
 
     private static string StripStatusPrefix(string value)
@@ -3516,11 +3717,6 @@ public sealed class TelegramController : ControllerBase
         {
             CallbackDataConstants.Lang.Ukrainian => LocalizationConstants.UkrainianLocale,
             CallbackDataConstants.Lang.English => LocalizationConstants.EnglishLocale,
-            CallbackDataConstants.Lang.Spanish => LocalizationConstants.SpanishLocale,
-            CallbackDataConstants.Lang.French => LocalizationConstants.FrenchLocale,
-            CallbackDataConstants.Lang.German => LocalizationConstants.GermanLocale,
-            CallbackDataConstants.Lang.Polish => LocalizationConstants.PolishLocale,
-            CallbackDataConstants.Lang.Russian => LocalizationConstants.UkrainianLocale,
             _ => null
         };
     }
@@ -6098,3 +6294,4 @@ public sealed class TelegramController : ControllerBase
         bool IsHtml = false,
         string? FollowUpMainKeyboardLocale = null);
 }
+

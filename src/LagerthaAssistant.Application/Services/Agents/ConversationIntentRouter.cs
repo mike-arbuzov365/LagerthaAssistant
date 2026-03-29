@@ -96,12 +96,6 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
             return true;
         }
 
-        if (normalized.Equals(ConversationSlashCommands.PromptProposals, StringComparison.Ordinal))
-        {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptProposals, Raw: raw);
-            return true;
-        }
-
         const string promptSetPrefix = ConversationSlashCommands.PromptSet;
         if (raw.Equals(promptSetPrefix, StringComparison.OrdinalIgnoreCase))
         {
@@ -113,71 +107,6 @@ public sealed class ConversationIntentRouter : IConversationIntentRouter
         {
             var promptText = raw[promptSetPrefix.Length..].TrimStart();
             intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptSet, Raw: raw, Argument: promptText);
-            return true;
-        }
-
-        const string promptProposePrefix = ConversationSlashCommands.PromptPropose;
-        if (raw.Equals(promptProposePrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptPropose, Raw: raw);
-            return true;
-        }
-
-        if (raw.StartsWith(promptProposePrefix + " ", StringComparison.OrdinalIgnoreCase))
-        {
-            var payload = raw[promptProposePrefix.Length..].TrimStart();
-            var split = payload.Split("||", 2, StringSplitOptions.TrimEntries);
-            var reason = split.Length > 0 ? split[0] : string.Empty;
-            var proposedPrompt = split.Length > 1 ? split[1] : string.Empty;
-            intent = new ConversationCommandIntent(
-                ConversationCommandIntentType.PromptPropose,
-                Raw: raw,
-                Argument: reason,
-                Argument2: proposedPrompt);
-            return true;
-        }
-
-        const string promptImprovePrefix = ConversationSlashCommands.PromptImprove;
-        if (raw.Equals(promptImprovePrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptImprove, Raw: raw);
-            return true;
-        }
-
-        if (raw.StartsWith(promptImprovePrefix + " ", StringComparison.OrdinalIgnoreCase))
-        {
-            var goal = raw[promptImprovePrefix.Length..].TrimStart();
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptImprove, Raw: raw, Argument: goal);
-            return true;
-        }
-
-        const string promptApplyPrefix = ConversationSlashCommands.PromptApply;
-        if (raw.Equals(promptApplyPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptApply, Raw: raw);
-            return true;
-        }
-
-        if (raw.StartsWith(promptApplyPrefix + " ", StringComparison.OrdinalIgnoreCase))
-        {
-            var idText = raw[promptApplyPrefix.Length..].TrimStart();
-            var parsed = int.TryParse(idText, out var proposalId) && proposalId > 0 ? proposalId : (int?)null;
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptApply, Number: parsed, Raw: raw);
-            return true;
-        }
-
-        const string promptRejectPrefix = ConversationSlashCommands.PromptReject;
-        if (raw.Equals(promptRejectPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptReject, Raw: raw);
-            return true;
-        }
-
-        if (raw.StartsWith(promptRejectPrefix + " ", StringComparison.OrdinalIgnoreCase))
-        {
-            var idText = raw[promptRejectPrefix.Length..].TrimStart();
-            var parsed = int.TryParse(idText, out var proposalId) && proposalId > 0 ? proposalId : (int?)null;
-            intent = new ConversationCommandIntent(ConversationCommandIntentType.PromptReject, Number: parsed, Raw: raw);
             return true;
         }
 

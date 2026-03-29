@@ -16,13 +16,13 @@ public sealed class AppDbContext : DbContext
     public DbSet<ConversationHistoryEntry> ConversationHistoryEntries => Set<ConversationHistoryEntry>();
     public DbSet<UserMemoryEntry> UserMemoryEntries => Set<UserMemoryEntry>();
     public DbSet<SystemPromptEntry> SystemPromptEntries => Set<SystemPromptEntry>();
-    public DbSet<SystemPromptProposal> SystemPromptProposals => Set<SystemPromptProposal>();
     public DbSet<VocabularyCard> VocabularyCards => Set<VocabularyCard>();
     public DbSet<VocabularyCardToken> VocabularyCardTokens => Set<VocabularyCardToken>();
     public DbSet<VocabularySyncJob> VocabularySyncJobs => Set<VocabularySyncJob>();
     public DbSet<ConversationIntentMetric> ConversationIntentMetrics => Set<ConversationIntentMetric>();
     public DbSet<TelegramProcessedUpdate> TelegramProcessedUpdates => Set<TelegramProcessedUpdate>();
     public DbSet<GraphAuthToken> GraphAuthTokens => Set<GraphAuthToken>();
+    public DbSet<UserAiCredential> UserAiCredentials => Set<UserAiCredential>();
 
     public DbSet<FoodItem> FoodItems => Set<FoodItem>();
     public DbSet<Meal> Meals => Set<Meal>();
@@ -40,13 +40,13 @@ public sealed class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ConversationHistoryEntryConfiguration());
         modelBuilder.ApplyConfiguration(new UserMemoryEntryConfiguration());
         modelBuilder.ApplyConfiguration(new SystemPromptEntryConfiguration());
-        modelBuilder.ApplyConfiguration(new SystemPromptProposalConfiguration());
         modelBuilder.ApplyConfiguration(new VocabularyCardConfiguration());
         modelBuilder.ApplyConfiguration(new VocabularyCardTokenConfiguration());
         modelBuilder.ApplyConfiguration(new VocabularySyncJobConfiguration());
         modelBuilder.ApplyConfiguration(new ConversationIntentMetricConfiguration());
         modelBuilder.ApplyConfiguration(new TelegramProcessedUpdateConfiguration());
         modelBuilder.ApplyConfiguration(new GraphAuthTokenConfiguration());
+        modelBuilder.ApplyConfiguration(new UserAiCredentialConfiguration());
         modelBuilder.ApplyConfiguration(new FoodItemConfiguration());
         modelBuilder.ApplyConfiguration(new MealConfiguration());
         modelBuilder.ApplyConfiguration(new MealIngredientConfiguration());
