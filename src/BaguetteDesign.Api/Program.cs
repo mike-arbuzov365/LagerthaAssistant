@@ -6,6 +6,7 @@ using BaguetteDesign.Infrastructure.Data;
 using BaguetteDesign.Infrastructure.Options;
 using BaguetteDesign.Infrastructure.Notion;
 using BaguetteDesign.Infrastructure.Options;
+using BaguetteDesign.Application.Interfaces;
 using BaguetteDesign.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -53,6 +54,15 @@ builder.Services.AddHttpClient<INotionPriceClient, NotionPriceClient>();
 builder.Services.AddScoped<IPriceRepository, PriceRepository>();
 builder.Services.AddScoped<IPriceService, PriceService>();
 builder.Services.AddScoped<IPriceHandler, PriceHandler>();
+
+var notionPortfolioOptions = builder.Configuration
+    .GetSection(NotionPortfolioOptions.SectionName)
+    .Get<NotionPortfolioOptions>() ?? new NotionPortfolioOptions();
+builder.Services.AddSingleton(notionPortfolioOptions);
+builder.Services.AddHttpClient<INotionPortfolioClient, NotionPortfolioClient>();
+builder.Services.AddScoped<IPortfolioRepository, PortfolioRepository>();
+builder.Services.AddScoped<IPortfolioService, PortfolioService>();
+builder.Services.AddScoped<IPortfolioHandler, PortfolioHandler>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

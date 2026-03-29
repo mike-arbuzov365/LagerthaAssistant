@@ -48,6 +48,26 @@ public sealed class BriefFlowService : IBriefFlowService
         await AskCurrentStepAsync(chatId, state, ResolveLocale(languageCode), cancellationToken);
     }
 
+    public async Task StartWithStyleAsync(long chatId, string userId, string prefilledStyle, string? languageCode, CancellationToken cancellationToken = default)
+    {
+        var locale = ResolveLocale(languageCode);
+        // Pre-fill ServiceType step answer and advance past it, then pre-fill Style and advance to Audience
+        var state = new BriefFlowState()
+            .AdvanceTo(BriefStep.Brand);
+        state = state with { Style = prefilledStyle };
+        await SaveStateAsync(userId, state, cancellationToken);
+
+        var intro = locale == "uk"
+            ? $"🎯 Чудовий вибір! Стиль <b>{prefilledStyle}</b> вже додано до вашого брифу.\n\nПродовжимо заповнення:"
+            : $"🎯 Great choice! Style <b>{prefilledStyle}</b> has been added to your brief.\n\nLet's continue:";
+
+        await _sender.SendTextAsync(chatId, intro,
+            new TelegramSendOptions(ParseMode: "HTML"),
+            cancellationToken: cancellationToken);
+
+        await AskCurrentStepAsync(chatId, state, locale, cancellationToken);
+    }
+
     public async Task HandleTextAsync(long chatId, string userId, string text, string? languageCode, CancellationToken cancellationToken = default)
     {
         var state = await LoadStateAsync(userId, cancellationToken);

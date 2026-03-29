@@ -11,11 +11,14 @@ using Microsoft.AspNetCore.Mvc;
 public sealed class TelegramController : ControllerBase
 {
     private const string PriceCategoryPrefix = "price_cat_";
+    private const string PortfolioCategoryPrefix = "portfolio_cat_";
+    private const string PortfolioSimilarPrefix = "portfolio_similar_";
 
     private readonly IStartCommandHandler _startHandler;
     private readonly IQuestionHandler _questionHandler;
     private readonly IBriefFlowService _briefFlow;
     private readonly IPriceHandler _priceHandler;
+    private readonly IPortfolioHandler _portfolioHandler;
     private readonly IRoleRouter _roleRouter;
 
     public TelegramController(
@@ -23,12 +26,14 @@ public sealed class TelegramController : ControllerBase
         IQuestionHandler questionHandler,
         IBriefFlowService briefFlow,
         IPriceHandler priceHandler,
+        IPortfolioHandler portfolioHandler,
         IRoleRouter roleRouter)
     {
         _startHandler = startHandler;
         _questionHandler = questionHandler;
         _briefFlow = briefFlow;
         _priceHandler = priceHandler;
+        _portfolioHandler = portfolioHandler;
         _roleRouter = roleRouter;
     }
 
@@ -53,6 +58,20 @@ public sealed class TelegramController : ControllerBase
             {
                 var category = Uri.UnescapeDataString(cbData[PriceCategoryPrefix.Length..]);
                 await _priceHandler.ShowCategoryItemsAsync(cbChatId, category, cbLang, cancellationToken);
+            }
+            else if (cbData == "portfolio")
+            {
+                await _portfolioHandler.ShowCategoriesAsync(cbChatId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(PortfolioCategoryPrefix, StringComparison.Ordinal))
+            {
+                var category = Uri.UnescapeDataString(cbData[PortfolioCategoryPrefix.Length..]);
+                await _portfolioHandler.ShowCategoryItemsAsync(cbChatId, category, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(PortfolioSimilarPrefix, StringComparison.Ordinal))
+            {
+                var caseTitle = Uri.UnescapeDataString(cbData[PortfolioSimilarPrefix.Length..]);
+                await _briefFlow.StartWithStyleAsync(cbChatId, cbUserId.ToString(), caseTitle, cbLang, cancellationToken);
             }
             else if (cbData == "brief" || cbData.StartsWith("brief_svc_", StringComparison.Ordinal))
             {
