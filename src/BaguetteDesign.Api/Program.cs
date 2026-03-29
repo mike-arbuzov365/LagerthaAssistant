@@ -1,10 +1,19 @@
+using BaguetteDesign.Application.Services;
+using BaguetteDesign.Domain.Interfaces;
 using BaguetteDesign.Infrastructure.Data;
+using BaguetteDesign.Infrastructure.Options;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<BaguetteDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+var baguetteOptions = builder.Configuration
+    .GetSection(BaguetteOptions.SectionName)
+    .Get<BaguetteOptions>() ?? new BaguetteOptions();
+
+builder.Services.AddSingleton<IRoleRouter>(new RoleRouter(baguetteOptions.AdminUserId));
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
