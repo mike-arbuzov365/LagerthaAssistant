@@ -1,5 +1,6 @@
 namespace BaguetteDesign.Infrastructure.Data;
 
+using BaguetteDesign.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using SharedBotKernel.Persistence;
 
@@ -16,11 +17,19 @@ public sealed class BaguetteDbContext : KernelDbContext
     // GraphAuthTokens, UserAiCredentials
 
     // ── BaguetteDesign-specific ───────────────────────────────────────────
-    // (entities will be added in M1 issues)
+    public DbSet<Lead> Leads => Set<Lead>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder); // applies KernelDbContext configurations
+
+        modelBuilder.Entity<Lead>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UserId).IsRequired().HasMaxLength(64);
+            e.Property(x => x.Status).HasConversion<string>();
+            e.HasIndex(x => x.UserId);
+        });
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

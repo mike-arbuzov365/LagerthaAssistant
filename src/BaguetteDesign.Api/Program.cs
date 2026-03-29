@@ -39,6 +39,10 @@ builder.Services.AddSingleton<IAiChatClient, ClaudeChatClientAdapter>();
 builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
 builder.Services.AddScoped<IQuestionHandler, QuestionHandler>();
 
+builder.Services.AddScoped<IUserMemoryRepository, UserMemoryRepository>();
+builder.Services.AddScoped<ILeadRepository, LeadRepository>();
+builder.Services.AddScoped<IBriefFlowService, BriefFlowService>();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

@@ -12,15 +12,18 @@ public sealed class TelegramController : ControllerBase
 {
     private readonly IStartCommandHandler _startHandler;
     private readonly IQuestionHandler _questionHandler;
+    private readonly IBriefFlowService _briefFlow;
     private readonly IRoleRouter _roleRouter;
 
     public TelegramController(
         IStartCommandHandler startHandler,
         IQuestionHandler questionHandler,
+        IBriefFlowService briefFlow,
         IRoleRouter roleRouter)
     {
         _startHandler = startHandler;
         _questionHandler = questionHandler;
+        _briefFlow = briefFlow;
         _roleRouter = roleRouter;
     }
 
@@ -29,6 +32,30 @@ public sealed class TelegramController : ControllerBase
         [FromBody] TelegramUpdate update,
         CancellationToken cancellationToken)
     {
+        // ── Callback query (inline keyboard button press) ─────────────────
+        if (update.CallbackQuery is { } cb)
+        {
+            var cbChatId = cb.Message?.Chat.Id ?? 0;
+            var cbUserId = cb.From.Id;
+            var cbData   = cb.Data ?? string.Empty;
+            var cbLang   = cb.From.LanguageCode;
+
+            if (cbData == "brief" || cbData.StartsWith("brief_svc_", StringComparison.Ordinal))
+            {
+                if (!await _briefFlow.IsActiveAsync(cbUserId.ToString(), cancellationToken))
+                    await _briefFlow.StartAsync(cbChatId, cbUserId.ToString(), cbLang, cancellationToken);
+                else if (cbData.StartsWith("brief_svc_", StringComparison.Ordinal))
+                    await _briefFlow.HandleCallbackAsync(cbChatId, cbUserId.ToString(), cbData, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith("brief_", StringComparison.Ordinal))
+            {
+                await _briefFlow.HandleCallbackAsync(cbChatId, cbUserId.ToString(), cbData, cbLang, cancellationToken);
+            }
+
+            return Ok();
+        }
+
+        // ── Regular message ───────────────────────────────────────────────
         var message = update.Message;
         if (message is null)
             return Ok();
@@ -45,27 +72,43 @@ public sealed class TelegramController : ControllerBase
         }
 
         var role = _roleRouter.Resolve(userId);
-        if (role == UserRole.Client && !string.IsNullOrWhiteSpace(text))
+        if (role != UserRole.Client || string.IsNullOrWhiteSpace(text))
+            return Ok();
+
+        // If the client is in an active brief flow, advance it
+        if (await _briefFlow.IsActiveAsync(userId.ToString(), cancellationToken))
         {
-            await _questionHandler.HandleAsync(chatId, userId, text, languageCode, cancellationToken);
+            await _briefFlow.HandleTextAsync(chatId, userId.ToString(), text, languageCode, cancellationToken);
+            return Ok();
         }
 
+        // Otherwise route to AI question handler
+        await _questionHandler.HandleAsync(chatId, userId, text, languageCode, cancellationToken);
         return Ok();
     }
 }
 
+// ── Telegram update models ────────────────────────────────────────────────────
+
 public sealed record TelegramUpdate(
-    [property: JsonPropertyName("update_id")] long UpdateId,
-    [property: JsonPropertyName("message")] TelegramMessage? Message);
+    [property: JsonPropertyName("update_id")]      long UpdateId,
+    [property: JsonPropertyName("message")]        TelegramMessage? Message,
+    [property: JsonPropertyName("callback_query")] TelegramCallbackQuery? CallbackQuery);
 
 public sealed record TelegramMessage(
     [property: JsonPropertyName("message_id")] long MessageId,
-    [property: JsonPropertyName("from")] TelegramUser? From,
-    [property: JsonPropertyName("chat")] TelegramChat Chat,
-    [property: JsonPropertyName("text")] string? Text);
+    [property: JsonPropertyName("from")]       TelegramUser? From,
+    [property: JsonPropertyName("chat")]       TelegramChat Chat,
+    [property: JsonPropertyName("text")]       string? Text);
+
+public sealed record TelegramCallbackQuery(
+    [property: JsonPropertyName("id")]      string Id,
+    [property: JsonPropertyName("from")]    TelegramUser From,
+    [property: JsonPropertyName("message")] TelegramMessage? Message,
+    [property: JsonPropertyName("data")]    string? Data);
 
 public sealed record TelegramUser(
-    [property: JsonPropertyName("id")] long Id,
+    [property: JsonPropertyName("id")]            long Id,
     [property: JsonPropertyName("language_code")] string? LanguageCode);
 
 public sealed record TelegramChat(
