@@ -180,16 +180,20 @@
 
 ---
 
-### Issue #015: PriceService — прайс з Notion
+### Issue #015: PriceService — прайс з Notion ✅
 
 **Story:** Як клієнт, я хочу переглянути прайс за категоріями.
 
 **Tasks:**
-- [ ] `NotionPriceClient.SyncPriceItemsAsync()` — завантажує з Notion DB → PostgreSQL cache
-- [ ] `PriceService.GetCategoriesAsync()` → список категорій
-- [ ] `PriceService.GetCategoryDetailsAsync(category, country)` → ціна для ринку
-- [ ] `NotionSyncWorker : BackgroundSyncWorkerBase<PriceSyncJob>` — авто-оновлення кожні 60 хв
-- [ ] Conversation flow: категорії → деталі → кнопка "Перейти до брифу"
+- [x] `NotionPriceClient` — paginated query Notion DB → maps title/select/number → `PriceItem`
+- [x] `NotionPriceOptions` — configurable property names (Name, Category, Description, Price, Currency, Country)
+- [x] `PriceService.GetCategoriesAsync()` → distinct categories from DB cache; triggers sync if empty
+- [x] `PriceService.GetByCategoryAsync(category)` → items for category; triggers sync if empty
+- [x] `PriceRepository.UpsertAsync()` — upsert + soft-deactivate removed items
+- [x] `PriceHandler` — `ShowCategoriesAsync` (inline keyboard per category), `ShowCategoryItemsAsync` (formatted list + brief CTA)
+- [x] `PriceItem` entity + `price_items` table migration (unique index on NotionPageId)
+- [x] TelegramController: handles "price" and "price_cat_*" callbacks
+- [x] 5 unit tests: categories present/empty, items present/empty, en locale
 
 ---
 
