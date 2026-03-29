@@ -10,20 +10,25 @@ using Microsoft.AspNetCore.Mvc;
 [Route("api/telegram")]
 public sealed class TelegramController : ControllerBase
 {
+    private const string PriceCategoryPrefix = "price_cat_";
+
     private readonly IStartCommandHandler _startHandler;
     private readonly IQuestionHandler _questionHandler;
     private readonly IBriefFlowService _briefFlow;
+    private readonly IPriceHandler _priceHandler;
     private readonly IRoleRouter _roleRouter;
 
     public TelegramController(
         IStartCommandHandler startHandler,
         IQuestionHandler questionHandler,
         IBriefFlowService briefFlow,
+        IPriceHandler priceHandler,
         IRoleRouter roleRouter)
     {
         _startHandler = startHandler;
         _questionHandler = questionHandler;
         _briefFlow = briefFlow;
+        _priceHandler = priceHandler;
         _roleRouter = roleRouter;
     }
 
@@ -40,7 +45,16 @@ public sealed class TelegramController : ControllerBase
             var cbData   = cb.Data ?? string.Empty;
             var cbLang   = cb.From.LanguageCode;
 
-            if (cbData == "brief" || cbData.StartsWith("brief_svc_", StringComparison.Ordinal))
+            if (cbData == "price")
+            {
+                await _priceHandler.ShowCategoriesAsync(cbChatId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(PriceCategoryPrefix, StringComparison.Ordinal))
+            {
+                var category = Uri.UnescapeDataString(cbData[PriceCategoryPrefix.Length..]);
+                await _priceHandler.ShowCategoryItemsAsync(cbChatId, category, cbLang, cancellationToken);
+            }
+            else if (cbData == "brief" || cbData.StartsWith("brief_svc_", StringComparison.Ordinal))
             {
                 if (!await _briefFlow.IsActiveAsync(cbUserId.ToString(), cancellationToken))
                     await _briefFlow.StartAsync(cbChatId, cbUserId.ToString(), cbLang, cancellationToken);

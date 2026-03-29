@@ -4,6 +4,8 @@ using BaguetteDesign.Domain.Interfaces;
 using BaguetteDesign.Infrastructure.AI;
 using BaguetteDesign.Infrastructure.Data;
 using BaguetteDesign.Infrastructure.Options;
+using BaguetteDesign.Infrastructure.Notion;
+using BaguetteDesign.Infrastructure.Options;
 using BaguetteDesign.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -42,6 +44,15 @@ builder.Services.AddScoped<IQuestionHandler, QuestionHandler>();
 builder.Services.AddScoped<IUserMemoryRepository, UserMemoryRepository>();
 builder.Services.AddScoped<ILeadRepository, LeadRepository>();
 builder.Services.AddScoped<IBriefFlowService, BriefFlowService>();
+
+var notionPriceOptions = builder.Configuration
+    .GetSection(NotionPriceOptions.SectionName)
+    .Get<NotionPriceOptions>() ?? new NotionPriceOptions();
+builder.Services.AddSingleton(notionPriceOptions);
+builder.Services.AddHttpClient<INotionPriceClient, NotionPriceClient>();
+builder.Services.AddScoped<IPriceRepository, PriceRepository>();
+builder.Services.AddScoped<IPriceService, PriceService>();
+builder.Services.AddScoped<IPriceHandler, PriceHandler>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
