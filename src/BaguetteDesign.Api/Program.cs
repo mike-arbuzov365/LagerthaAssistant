@@ -1,8 +1,12 @@
+using BaguetteDesign.Application.Interfaces;
 using BaguetteDesign.Application.Services;
 using BaguetteDesign.Domain.Interfaces;
 using BaguetteDesign.Infrastructure.Data;
 using BaguetteDesign.Infrastructure.Options;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using SharedBotKernel.Infrastructure.Telegram;
+using SharedBotKernel.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +18,12 @@ var baguetteOptions = builder.Configuration
     .Get<BaguetteOptions>() ?? new BaguetteOptions();
 
 builder.Services.AddSingleton<IRoleRouter>(new RoleRouter(baguetteOptions.AdminUserId));
+
+builder.Services.Configure<TelegramOptions>(
+    builder.Configuration.GetSection(TelegramOptions.SectionName));
+builder.Services.AddHttpClient("telegram");
+builder.Services.AddSingleton<ITelegramBotSender, TelegramBotSender>();
+builder.Services.AddScoped<IStartCommandHandler, StartCommandHandler>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
