@@ -20,6 +20,8 @@ public sealed class TelegramController : ControllerBase
     private const string InboxManualPrefix = "inbox_manual_";
     private const string InboxAutoPrefix = "inbox_auto_";
     private const string InboxStatusPrefix = "inbox_status_";
+    private const string LeadCardPrefix = "lead_card_";
+    private const string LeadStatusPrefix = "lead_status_";
 
     private readonly IStartCommandHandler _startHandler;
     private readonly IQuestionHandler _questionHandler;
@@ -29,6 +31,7 @@ public sealed class TelegramController : ControllerBase
     private readonly IContactHandler _contactHandler;
     private readonly IStatusHandler _statusHandler;
     private readonly IInboxHandler _inboxHandler;
+    private readonly ILeadHandler _leadHandler;
     private readonly IRoleRouter _roleRouter;
 
     public TelegramController(
@@ -40,6 +43,7 @@ public sealed class TelegramController : ControllerBase
         IContactHandler contactHandler,
         IStatusHandler statusHandler,
         IInboxHandler inboxHandler,
+        ILeadHandler leadHandler,
         IRoleRouter roleRouter)
     {
         _startHandler = startHandler;
@@ -50,6 +54,7 @@ public sealed class TelegramController : ControllerBase
         _contactHandler = contactHandler;
         _statusHandler = statusHandler;
         _inboxHandler = inboxHandler;
+        _leadHandler = leadHandler;
         _roleRouter = roleRouter;
     }
 
@@ -131,6 +136,25 @@ public sealed class TelegramController : ControllerBase
                     var clientId = rest[..lastUnderscore];
                     var newStatus = rest[(lastUnderscore + 1)..];
                     await _inboxHandler.ChangeDialogStatusAsync(cbChatId, clientId, newStatus, cbLang, cancellationToken);
+                }
+            }
+            else if (cbData == "leads")
+            {
+                await _leadHandler.ShowLeadsAsync(cbChatId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(LeadCardPrefix, StringComparison.Ordinal))
+            {
+                if (int.TryParse(cbData[LeadCardPrefix.Length..], out var leadId))
+                    await _leadHandler.ShowLeadCardAsync(cbChatId, leadId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(LeadStatusPrefix, StringComparison.Ordinal))
+            {
+                var rest = cbData[LeadStatusPrefix.Length..];
+                var lastUnderscore = rest.LastIndexOf('_');
+                if (lastUnderscore > 0 && int.TryParse(rest[..lastUnderscore], out var leadId))
+                {
+                    var newStatus = rest[(lastUnderscore + 1)..];
+                    await _leadHandler.ChangeLeadStatusAsync(cbChatId, leadId, newStatus, cbLang, cancellationToken);
                 }
             }
             else if (cbData == "contact")

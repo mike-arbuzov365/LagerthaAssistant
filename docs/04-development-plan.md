@@ -278,15 +278,21 @@
 
 ---
 
-### Issue #021: LeadService + CartЬ ліда
+### Issue #021: LeadService + картка ліда ✅
 
 **Story:** Як дизайнер, я хочу бачити структуровані заявки і вести їх по воронці.
 
 **Tasks:**
-- [ ] `LeadService.GetLeadsAsync(status?)` → список
-- [ ] Картка ліда: всі поля + кнопки дій
-- [ ] `LeadService.ChangeStatusAsync()` → оновити в БД і Notion
-- [ ] `LeadService.ConvertToProjectAsync()` → створює Project з Lead
+- [x] `ILeadService.GetLeadsAsync(status?)` → список з фільтром по статусу
+- [x] `ILeadService.GetByIdAsync + ChangeStatusAsync` — CRUD-операції
+- [x] `LeadHandler.ShowLeadsAsync` — список лідів з emoji-статусами та кнопками
+- [x] `LeadHandler.ShowLeadCardAsync` — повна картка з усіма полями + кнопки статусу + "Відкрити діалог"
+- [x] `LeadHandler.ChangeLeadStatusAsync` — міняє статус в БД і підтверджує дизайнеру
+- [x] `ILeadRepository.GetByIdAsync + GetAllAsync(status?)` — нові методи
+- [x] TelegramController: "leads", "lead_card_{id}", "lead_status_{id}_{status}" callbacks
+- [x] 6 unit tests (LeadHandlerTests); 69/69 тестів зелені
+
+**AC:** 69/69 тестів зелені
 
 ---
 

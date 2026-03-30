@@ -130,10 +130,9 @@ public sealed class StatusHandlerTests
         public FakeLeadRepository(Lead? lead) => _lead = lead;
 
         public Task AddAsync(Lead lead, CancellationToken ct = default) => Task.CompletedTask;
-
-        public Task<Lead?> GetLatestByUserIdAsync(string userId, CancellationToken ct = default)
-            => Task.FromResult(_lead);
-
+        public Task<Lead?> GetByIdAsync(int leadId, CancellationToken ct = default) => Task.FromResult(_lead);
+        public Task<Lead?> GetLatestByUserIdAsync(string userId, CancellationToken ct = default) => Task.FromResult(_lead);
+        public Task<IReadOnlyList<Lead>> GetAllAsync(LeadStatus? status = null, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Lead>>(_lead is null ? [] : [_lead]);
         public Task SaveChangesAsync(CancellationToken ct = default) => Task.CompletedTask;
     }
 

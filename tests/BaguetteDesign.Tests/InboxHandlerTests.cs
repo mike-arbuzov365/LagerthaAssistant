@@ -244,7 +244,9 @@ public sealed class InboxHandlerTests
     private sealed class FakeLeadRepository : ILeadRepository
     {
         public Task AddAsync(Lead lead, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<Lead?> GetByIdAsync(int leadId, CancellationToken ct = default) => Task.FromResult<Lead?>(null);
         public Task<Lead?> GetLatestByUserIdAsync(string userId, CancellationToken ct = default) => Task.FromResult<Lead?>(null);
+        public Task<IReadOnlyList<Lead>> GetAllAsync(LeadStatus? status = null, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Lead>>([]);
         public Task SaveChangesAsync(CancellationToken ct = default) => Task.CompletedTask;
     }
 
