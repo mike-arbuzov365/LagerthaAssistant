@@ -1,98 +1,152 @@
-# Тестування
+# 06 — Testing
 
-> Для соло-розробника: швидко, практично, без over-engineering
-
----
-
-## Піраміда тестів для бота
-
-- **Unit тести (60%)** — доменна логіка: `BriefValidator`, `PriceCalculator`, `RoleRouter`
-- **Integration тести (30%)** — сервіси з реальною БД (Testcontainers)
-- **E2E тести (10%)** — ключові happy paths через Telegram API
-
-## Що НЕ тестувати
-
-- CRUD репозиторії (EF Core вже протестований)
-- Конфігурацію і DI registration
-- Зовнішні API (Notion, Google) — мокайте їх
+> Fast feedback loop: unit tests run in milliseconds, integration tests need Docker.
 
 ---
 
-## Приклад Unit тесту для бота
+## Current Test Count (updated: 2026-03-29)
 
-```csharp
-// Тестуємо бізнес-логіку, не Telegram
-[Fact]
-public void RoleRouter_GivenAdminId_ReturnsDesigner()
-{
-    var router = new RoleRouter(adminId: 12345);
-    var role = router.Resolve(userId: 12345);
-    Assert.Equal(UserRole.Designer, role);
-}
+| Project | Count | Type | Status |
+|---|---|---|---|
+| `LagerthaAssistant.Domain.Tests` | 5 | Unit | Green |
+| `LagerthaAssistant.Application.Tests` | 491 | Unit | Green |
+| `LagerthaAssistant.IntegrationTests` | 330 | Integration (Testcontainers) | Green |
+| `BaguetteDesign.Tests` | 12 | Unit | Green |
+| **Total** | **838** | | **All green** |
 
-[Fact]
-public void BriefValidator_MissingBudget_IsIncomplete()
-{
-    var brief = new Brief { ServiceType = "logo" };
-    var result = new BriefValidator().Validate(brief);
-    Assert.False(result.IsComplete);
-    Assert.Contains("budget", result.MissingFields);
-}
+---
+
+## Test Pyramid
+
+```
+         E2E (manual only)
+        ─────────────────
+       Integration (~330)
+      ───────────────────
+     Unit (~508)
+    ─────────────────────
 ```
 
+- **Unit** — business logic only; no DB, no HTTP, no Telegram
+- **Integration** — real PostgreSQL via Testcontainers; tests EF migrations and queries
+- **E2E** — manual testing in Telegram (screenshot/video before merge)
+
 ---
 
-## Integration тест з Testcontainers (.NET)
+## What We Test
+
+**Unit tests (fast, no infrastructure):**
+- Domain logic: `RoleRouter`, `BriefValidator`, conversation rules
+- Application handlers: `StartCommandHandler`, `QuestionHandler`
+- Using fakes (hand-written stubs), not Moq
+
+**Integration tests (require Docker):**
+- EF migrations applied correctly to a fresh database
+- Repository queries return correct data
+- `AppDbContext` and `BaguetteDbContext` model consistency
+
+**What we do NOT test:**
+- EF Core internals (it's already tested by Microsoft)
+- DI registration / Program.cs wiring
+- External APIs (Notion, Google) — mock at the boundary
+- `appsettings.json` structure
+
+---
+
+## Fake Pattern (no Moq)
+
+All fakes are hand-written inner classes in the test file. This keeps tests readable and avoids Moq magic.
 
 ```csharp
-// Реальна PostgreSQL в Docker — без моків БД
-public class BriefRepositoryTests : IAsyncLifetime
+// BaguetteDesign.Tests/QuestionHandlerTests.cs
+private sealed class FakeAiChatClient : IAiChatClient
 {
-    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder().Build();
+    private readonly string _reply;
+    public List<ConversationMessage> ReceivedMessages { get; } = [];
 
-    [Fact]
-    public async Task SaveBrief_ThenLoad_ReturnsCorrectData()
+    public FakeAiChatClient(string reply) => _reply = reply;
+
+    public Task<AssistantCompletionResult> CompleteAsync(
+        IReadOnlyCollection<ConversationMessage> messages,
+        CancellationToken cancellationToken = default)
     {
-        // Arrange: реальна БД, реальний EF context
-        var repo = new BriefRepository(CreateContext());
-        var brief = new Brief { ... };
-
-        // Act
-        await repo.SaveAsync(brief);
-        var loaded = await repo.GetByIdAsync(brief.Id);
-
-        // Assert
-        Assert.Equal(brief.StructuredData, loaded.StructuredData);
+        ReceivedMessages.AddRange(messages);
+        return Task.FromResult(new AssistantCompletionResult(_reply, "fake-model", null));
     }
 }
 ```
 
----
+```csharp
+// BaguetteDesign.Tests/StartCommandHandlerTests.cs
+private sealed class FakeTelegramSender : ITelegramBotSender
+{
+    public List<(long ChatId, string Text)> SentMessages { get; } = [];
 
-## Команди
-
-```bash
-# Всі тести
-dotnet test BotPlatform.sln
-
-# Тільки unit тести (швидко)
-dotnet test tests/LagerthaAssistant.Application.Tests
-dotnet test tests/LagerthaAssistant.Domain.Tests
-
-# Integration тести (потрібен Docker)
-dotnet test tests/LagerthaAssistant.IntegrationTests
-
-# З покриттям
-dotnet test --collect:"XPlat Code Coverage"
+    public Task<TelegramSendResult> SendTextAsync(
+        long chatId, string text,
+        TelegramSendOptions? options = null,
+        int? messageThreadId = null,
+        CancellationToken cancellationToken = default)
+    {
+        SentMessages.Add((chatId, text));
+        return Task.FromResult(new TelegramSendResult(true));
+    }
+    // ...
+}
 ```
 
 ---
 
-## Поточний стан тестів (Lagertha)
+## Integration Tests Setup
 
-| Проект | Тестів | Статус |
-|---|---|---|
-| `LagerthaAssistant.Domain.Tests` | 5 | Зелені |
-| `LagerthaAssistant.Application.Tests` | 491 | Зелені |
-| `LagerthaAssistant.IntegrationTests` | 330 | Зелені |
-| **Всього** | **826** | **Зелені** |
+Uses `Testcontainers` — spins up a real PostgreSQL container per test class.
+
+```csharp
+// LagerthaAssistant.IntegrationTests (pattern)
+public class SomeRepositoryTests : IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder().Build();
+
+    public async Task InitializeAsync()
+    {
+        await _db.StartAsync();
+        // apply EF migrations against real DB
+    }
+
+    public Task DisposeAsync() => _db.DisposeAsync().AsTask();
+}
+```
+
+Docker must be running locally for integration tests to pass.
+
+---
+
+## Commands
+
+```bash
+# Full suite (requires Docker for integration tests)
+dotnet test BotPlatform.sln
+
+# Only BaguetteDesign unit tests
+dotnet test tests/BaguetteDesign.Tests
+
+# Only Lagertha unit tests (fast, no Docker)
+dotnet test tests/LagerthaAssistant.Application.Tests
+dotnet test tests/LagerthaAssistant.Domain.Tests
+
+# Lagertha integration tests (requires Docker)
+dotnet test tests/LagerthaAssistant.IntegrationTests
+
+# With output (see test names)
+dotnet test BotPlatform.sln --logger "console;verbosity=normal"
+```
+
+---
+
+## Rules
+
+1. Every new handler gets at least 2 unit tests: happy path + edge case
+2. Fakes live in the test file as private inner classes
+3. Integration tests use a real DB — never mock EF DbContext
+4. No test should depend on another test's side effects (no shared state)
+5. A PR with failing tests is not merged, period

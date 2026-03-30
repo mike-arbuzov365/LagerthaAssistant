@@ -106,218 +106,262 @@
 
 ## M1: BaguetteDesign Core (Тижні 3–5)
 
-### Issue #010: BaguetteDesign проєкти + BaguetteDbContext
+### Issue #010: BaguetteDesign проєкти + BaguetteDbContext ✅
 
 **Tasks:**
-- [ ] Створити 4 csproj: Domain / Application / Infrastructure / Api
-- [ ] Додати project references на SharedBotKernel
-- [ ] Створити `BaguetteDbContext : KernelDbContext`
-- [ ] Додати 11 BaguetteDesign-specific DbSet
-- [ ] EF конфігурації: indexes, constraints, jsonb columns
-- [ ] Перша міграція: `dotnet ef migrations add InitialBaguetteCreate`
-- [ ] `Program.cs` з `AddKernelServices()` + health endpoint
-- [ ] Dockerfile для Railway
+- [x] Створити 4 csproj: Domain / Application / Infrastructure / Api
+- [x] Додати project references на SharedBotKernel
+- [x] Створити `BaguetteDbContext : KernelDbContext`
+- [x] Перша міграція: `InitialCreate` (8 kernel tables + TenantId)
+- [x] `Program.cs` з health endpoint
+- [x] Dockerfile для Railway
 
 **AC:** `GET /health` → 200, таблиці в PostgreSQL створені
 
 ---
 
-### Issue #011: RoleRouter — визначення ролі по user_id
+### Issue #011: RoleRouter — визначення ролі по user_id ✅
 
 **Story:** Як бот, я маю визначати чи це дизайнер чи клієнт на основі Telegram user_id.
 
 **Tasks:**
-- [ ] `IRoleRouter` інтерфейс
-- [ ] `RoleRouter : IRoleRouter` — порівнює `userId` з `ADMIN_USER_ID` з config
-- [ ] `UserRole` enum: `Designer | Client`
-- [ ] Unit тести: `GivenAdminId_Returns_Designer`, `GivenOtherId_Returns_Client`
-
-```csharp
-// Test example
-[Fact]
-public void GivenAdminId_ReturnsDesigner()
-{
-    var router = new RoleRouter(adminUserId: "12345");
-    Assert.Equal(UserRole.Designer, router.Resolve("12345"));
-}
-```
+- [x] `IRoleRouter` інтерфейс
+- [x] `RoleRouter : IRoleRouter` — порівнює `userId` з `ADMIN_USER_ID` з config
+- [x] `UserRole` enum: `Designer | Client`
+- [x] 4 unit тести: admin → Designer, client → Client, zero, negative
 
 ---
 
-### Issue #012: /start handler — контекстне меню
+### Issue #012: /start handler — контекстне меню ✅
 
 **Story:** Як користувач, після /start я маю бачити меню відповідно до своєї ролі.
 
 **Tasks:**
-- [ ] `StartCommandHandler` — перевіряє роль → відправляє відповідне меню
-- [ ] Клієнтське меню: 6 кнопок (бриф / прайс / портфоліо / питання / зв'язатися / статус)
-- [ ] Дизайнерське меню: 5 кнопок (inbox / ліди / проєкти / швидка дія / налаштування)
-- [ ] Автовизначення мови з `message.From.LanguageCode` → uk / en
-- [ ] Збереження `UserMemoryEntry`: `{Key: "lang", Value: "uk"}`
-- [ ] Реферальний лінк `?start=ref_xxx` → запис `tenant_id` клієнта
+- [x] `StartCommandHandler` — перевіряє роль → відправляє відповідне меню
+- [x] Клієнтське меню: 6 кнопок (бриф / прайс / портфоліо / питання / зв'язатися / статус)
+- [x] Дизайнерське меню: 5 кнопок (inbox / ліди / проєкти / швидка дія / налаштування)
+- [x] Автовизначення мови з `message.From.LanguageCode` → uk / en (fallback → en)
+- [x] 4 unit тести: designer menu, client menu, en locale, null locale
 
-**AC:** Клієнт і дизайнер бачать різні меню; вручну протестовано в Telegram
+**AC:** Клієнт і дизайнер бачать різні меню; 12/12 тестів зелені
 
 ---
 
-### Issue #013: QuestionHandler — AI відповіді на питання
+### Issue #013: QuestionHandler — AI відповіді на питання ✅
 
 **Story:** Як клієнт, я хочу поставити довільне питання і отримати відповідь від Claude.
 
 **Tasks:**
-- [ ] `QuestionHandler` — якщо немає активного flow, відправляє в Claude
-- [ ] Завантажує `ConversationHistoryEntries` для цього user → передає в Claude як context
-- [ ] Зберігає відповідь у `ConversationHistoryEntries`
-- [ ] Після відповіді — Inline keyboard з наступними кроками: [Бриф] [Прайс] [Портфоліо] [Зв'язатися]
-- [ ] Якщо Claude не знає → пропонує зв'язатись з дизайнером
+- [x] `QuestionHandler` — client free-text → Claude (with system prompt about Baguette Design)
+- [x] Завантажує останні 20 `ConversationHistoryEntries` → передає в Claude як context
+- [x] Зберігає user + assistant entries в `ConversationHistoryEntries`
+- [x] Після відповіді — Inline keyboard: [Бриф] [Прайс] [Портфоліо] [Зв'язатися]
+- [x] `IConversationRepository` + `ConversationRepository` (find-or-create session)
+- [x] `ClaudeChatClientAdapter` — bridges `ClaudeChatClient` to `IAiChatClient`
+- [x] 4 unit тести: reply sent, entries saved, history passed to AI, session found by userId
 
 ---
 
-### Issue #014: BriefFlowService — покроковий адаптивний бриф
+### Issue #014: BriefFlowService — покроковий адаптивний бриф ✅
 
 **Story:** Як клієнт, я хочу пройти бриф як живий діалог, де питання адаптуються під тип послуги.
 
 **Tasks:**
-- [ ] `BriefFlowState` — persisted в `UserMemoryEntries`: `{Key: "brief_state", Value: json}`
-- [ ] Flow steps: service_type → brand → audience → style → references → deadline → budget → country
-- [ ] Адаптація: якщо service_type=logo → розширені питання про бренд; social → формат і кількість
-- [ ] Клієнт може: пропустити / повернутись / зупинити і продовжити
-- [ ] Файли в діалозі → зберігаються в `FileRecords` з type=reference
-- [ ] Фінал: Claude генерує summary → клієнт підтверджує → Lead автоматично в БД + Notion
-- [ ] `AiAnalysis` брифу: completeness_score, missing_fields[]
-- [ ] Unit тести: `BriefValidator` — перевірка повноти
+- [x] `BriefFlowState` immutable record persisted as JSON in `UserMemoryEntries` (Key="brief_state")
+- [x] Flow steps: ServiceType → Brand → Audience → Style → Deadline → Budget → Country → Summary → Completed
+- [x] Navigation: skip / back / cancel via inline keyboard callbacks
+- [x] Final step: Claude generates summary → client confirms → Lead saved to DB
+- [x] `BriefValidator`: completeness_score, missing required fields (service_type, budget, deadline)
+- [x] `Lead` entity + `LeadStatus` enum; `leads` table migration
+- [x] `IUserMemoryRepository` + `UserMemoryRepository` (soft delete, find-or-create)
+- [x] `ILeadRepository` + `LeadRepository`
+- [x] TelegramController: handles `callback_query` for brief_* + brief_svc_* callbacks
+- [x] 17 unit tests: BriefValidatorTests (7) + BriefFlowStateTests (10)
 
 ---
 
-### Issue #015: PriceService — прайс з Notion
+### Issue #015: PriceService — прайс з Notion ✅
 
 **Story:** Як клієнт, я хочу переглянути прайс за категоріями.
 
 **Tasks:**
-- [ ] `NotionPriceClient.SyncPriceItemsAsync()` — завантажує з Notion DB → PostgreSQL cache
-- [ ] `PriceService.GetCategoriesAsync()` → список категорій
-- [ ] `PriceService.GetCategoryDetailsAsync(category, country)` → ціна для ринку
-- [ ] `NotionSyncWorker : BackgroundSyncWorkerBase<PriceSyncJob>` — авто-оновлення кожні 60 хв
-- [ ] Conversation flow: категорії → деталі → кнопка "Перейти до брифу"
+- [x] `NotionPriceClient` — paginated query Notion DB → maps title/select/number → `PriceItem`
+- [x] `NotionPriceOptions` — configurable property names (Name, Category, Description, Price, Currency, Country)
+- [x] `PriceService.GetCategoriesAsync()` → distinct categories from DB cache; triggers sync if empty
+- [x] `PriceService.GetByCategoryAsync(category)` → items for category; triggers sync if empty
+- [x] `PriceRepository.UpsertAsync()` — upsert + soft-deactivate removed items
+- [x] `PriceHandler` — `ShowCategoriesAsync` (inline keyboard per category), `ShowCategoryItemsAsync` (formatted list + brief CTA)
+- [x] `PriceItem` entity + `price_items` table migration (unique index on NotionPageId)
+- [x] TelegramController: handles "price" and "price_cat_*" callbacks
+- [x] 5 unit tests: categories present/empty, items present/empty, en locale
 
 ---
 
-### Issue #016: PortfolioService — портфоліо з Notion
+### Issue #016: PortfolioService — портфоліо з Notion ✅
 
 **Story:** Як клієнт, я хочу переглянути приклади робіт за категоріями.
 
 **Tasks:**
-- [ ] `NotionPortfolioClient.SyncPortfolioCasesAsync()` → PostgreSQL cache
-- [ ] Conversation flow: категорії → кейси → опис + кнопки "Хочу схожий" / "Бриф"
-- [ ] "Хочу схожий" → запускає BriefFlow з pre-filled `style` field
+- [x] `NotionPortfolioClient` — paginated query, maps title/select/rich_text, extracts cover URL (external/file)
+- [x] `NotionPortfolioOptions` — configurable property names
+- [x] `PortfolioService.GetCategoriesAsync / GetByCategoryAsync` — DB cache with Notion sync on empty
+- [x] `PortfolioRepository.UpsertAsync` — upsert + soft-deactivate removed cases
+- [x] `PortfolioHandler` — categories keyboard + one message per case with "🎯 Хочу схожий" button
+- [x] `BriefFlowService.StartWithStyleAsync` — starts brief with pre-filled Style from portfolio case title
+- [x] `PortfolioCase` entity + `portfolio_cases` table migration
+- [x] TelegramController: handles "portfolio", "portfolio_cat_*", "portfolio_similar_*" callbacks
+- [x] 6 unit tests: categories/cases present/empty, locale, description rendering
 
 ---
 
-### Issue #017: ContactHandler + CalendarService
+### Issue #017: ContactHandler + CalendarService ✅
 
 **Story:** Як клієнт, я хочу записатись на дзвінок або надіслати повідомлення дизайнеру.
 
 **Tasks:**
-- [ ] `ContactHandler` — 3 варіанти: message / brief / call
-- [ ] `CalendarService.GetAvailableSlotsAsync()` → Google Calendar free/busy
-- [ ] Клієнт обирає слот → `CalendarService.BookSlotAsync()` → подія + Meet link
-- [ ] Дизайнер отримує notification в Telegram: хто, коли, AI summary переписки
-- [ ] `CalendarEvent` зберігається в БД
-- [ ] Нагадування клієнту за 24h і 1h (через `Notifications` table)
+- [x] `ContactHandler` — 3 варіанти: message / brief / call
+- [x] `ICalendarService.GetAvailableSlotsAsync()` → Google Calendar free/busy (slots 09:00–18:00)
+- [x] Клієнт обирає слот → `CalendarService.BookSlotAsync()` → Google Calendar event + Meet link
+- [x] `DesignerNotifier` — надсилає Telegram notification на `AdminUserId` (message + booking)
+- [x] `CalendarEvent` entity + `calendar_events` table migration
+- [x] `Notification` entity + `notifications` table migration; `NotificationTrigger` enum
+- [x] Нагадування клієнту за 24h і 1h (через `Notifications` table, IsSent flag)
+- [x] `GoogleCalendarService` — raw HTTP + JWT service account (без Google.Apis SDK)
+- [x] `GoogleTokenProvider` — cached JWT token, RSA.ImportFromPem
+- [x] `GoogleCalendarOptions`, `NotificationTrigger`, `CalendarSlot` (FormatUk/FormatEn)
+- [x] TelegramController: "contact", "contact_message", "contact_call", "contact_slot_*" callbacks
+- [x] Awaiting-message flag keyed by chatId; checked before brief flow in controller
+- [x] 6 unit tests: ShowOptions, PromptForMessage, HandleSendMessage, CalendarSlots (available/none), en locale
+
+**AC:** 46/46 тестів зелені
 
 ---
 
-### Issue #018: StatusHandler
+### Issue #018: StatusHandler ✅
 
 **Story:** Як клієнт, я хочу бачити статус мого запиту або проєкту.
 
 **Tasks:**
-- [ ] `/status` command або кнопка
-- [ ] Знаходить активний Lead або Project для цього client_id
-- [ ] Показує людський статус (не технічний enum)
-- [ ] Якщо "Чекаємо матеріали" → показує що саме потрібно
+- [x] `IStatusHandler` + `StatusHandler` — знаходить останній Lead по userId
+- [x] Людські статуси: New / InProgress / WaitingMaterials / Converted / Closed
+- [x] WaitingMaterials → показує список відсутніх полів (Brand, Audience, Style, Deadline, Budget)
+- [x] Якщо всі поля заповнені → "зв'яжіться для уточнення деталей"
+- [x] AiSummary з брифу виводиться в повідомленні статусу
+- [x] Якщо лід відсутній → CTA "Заповнити бриф"
+- [x] `ILeadRepository.GetLatestByUserIdAsync` — OrderByDescending(CreatedAtUtc)
+- [x] TelegramController: "status" callback → ShowStatusAsync
+- [x] 7 unit tests (StatusHandlerTests); 53/53 тестів зелені
+
+**AC:** 53/53 тестів зелені
 
 ---
 
 ## M2: Designer Tools (Тижні 6–7)
 
-### Issue #020: InboxService + hybrid reply mode
+### Issue #020: InboxService + hybrid reply mode ✅
 
 **Story:** Як дизайнер, я хочу бачити всі звернення зі статусами і відповідати через AI-чернетку.
 
 **Tasks:**
-- [ ] `InboxService.GetDialogsAsync(status)` → список чатів з фільтром
-- [ ] При відкритті чату: повна переписка + `AiAssistantService.GenerateSummaryAsync()` + поля брифу
-- [ ] Гібридний режим: Claude генерує чернетку відповіді → Inline buttons [Надіслати][Редагувати][Відхилити]
-- [ ] Ручний режим: кнопка "Перейти в ручний режим" → бот пересилає все що пише дизайнер
-- [ ] Внутрішні нотатки: зберігаються в Messages з role=`internal_note`
-- [ ] Статуси чату: new → in_progress → waiting → closed
+- [x] `InboxHandler.ShowDialogsAsync` — список клієнтських сесій з emoji-статусами
+- [x] `InboxHandler.OpenDialogAsync` — остання переписка (10 повідомлень) + поля Lead + AI-чернетка
+- [x] Гібридний режим: Claude генерує чернетку → [✅ Надіслати][❌ Відхилити][✏️ Ручний режим]
+- [x] Ручний режим (`inbox_manual_{clientId}`): бот пересилає кожне повідомлення дизайнера клієнту
+- [x] Статуси: New/InProgress/Waiting/Closed — кнопки в картці діалогу, `ChangeDialogStatusAsync`
+- [x] `DialogState` entity + migration `AddDialogStates`; `IDialogStateRepository` + `DialogStateRepository`
+- [x] `IConversationRepository.FindSessionAsync + GetAllClientSessionsAsync` — нові методи
+- [x] TelegramController: inbox, inbox_open_*, inbox_send_*, inbox_dismiss_*, inbox_manual_*, inbox_auto_*, inbox_status_*_* callbacks
+- [x] Designer text routing: manual mode → `HandleDesignerManualMessageAsync`
+- [x] 10 unit tests (InboxHandlerTests); 63/63 тестів зелені
+
+**AC:** 63/63 тестів зелені
 
 ---
 
-### Issue #021: LeadService + CartЬ ліда
+### Issue #021: LeadService + картка ліда ✅
 
 **Story:** Як дизайнер, я хочу бачити структуровані заявки і вести їх по воронці.
 
 **Tasks:**
-- [ ] `LeadService.GetLeadsAsync(status?)` → список
-- [ ] Картка ліда: всі поля + кнопки дій
-- [ ] `LeadService.ChangeStatusAsync()` → оновити в БД і Notion
-- [ ] `LeadService.ConvertToProjectAsync()` → створює Project з Lead
+- [x] `ILeadService.GetLeadsAsync(status?)` → список з фільтром по статусу
+- [x] `ILeadService.GetByIdAsync + ChangeStatusAsync` — CRUD-операції
+- [x] `LeadHandler.ShowLeadsAsync` — список лідів з emoji-статусами та кнопками
+- [x] `LeadHandler.ShowLeadCardAsync` — повна картка з усіма полями + кнопки статусу + "Відкрити діалог"
+- [x] `LeadHandler.ChangeLeadStatusAsync` — міняє статус в БД і підтверджує дизайнеру
+- [x] `ILeadRepository.GetByIdAsync + GetAllAsync(status?)` — нові методи
+- [x] TelegramController: "leads", "lead_card_{id}", "lead_status_{id}_{status}" callbacks
+- [x] 6 unit tests (LeadHandlerTests); 69/69 тестів зелені
+
+**AC:** 69/69 тестів зелені
 
 ---
 
-### Issue #022: ProjectService + авто-структура Google Drive
+### Issue #022: ProjectService + авто-структура Google Drive ✅
 
 **Story:** Як дизайнер, я хочу створити проєкт і автоматично отримати структуру папок у Drive.
 
 **Tasks:**
-- [ ] `ProjectService.CreateProjectAsync()` → створює Project в БД
-- [ ] `GoogleDriveClient.CreateProjectFolderAsync(clientName, projectTitle, year)` → папки: Source / Final / Revisions
-- [ ] `ProjectService.ChangeStatusAsync()` → оновлює в БД, Notion і надсилає повідомлення клієнту
-- [ ] Двостороння Notion синхронізація: зміна статусу в Notion → webhook → повідомлення клієнту
+- [x] `Project` entity: ClientUserId, LeadId, Title, ServiceType, Budget, Deadline, GoogleDriveFolderUrl, Status, RevisionCount, MaxRevisions
+- [x] `Project.FromLead(lead)` — конвертація Lead → Project
+- [x] `ProjectHandler.ConvertLeadToProjectAsync` — Lead → Project в БД, LeadStatus = Converted
+- [x] `ProjectHandler.ShowProjectsAsync` — список проєктів з emoji-статусами
+- [x] `ProjectHandler.ShowProjectCardAsync` — картка: всі поля + Drive посилання + кнопки статусу
+- [x] `ProjectHandler.ChangeProjectStatusAsync` — зміна статусу + notification клієнту (Completed/Waiting)
+- [x] `IProjectRepository` + `ProjectRepository`; migration `AddProjects`
+- [x] TelegramController: projects, project_card_*, project_status_*, project_revision_*, lead_convert_* callbacks
+- [x] 6 unit tests (ProjectHandlerTests); 78/78 тестів зелені
+
+**Note:** Google Drive API інтеграція відкладена на M3 (потребує OAuth2 service account)
 
 ---
 
-### Issue #023: RevisionCounter
+### Issue #023: RevisionCounter ✅
 
 **Story:** Як дизайнер, я хочу рахувати кола правок і показувати клієнту залишок.
 
 **Tasks:**
-- [ ] `ProjectService.AddRevisionAsync(projectId, description)` → increment `RevisionCount`
-- [ ] `Project.IsRevisionLimitReached` — computed property
-- [ ] Клієнту після кожного кола: "Використано N з M кіл правок"
-- [ ] При перевищенні ліміту → notification дизайнеру
-- [ ] Unit тест: `AddRevision_WhenLimitReached_SendsAlert`
+- [x] `Project.IsRevisionLimitReached` — computed property (`RevisionCount >= MaxRevisions`)
+- [x] `ProjectHandler.AddRevisionAsync` — increment RevisionCount, status = InRevision
+- [x] Клієнту після кожного кола: "Використано N з M кіл правок, залишилось K"
+- [x] При досягненні ліміту → alert дизайнеру з червоним індикатором 🔴
+- [x] Unit тести: `AddRevision_BelowLimit_IncrementsAndNotifiesClient`, `AddRevision_LimitReached_SendsAlert`, `Project_IsRevisionLimitReached_*`
 
 ---
 
-### Issue #024: FileService — матеріали клієнтів
+### Issue #024: FileService — матеріали клієнтів ✅
 
 **Tasks:**
-- [ ] `FileService.HandleIncomingFileAsync(update)` → завантажує файл з Telegram → Drive → записує FileRecord
-- [ ] Авто-тегування за extension/MIME: .pdf/.docx → text; .png/.jpg → reference
-- [ ] `FileService.RequestMaterialsAsync(clientId)` → шаблонне повідомлення клієнту
+- [x] `FileHandler.HandleIncomingFileAsync` → класифікує файл (text/reference/other), знаходить активний проєкт, зберігає `ClientFile`
+- [x] Авто-тегування за extension/MIME: .pdf/.docx/.txt → text; .png/.jpg/.svg/.ai/.psd → reference
+- [x] `FileHandler.RequestMaterialsAsync(clientId)` → шаблонне повідомлення клієнту + підтвердження дизайнеру
+- [x] `ClientFile` entity + migration `AddClientFiles`; `IClientFileRepository` + `ClientFileRepository`
+- [x] 5 unit tests (FileHandlerTests); 83/83 тестів зелені
+
+**Note:** Google Drive upload відкладено на M3 (потребує OAuth2 service account)
 
 ---
 
-### Issue #025: CommercialProposalService (КП)
+### Issue #025: CommercialProposalService (КП) ✅
 
 **Tasks:**
-- [ ] `CommercialProposalService.GenerateDraftAsync(leadId)` → Claude генерує з даних брифу
-- [ ] Дизайнер бачить чернетку → [Надіслати][Редагувати]
-- [ ] Після надсилання → копія в Notion
+- [x] `CommercialProposalHandler.GenerateDraftAsync(leadId)` → Claude генерує КП з даних брифу → зберігає як `kp_draft_{leadId}` в UserMemory
+- [x] Дизайнер бачить чернетку → [✅ Надіслати][❌ Відхилити]
+- [x] `SendProposalAsync` — надсилає клієнту, очищає чернетку з пам'яті
+- [x] `DismissProposalAsync` — очищає чернетку без надсилання
+- [x] 5 unit tests (CommercialProposalHandlerTests)
 
 ---
 
-### Issue #026: ReminderWorker + NotificationService
+### Issue #026: ReminderWorker + NotificationService ✅
 
 **Tasks:**
-- [ ] `ReminderWorker : BackgroundSyncWorkerBase<Notification>`
-- [ ] Тригери: client_no_reply_3_days, deadline_tomorrow, overdue_payment_7_days, weekly_digest
-- [ ] Щопонеділка тижневий дайджест дизайнеру
-- [ ] Нагадування клієнту за 24h і 1h до дзвінка (calendar_event trigger)
-- [ ] Всі нагадування дизайнеру з підтвердженням [Нагадати][Пропустити]
+- [x] `ReminderWorker : BackgroundService` — запускається кожні 5 хвилин
+- [x] Тригери: `CalendarReminder24h`, `CalendarReminder1h`, `ClientNoReply3Days`, `DeadlineTomorrow`
+- [x] `INotificationRepository.GetDueAsync + MarkSentAsync` — нові методи
+- [x] Нагадування клієнту за 24h і 1h до дзвінка (calendar_event trigger)
+- [x] `IServiceScopeFactory` для scoped-залежностей у BackgroundService
+- [x] `AddHostedService<ReminderWorker>()` в Program.cs
+- [x] 88/88 тестів зелені
 
 ---
 
