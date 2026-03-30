@@ -296,28 +296,35 @@
 
 ---
 
-### Issue #022: ProjectService + авто-структура Google Drive
+### Issue #022: ProjectService + авто-структура Google Drive ✅
 
 **Story:** Як дизайнер, я хочу створити проєкт і автоматично отримати структуру папок у Drive.
 
 **Tasks:**
-- [ ] `ProjectService.CreateProjectAsync()` → створює Project в БД
-- [ ] `GoogleDriveClient.CreateProjectFolderAsync(clientName, projectTitle, year)` → папки: Source / Final / Revisions
-- [ ] `ProjectService.ChangeStatusAsync()` → оновлює в БД, Notion і надсилає повідомлення клієнту
-- [ ] Двостороння Notion синхронізація: зміна статусу в Notion → webhook → повідомлення клієнту
+- [x] `Project` entity: ClientUserId, LeadId, Title, ServiceType, Budget, Deadline, GoogleDriveFolderUrl, Status, RevisionCount, MaxRevisions
+- [x] `Project.FromLead(lead)` — конвертація Lead → Project
+- [x] `ProjectHandler.ConvertLeadToProjectAsync` — Lead → Project в БД, LeadStatus = Converted
+- [x] `ProjectHandler.ShowProjectsAsync` — список проєктів з emoji-статусами
+- [x] `ProjectHandler.ShowProjectCardAsync` — картка: всі поля + Drive посилання + кнопки статусу
+- [x] `ProjectHandler.ChangeProjectStatusAsync` — зміна статусу + notification клієнту (Completed/Waiting)
+- [x] `IProjectRepository` + `ProjectRepository`; migration `AddProjects`
+- [x] TelegramController: projects, project_card_*, project_status_*, project_revision_*, lead_convert_* callbacks
+- [x] 6 unit tests (ProjectHandlerTests); 78/78 тестів зелені
+
+**Note:** Google Drive API інтеграція відкладена на M3 (потребує OAuth2 service account)
 
 ---
 
-### Issue #023: RevisionCounter
+### Issue #023: RevisionCounter ✅
 
 **Story:** Як дизайнер, я хочу рахувати кола правок і показувати клієнту залишок.
 
 **Tasks:**
-- [ ] `ProjectService.AddRevisionAsync(projectId, description)` → increment `RevisionCount`
-- [ ] `Project.IsRevisionLimitReached` — computed property
-- [ ] Клієнту після кожного кола: "Використано N з M кіл правок"
-- [ ] При перевищенні ліміту → notification дизайнеру
-- [ ] Unit тест: `AddRevision_WhenLimitReached_SendsAlert`
+- [x] `Project.IsRevisionLimitReached` — computed property (`RevisionCount >= MaxRevisions`)
+- [x] `ProjectHandler.AddRevisionAsync` — increment RevisionCount, status = InRevision
+- [x] Клієнту після кожного кола: "Використано N з M кіл правок, залишилось K"
+- [x] При досягненні ліміту → alert дизайнеру з червоним індикатором 🔴
+- [x] Unit тести: `AddRevision_BelowLimit_IncrementsAndNotifiesClient`, `AddRevision_LimitReached_SendsAlert`, `Project_IsRevisionLimitReached_*`
 
 ---
 

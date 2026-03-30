@@ -22,6 +22,10 @@ public sealed class TelegramController : ControllerBase
     private const string InboxStatusPrefix = "inbox_status_";
     private const string LeadCardPrefix = "lead_card_";
     private const string LeadStatusPrefix = "lead_status_";
+    private const string ProjectCardPrefix = "project_card_";
+    private const string ProjectStatusPrefix = "project_status_";
+    private const string ProjectRevisionPrefix = "project_revision_";
+    private const string LeadConvertPrefix = "lead_convert_";
 
     private readonly IStartCommandHandler _startHandler;
     private readonly IQuestionHandler _questionHandler;
@@ -32,6 +36,7 @@ public sealed class TelegramController : ControllerBase
     private readonly IStatusHandler _statusHandler;
     private readonly IInboxHandler _inboxHandler;
     private readonly ILeadHandler _leadHandler;
+    private readonly IProjectHandler _projectHandler;
     private readonly IRoleRouter _roleRouter;
 
     public TelegramController(
@@ -44,6 +49,7 @@ public sealed class TelegramController : ControllerBase
         IStatusHandler statusHandler,
         IInboxHandler inboxHandler,
         ILeadHandler leadHandler,
+        IProjectHandler projectHandler,
         IRoleRouter roleRouter)
     {
         _startHandler = startHandler;
@@ -55,6 +61,7 @@ public sealed class TelegramController : ControllerBase
         _statusHandler = statusHandler;
         _inboxHandler = inboxHandler;
         _leadHandler = leadHandler;
+        _projectHandler = projectHandler;
         _roleRouter = roleRouter;
     }
 
@@ -155,6 +162,35 @@ public sealed class TelegramController : ControllerBase
                 {
                     var newStatus = rest[(lastUnderscore + 1)..];
                     await _leadHandler.ChangeLeadStatusAsync(cbChatId, leadId, newStatus, cbLang, cancellationToken);
+                }
+            }
+            else if (cbData.StartsWith(LeadConvertPrefix, StringComparison.Ordinal))
+            {
+                if (int.TryParse(cbData[LeadConvertPrefix.Length..], out var leadId))
+                    await _projectHandler.ConvertLeadToProjectAsync(cbChatId, leadId, cbLang, cancellationToken);
+            }
+            else if (cbData == "projects")
+            {
+                await _projectHandler.ShowProjectsAsync(cbChatId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(ProjectCardPrefix, StringComparison.Ordinal))
+            {
+                if (int.TryParse(cbData[ProjectCardPrefix.Length..], out var projectId))
+                    await _projectHandler.ShowProjectCardAsync(cbChatId, projectId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(ProjectRevisionPrefix, StringComparison.Ordinal))
+            {
+                if (int.TryParse(cbData[ProjectRevisionPrefix.Length..], out var projectId))
+                    await _projectHandler.AddRevisionAsync(cbChatId, projectId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(ProjectStatusPrefix, StringComparison.Ordinal))
+            {
+                var rest = cbData[ProjectStatusPrefix.Length..];
+                var lastUnderscore = rest.LastIndexOf('_');
+                if (lastUnderscore > 0 && int.TryParse(rest[..lastUnderscore], out var projectId))
+                {
+                    var newStatus = rest[(lastUnderscore + 1)..];
+                    await _projectHandler.ChangeProjectStatusAsync(cbChatId, projectId, newStatus, cbLang, cancellationToken);
                 }
             }
             else if (cbData == "contact")

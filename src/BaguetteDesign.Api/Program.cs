@@ -84,6 +84,8 @@ builder.Services.AddScoped<IDialogStateRepository, DialogStateRepository>();
 builder.Services.AddScoped<IInboxHandler, InboxHandler>();
 builder.Services.AddScoped<ILeadService, LeadService>();
 builder.Services.AddScoped<ILeadHandler, LeadHandler>();
+builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
+builder.Services.AddScoped<IProjectHandler, ProjectHandler>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
