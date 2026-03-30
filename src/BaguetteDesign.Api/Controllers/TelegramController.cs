@@ -26,6 +26,9 @@ public sealed class TelegramController : ControllerBase
     private const string ProjectStatusPrefix = "project_status_";
     private const string ProjectRevisionPrefix = "project_revision_";
     private const string LeadConvertPrefix = "lead_convert_";
+    private const string KpGeneratePrefix = "kp_generate_";
+    private const string KpSendPrefix = "kp_send_";
+    private const string KpDismissPrefix = "kp_dismiss_";
 
     private readonly IStartCommandHandler _startHandler;
     private readonly IQuestionHandler _questionHandler;
@@ -37,6 +40,7 @@ public sealed class TelegramController : ControllerBase
     private readonly IInboxHandler _inboxHandler;
     private readonly ILeadHandler _leadHandler;
     private readonly IProjectHandler _projectHandler;
+    private readonly ICommercialProposalHandler _proposalHandler;
     private readonly IRoleRouter _roleRouter;
 
     public TelegramController(
@@ -50,6 +54,7 @@ public sealed class TelegramController : ControllerBase
         IInboxHandler inboxHandler,
         ILeadHandler leadHandler,
         IProjectHandler projectHandler,
+        ICommercialProposalHandler proposalHandler,
         IRoleRouter roleRouter)
     {
         _startHandler = startHandler;
@@ -62,6 +67,7 @@ public sealed class TelegramController : ControllerBase
         _inboxHandler = inboxHandler;
         _leadHandler = leadHandler;
         _projectHandler = projectHandler;
+        _proposalHandler = proposalHandler;
         _roleRouter = roleRouter;
     }
 
@@ -192,6 +198,21 @@ public sealed class TelegramController : ControllerBase
                     var newStatus = rest[(lastUnderscore + 1)..];
                     await _projectHandler.ChangeProjectStatusAsync(cbChatId, projectId, newStatus, cbLang, cancellationToken);
                 }
+            }
+            else if (cbData.StartsWith(KpGeneratePrefix, StringComparison.Ordinal))
+            {
+                if (int.TryParse(cbData[KpGeneratePrefix.Length..], out var leadId))
+                    await _proposalHandler.GenerateDraftAsync(cbChatId, leadId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(KpSendPrefix, StringComparison.Ordinal))
+            {
+                if (int.TryParse(cbData[KpSendPrefix.Length..], out var leadId))
+                    await _proposalHandler.SendProposalAsync(cbChatId, cbUserId, leadId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(KpDismissPrefix, StringComparison.Ordinal))
+            {
+                if (int.TryParse(cbData[KpDismissPrefix.Length..], out var leadId))
+                    await _proposalHandler.DismissProposalAsync(cbChatId, cbUserId, leadId, cbLang, cancellationToken);
             }
             else if (cbData == "contact")
             {

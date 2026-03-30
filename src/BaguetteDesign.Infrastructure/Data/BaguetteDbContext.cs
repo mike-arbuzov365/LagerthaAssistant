@@ -24,6 +24,7 @@ public sealed class BaguetteDbContext : KernelDbContext
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<DialogState> DialogStates => Set<DialogState>();
     public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ClientFile> ClientFiles => Set<ClientFile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -91,6 +92,17 @@ public sealed class BaguetteDbContext : KernelDbContext
             e.Property(x => x.ClientUserId).IsRequired().HasMaxLength(64);
             e.Property(x => x.Title).IsRequired().HasMaxLength(256);
             e.Property(x => x.Status).HasConversion<string>();
+            e.HasIndex(x => x.ClientUserId);
+        });
+
+        modelBuilder.Entity<ClientFile>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ClientUserId).IsRequired().HasMaxLength(64);
+            e.Property(x => x.TelegramFileId).IsRequired().HasMaxLength(256);
+            e.Property(x => x.FileName).HasMaxLength(256);
+            e.Property(x => x.FileType).HasMaxLength(32);
+            e.Property(x => x.MimeType).HasMaxLength(128);
             e.HasIndex(x => x.ClientUserId);
         });
     }

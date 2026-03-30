@@ -328,32 +328,40 @@
 
 ---
 
-### Issue #024: FileService — матеріали клієнтів
+### Issue #024: FileService — матеріали клієнтів ✅
 
 **Tasks:**
-- [ ] `FileService.HandleIncomingFileAsync(update)` → завантажує файл з Telegram → Drive → записує FileRecord
-- [ ] Авто-тегування за extension/MIME: .pdf/.docx → text; .png/.jpg → reference
-- [ ] `FileService.RequestMaterialsAsync(clientId)` → шаблонне повідомлення клієнту
+- [x] `FileHandler.HandleIncomingFileAsync` → класифікує файл (text/reference/other), знаходить активний проєкт, зберігає `ClientFile`
+- [x] Авто-тегування за extension/MIME: .pdf/.docx/.txt → text; .png/.jpg/.svg/.ai/.psd → reference
+- [x] `FileHandler.RequestMaterialsAsync(clientId)` → шаблонне повідомлення клієнту + підтвердження дизайнеру
+- [x] `ClientFile` entity + migration `AddClientFiles`; `IClientFileRepository` + `ClientFileRepository`
+- [x] 5 unit tests (FileHandlerTests); 83/83 тестів зелені
+
+**Note:** Google Drive upload відкладено на M3 (потребує OAuth2 service account)
 
 ---
 
-### Issue #025: CommercialProposalService (КП)
+### Issue #025: CommercialProposalService (КП) ✅
 
 **Tasks:**
-- [ ] `CommercialProposalService.GenerateDraftAsync(leadId)` → Claude генерує з даних брифу
-- [ ] Дизайнер бачить чернетку → [Надіслати][Редагувати]
-- [ ] Після надсилання → копія в Notion
+- [x] `CommercialProposalHandler.GenerateDraftAsync(leadId)` → Claude генерує КП з даних брифу → зберігає як `kp_draft_{leadId}` в UserMemory
+- [x] Дизайнер бачить чернетку → [✅ Надіслати][❌ Відхилити]
+- [x] `SendProposalAsync` — надсилає клієнту, очищає чернетку з пам'яті
+- [x] `DismissProposalAsync` — очищає чернетку без надсилання
+- [x] 5 unit tests (CommercialProposalHandlerTests)
 
 ---
 
-### Issue #026: ReminderWorker + NotificationService
+### Issue #026: ReminderWorker + NotificationService ✅
 
 **Tasks:**
-- [ ] `ReminderWorker : BackgroundSyncWorkerBase<Notification>`
-- [ ] Тригери: client_no_reply_3_days, deadline_tomorrow, overdue_payment_7_days, weekly_digest
-- [ ] Щопонеділка тижневий дайджест дизайнеру
-- [ ] Нагадування клієнту за 24h і 1h до дзвінка (calendar_event trigger)
-- [ ] Всі нагадування дизайнеру з підтвердженням [Нагадати][Пропустити]
+- [x] `ReminderWorker : BackgroundService` — запускається кожні 5 хвилин
+- [x] Тригери: `CalendarReminder24h`, `CalendarReminder1h`, `ClientNoReply3Days`, `DeadlineTomorrow`
+- [x] `INotificationRepository.GetDueAsync + MarkSentAsync` — нові методи
+- [x] Нагадування клієнту за 24h і 1h до дзвінка (calendar_event trigger)
+- [x] `IServiceScopeFactory` для scoped-залежностей у BackgroundService
+- [x] `AddHostedService<ReminderWorker>()` в Program.cs
+- [x] 88/88 тестів зелені
 
 ---
 

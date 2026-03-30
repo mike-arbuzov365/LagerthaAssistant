@@ -168,6 +168,8 @@ public sealed class ContactHandlerTests
     {
         public Task AddAsync(CalendarEvent e, CancellationToken ct = default) => Task.CompletedTask;
         public Task AddAsync(Notification n, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<Notification>> GetDueAsync(DateTimeOffset asOf, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Notification>>([]);
+        public Task MarkSentAsync(int notificationId, CancellationToken ct = default) => Task.CompletedTask;
         public Task SaveChangesAsync(CancellationToken ct = default) => Task.CompletedTask;
     }
 

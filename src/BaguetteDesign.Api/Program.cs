@@ -8,6 +8,7 @@ using BaguetteDesign.Infrastructure.Calendar;
 using BaguetteDesign.Infrastructure.Notion;
 using BaguetteDesign.Infrastructure.Options;
 using BaguetteDesign.Infrastructure.Telegram;
+using BaguetteDesign.Infrastructure.Workers;
 using BaguetteDesign.Application.Interfaces;
 using BaguetteDesign.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -86,6 +87,10 @@ builder.Services.AddScoped<ILeadService, LeadService>();
 builder.Services.AddScoped<ILeadHandler, LeadHandler>();
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IProjectHandler, ProjectHandler>();
+builder.Services.AddScoped<IClientFileRepository, ClientFileRepository>();
+builder.Services.AddScoped<IFileHandler, FileHandler>();
+builder.Services.AddScoped<ICommercialProposalHandler, CommercialProposalHandler>();
+builder.Services.AddHostedService<ReminderWorker>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
