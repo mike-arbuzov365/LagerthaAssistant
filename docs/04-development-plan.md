@@ -214,17 +214,26 @@
 
 ---
 
-### Issue #017: ContactHandler + CalendarService
+### Issue #017: ContactHandler + CalendarService ✅
 
 **Story:** Як клієнт, я хочу записатись на дзвінок або надіслати повідомлення дизайнеру.
 
 **Tasks:**
-- [ ] `ContactHandler` — 3 варіанти: message / brief / call
-- [ ] `CalendarService.GetAvailableSlotsAsync()` → Google Calendar free/busy
-- [ ] Клієнт обирає слот → `CalendarService.BookSlotAsync()` → подія + Meet link
-- [ ] Дизайнер отримує notification в Telegram: хто, коли, AI summary переписки
-- [ ] `CalendarEvent` зберігається в БД
-- [ ] Нагадування клієнту за 24h і 1h (через `Notifications` table)
+- [x] `ContactHandler` — 3 варіанти: message / brief / call
+- [x] `ICalendarService.GetAvailableSlotsAsync()` → Google Calendar free/busy (slots 09:00–18:00)
+- [x] Клієнт обирає слот → `CalendarService.BookSlotAsync()` → Google Calendar event + Meet link
+- [x] `DesignerNotifier` — надсилає Telegram notification на `AdminUserId` (message + booking)
+- [x] `CalendarEvent` entity + `calendar_events` table migration
+- [x] `Notification` entity + `notifications` table migration; `NotificationTrigger` enum
+- [x] Нагадування клієнту за 24h і 1h (через `Notifications` table, IsSent flag)
+- [x] `GoogleCalendarService` — raw HTTP + JWT service account (без Google.Apis SDK)
+- [x] `GoogleTokenProvider` — cached JWT token, RSA.ImportFromPem
+- [x] `GoogleCalendarOptions`, `NotificationTrigger`, `CalendarSlot` (FormatUk/FormatEn)
+- [x] TelegramController: "contact", "contact_message", "contact_call", "contact_slot_*" callbacks
+- [x] Awaiting-message flag keyed by chatId; checked before brief flow in controller
+- [x] 6 unit tests: ShowOptions, PromptForMessage, HandleSendMessage, CalendarSlots (available/none), en locale
+
+**AC:** 46/46 тестів зелені
 
 ---
 

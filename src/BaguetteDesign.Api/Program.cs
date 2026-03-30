@@ -4,8 +4,10 @@ using BaguetteDesign.Domain.Interfaces;
 using BaguetteDesign.Infrastructure.AI;
 using BaguetteDesign.Infrastructure.Data;
 using BaguetteDesign.Infrastructure.Options;
+using BaguetteDesign.Infrastructure.Calendar;
 using BaguetteDesign.Infrastructure.Notion;
 using BaguetteDesign.Infrastructure.Options;
+using BaguetteDesign.Infrastructure.Telegram;
 using BaguetteDesign.Application.Interfaces;
 using BaguetteDesign.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -63,6 +65,20 @@ builder.Services.AddHttpClient<INotionPortfolioClient, NotionPortfolioClient>();
 builder.Services.AddScoped<IPortfolioRepository, PortfolioRepository>();
 builder.Services.AddScoped<IPortfolioService, PortfolioService>();
 builder.Services.AddScoped<IPortfolioHandler, PortfolioHandler>();
+
+var googleCalendarOptions = builder.Configuration
+    .GetSection(GoogleCalendarOptions.SectionName)
+    .Get<GoogleCalendarOptions>() ?? new GoogleCalendarOptions();
+builder.Services.AddSingleton(googleCalendarOptions);
+builder.Services.AddHttpClient<IGoogleTokenProvider, GoogleTokenProvider>();
+builder.Services.AddHttpClient<ICalendarService, GoogleCalendarService>();
+builder.Services.AddSingleton<IDesignerNotifier>(sp =>
+    new DesignerNotifier(
+        sp.GetRequiredService<ITelegramBotSender>(),
+        baguetteOptions));
+builder.Services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
+builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+builder.Services.AddScoped<IContactHandler, ContactHandler>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

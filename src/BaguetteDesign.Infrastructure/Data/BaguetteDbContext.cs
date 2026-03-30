@@ -20,6 +20,8 @@ public sealed class BaguetteDbContext : KernelDbContext
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<PriceItem> PriceItems => Set<PriceItem>();
     public DbSet<PortfolioCase> PortfolioCases => Set<PortfolioCase>();
+    public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +55,23 @@ public sealed class BaguetteDbContext : KernelDbContext
             e.Property(x => x.Title).IsRequired().HasMaxLength(256);
             e.HasIndex(x => x.NotionPageId).IsUnique();
             e.HasIndex(x => new { x.Category, x.IsActive });
+        });
+
+        modelBuilder.Entity<CalendarEvent>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UserId).IsRequired().HasMaxLength(64);
+            e.Property(x => x.GoogleEventId).HasMaxLength(256);
+            e.Property(x => x.Title).HasMaxLength(256);
+            e.HasIndex(x => x.UserId);
+        });
+
+        modelBuilder.Entity<Notification>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UserId).IsRequired().HasMaxLength(64);
+            e.Property(x => x.Trigger).HasConversion<string>();
+            e.HasIndex(x => new { x.ScheduledAtUtc, x.IsSent });
         });
     }
 

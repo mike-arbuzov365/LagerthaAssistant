@@ -13,12 +13,14 @@ public sealed class TelegramController : ControllerBase
     private const string PriceCategoryPrefix = "price_cat_";
     private const string PortfolioCategoryPrefix = "portfolio_cat_";
     private const string PortfolioSimilarPrefix = "portfolio_similar_";
+    private const string ContactSlotPrefix = "contact_slot_";
 
     private readonly IStartCommandHandler _startHandler;
     private readonly IQuestionHandler _questionHandler;
     private readonly IBriefFlowService _briefFlow;
     private readonly IPriceHandler _priceHandler;
     private readonly IPortfolioHandler _portfolioHandler;
+    private readonly IContactHandler _contactHandler;
     private readonly IRoleRouter _roleRouter;
 
     public TelegramController(
@@ -27,6 +29,7 @@ public sealed class TelegramController : ControllerBase
         IBriefFlowService briefFlow,
         IPriceHandler priceHandler,
         IPortfolioHandler portfolioHandler,
+        IContactHandler contactHandler,
         IRoleRouter roleRouter)
     {
         _startHandler = startHandler;
@@ -34,6 +37,7 @@ public sealed class TelegramController : ControllerBase
         _briefFlow = briefFlow;
         _priceHandler = priceHandler;
         _portfolioHandler = portfolioHandler;
+        _contactHandler = contactHandler;
         _roleRouter = roleRouter;
     }
 
@@ -73,6 +77,23 @@ public sealed class TelegramController : ControllerBase
                 var caseTitle = Uri.UnescapeDataString(cbData[PortfolioSimilarPrefix.Length..]);
                 await _briefFlow.StartWithStyleAsync(cbChatId, cbUserId.ToString(), caseTitle, cbLang, cancellationToken);
             }
+            else if (cbData == "contact")
+            {
+                await _contactHandler.ShowOptionsAsync(cbChatId, cbLang, cancellationToken);
+            }
+            else if (cbData == "contact_message")
+            {
+                await _contactHandler.PromptForMessageAsync(cbChatId, cbLang, cancellationToken);
+            }
+            else if (cbData == "contact_call")
+            {
+                await _contactHandler.ShowCalendarSlotsAsync(cbChatId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(ContactSlotPrefix, StringComparison.Ordinal))
+            {
+                var slotKey = cbData[ContactSlotPrefix.Length..];
+                await _contactHandler.BookSlotAsync(cbChatId, cbUserId, slotKey, cbLang, cancellationToken);
+            }
             else if (cbData == "brief" || cbData.StartsWith("brief_svc_", StringComparison.Ordinal))
             {
                 if (!await _briefFlow.IsActiveAsync(cbUserId.ToString(), cancellationToken))
@@ -107,6 +128,13 @@ public sealed class TelegramController : ControllerBase
         var role = _roleRouter.Resolve(userId);
         if (role != UserRole.Client || string.IsNullOrWhiteSpace(text))
             return Ok();
+
+        // If awaiting message for designer
+        if (await _contactHandler.IsAwaitingMessageAsync(chatId.ToString(), cancellationToken))
+        {
+            await _contactHandler.HandleSendMessageAsync(chatId, userId, text, languageCode, cancellationToken);
+            return Ok();
+        }
 
         // If the client is in an active brief flow, advance it
         if (await _briefFlow.IsActiveAsync(userId.ToString(), cancellationToken))
