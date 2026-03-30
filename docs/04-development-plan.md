@@ -237,15 +237,22 @@
 
 ---
 
-### Issue #018: StatusHandler
+### Issue #018: StatusHandler ✅
 
 **Story:** Як клієнт, я хочу бачити статус мого запиту або проєкту.
 
 **Tasks:**
-- [ ] `/status` command або кнопка
-- [ ] Знаходить активний Lead або Project для цього client_id
-- [ ] Показує людський статус (не технічний enum)
-- [ ] Якщо "Чекаємо матеріали" → показує що саме потрібно
+- [x] `IStatusHandler` + `StatusHandler` — знаходить останній Lead по userId
+- [x] Людські статуси: New / InProgress / WaitingMaterials / Converted / Closed
+- [x] WaitingMaterials → показує список відсутніх полів (Brand, Audience, Style, Deadline, Budget)
+- [x] Якщо всі поля заповнені → "зв'яжіться для уточнення деталей"
+- [x] AiSummary з брифу виводиться в повідомленні статусу
+- [x] Якщо лід відсутній → CTA "Заповнити бриф"
+- [x] `ILeadRepository.GetLatestByUserIdAsync` — OrderByDescending(CreatedAtUtc)
+- [x] TelegramController: "status" callback → ShowStatusAsync
+- [x] 7 unit tests (StatusHandlerTests); 53/53 тестів зелені
+
+**AC:** 53/53 тестів зелені
 
 ---
 

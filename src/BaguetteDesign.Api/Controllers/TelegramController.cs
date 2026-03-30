@@ -21,6 +21,7 @@ public sealed class TelegramController : ControllerBase
     private readonly IPriceHandler _priceHandler;
     private readonly IPortfolioHandler _portfolioHandler;
     private readonly IContactHandler _contactHandler;
+    private readonly IStatusHandler _statusHandler;
     private readonly IRoleRouter _roleRouter;
 
     public TelegramController(
@@ -30,6 +31,7 @@ public sealed class TelegramController : ControllerBase
         IPriceHandler priceHandler,
         IPortfolioHandler portfolioHandler,
         IContactHandler contactHandler,
+        IStatusHandler statusHandler,
         IRoleRouter roleRouter)
     {
         _startHandler = startHandler;
@@ -38,6 +40,7 @@ public sealed class TelegramController : ControllerBase
         _priceHandler = priceHandler;
         _portfolioHandler = portfolioHandler;
         _contactHandler = contactHandler;
+        _statusHandler = statusHandler;
         _roleRouter = roleRouter;
     }
 
@@ -76,6 +79,10 @@ public sealed class TelegramController : ControllerBase
             {
                 var caseTitle = Uri.UnescapeDataString(cbData[PortfolioSimilarPrefix.Length..]);
                 await _briefFlow.StartWithStyleAsync(cbChatId, cbUserId.ToString(), caseTitle, cbLang, cancellationToken);
+            }
+            else if (cbData == "status")
+            {
+                await _statusHandler.ShowStatusAsync(cbChatId, cbUserId, cbLang, cancellationToken);
             }
             else if (cbData == "contact")
             {

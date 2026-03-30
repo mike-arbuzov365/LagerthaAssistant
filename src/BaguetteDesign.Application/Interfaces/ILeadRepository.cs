@@ -5,5 +5,6 @@ using BaguetteDesign.Domain.Entities;
 public interface ILeadRepository
 {
     Task AddAsync(Lead lead, CancellationToken cancellationToken = default);
+    Task<Lead?> GetLatestByUserIdAsync(string userId, CancellationToken cancellationToken = default);
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }
