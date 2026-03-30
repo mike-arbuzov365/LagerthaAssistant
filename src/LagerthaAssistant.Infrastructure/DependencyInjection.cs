@@ -12,7 +12,6 @@ using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Options;
 using LagerthaAssistant.Domain.Abstractions;
-using LagerthaAssistant.Infrastructure.AI;
 using LagerthaAssistant.Infrastructure.Constants;
 using LagerthaAssistant.Infrastructure.Data;
 using LagerthaAssistant.Infrastructure.Options;
@@ -21,53 +20,14 @@ using LagerthaAssistant.Infrastructure.Services;
 using LagerthaAssistant.Infrastructure.Services.Food;
 using LagerthaAssistant.Infrastructure.Services.Vocabulary;
 using LagerthaAssistant.Infrastructure.Time;
+using SharedBotKernel.Extensions;
 
 public static class DependencyInjection
 {
     public static IServiceCollection AddLagerthaAssistant(this IServiceCollection services, IConfiguration configuration)
     {
-        var section = configuration.GetSection(OpenAiConstants.SectionName);
-
-        var options = new OpenAiOptions
-        {
-            BaseUrl = section[OpenAiConstants.BaseUrlKey] ?? OpenAiConstants.DefaultBaseUrl,
-            Model = section[OpenAiConstants.ModelKey] ?? OpenAiConstants.DefaultModel,
-            ApiKey = section[OpenAiConstants.ApiKeyKey],
-            Temperature = ParseDouble(section[OpenAiConstants.TemperatureKey], OpenAiConstants.DefaultTemperature)
-        };
-
-        var envApiKey = Environment.GetEnvironmentVariable(OpenAiConstants.ApiKeyEnvironmentVariable);
-        if (!string.IsNullOrWhiteSpace(envApiKey))
-        {
-            options.ApiKey = envApiKey;
-        }
-
-        var claudeSection = configuration.GetSection(ClaudeConstants.SectionName);
-        var claudeOptions = new ClaudeOptions
-        {
-            BaseUrl = claudeSection[ClaudeConstants.BaseUrlKey] ?? ClaudeConstants.DefaultBaseUrl,
-            Model = claudeSection[ClaudeConstants.ModelKey] ?? ClaudeConstants.DefaultModel,
-            ApiKey = claudeSection[ClaudeConstants.ApiKeyKey],
-            Temperature = ParseDouble(claudeSection[ClaudeConstants.TemperatureKey], ClaudeConstants.DefaultTemperature),
-            MaxTokens = ParseInt(claudeSection[ClaudeConstants.MaxTokensKey], ClaudeConstants.DefaultMaxTokens)
-        };
-
-        var claudeEnvKey = Environment.GetEnvironmentVariable(ClaudeConstants.ApiKeyEnvironmentVariable);
-        if (!string.IsNullOrWhiteSpace(claudeEnvKey))
-        {
-            claudeOptions.ApiKey = claudeEnvKey;
-        }
-
-        var protectionSection = configuration.GetSection(AiCredentialProtectionConstants.SectionName);
-        var aiCredentialProtectionOptions = new AiCredentialProtectionOptions
-        {
-            MasterKey = protectionSection[AiCredentialProtectionConstants.MasterKeyKey]
-        };
-        var envProtectionKey = Environment.GetEnvironmentVariable(AiCredentialProtectionConstants.MasterKeyEnvironmentVariable);
-        if (!string.IsNullOrWhiteSpace(envProtectionKey))
-        {
-            aiCredentialProtectionOptions.MasterKey = envProtectionKey;
-        }
+        // AI clients, options, IClock — handled by SharedBotKernel (#004, #007)
+        services.AddKernelServices(configuration);
 
         var connectionString = configuration.GetConnectionString(PersistenceConstants.ConnectionStringName)
             ?? throw new InvalidOperationException($"Connection string '{PersistenceConstants.ConnectionStringName}' not found.");
@@ -132,9 +92,6 @@ public static class DependencyInjection
 
         services.AddDbContext<AppDbContext>(db => db.UseNpgsql(connectionString));
 
-        services.AddSingleton(options);
-        services.AddSingleton(claudeOptions);
-        services.AddSingleton(aiCredentialProtectionOptions);
         services.AddSingleton(vocabularyOptions);
         services.AddSingleton(storageOptions);
         services.AddSingleton(graphOptions);
@@ -145,9 +102,7 @@ public static class DependencyInjection
         services.AddSingleton<IGraphAuthService, GraphAuthService>();
         services.AddSingleton<IGraphDriveClient, GraphDriveClient>();
 
-        services.AddSingleton<OpenAiChatClient>();
-        services.AddSingleton<ClaudeChatClient>();
-        services.AddSingleton<IAiSecretProtector, AiSecretProtector>();
+        // AI: low-level clients registered by AddKernelServices(); Lagertha-specific resolving layer:
         services.AddScoped<IAiCredentialRepository, AiCredentialRepository>();
         services.AddScoped<IAiRuntimeSettingsService, AiRuntimeSettingsService>();
         services.AddScoped<IAiChatClient, ResolvingAiChatClient>();

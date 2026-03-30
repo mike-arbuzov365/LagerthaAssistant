@@ -3371,15 +3371,15 @@ public sealed class TelegramControllerTests
 
     private sealed class FakeAssistantSessionService : IAssistantSessionService
     {
-        public IReadOnlyCollection<LagerthaAssistant.Domain.AI.ConversationMessage> Messages => [];
+        public IReadOnlyCollection<ConversationMessage> Messages => [];
 
         public string NextContent { get; set; } = "assistant reply";
 
         public Task<AssistantCompletionResult> AskAsync(string userMessage, CancellationToken cancellationToken = default)
             => Task.FromResult(new AssistantCompletionResult(NextContent, "test-model", null));
 
-        public Task<IReadOnlyCollection<LagerthaAssistant.Domain.AI.ConversationMessage>> GetRecentHistoryAsync(int take, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyCollection<LagerthaAssistant.Domain.AI.ConversationMessage>>([]);
+        public Task<IReadOnlyCollection<ConversationMessage>> GetRecentHistoryAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyCollection<ConversationMessage>>([]);
 
         public Task<IReadOnlyCollection<UserMemoryEntry>> GetActiveMemoryAsync(int take, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyCollection<UserMemoryEntry>>([]);

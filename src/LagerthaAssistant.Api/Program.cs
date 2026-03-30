@@ -32,8 +32,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.Configure<VocabularySyncWorkerOptions>(builder.Configuration.GetSection("VocabularySyncWorker"));
 builder.Services.Configure<NotionSyncWorkerOptions>(builder.Configuration.GetSection("NotionSyncWorker"));
 builder.Services.Configure<FoodSyncWorkerOptions>(builder.Configuration.GetSection("FoodSyncWorker"));
-builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
-builder.Services.AddSingleton<IValidateOptions<TelegramOptions>, TelegramOptionsValidator>();
+builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection(TelegramOptions.SectionName));
 builder.Services.AddHttpClient("telegram", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
@@ -49,7 +48,7 @@ builder.Services.AddHttpClient<LagerthaAssistant.Application.Interfaces.Food.INo
     client.Timeout = TimeSpan.FromSeconds(opts.RequestTimeoutSeconds);
 });
 builder.Services.AddSingleton<ITelegramConversationResponseFormatter, TelegramConversationResponseFormatter>();
-builder.Services.AddSingleton<ITelegramBotSender, TelegramBotSender>();
+builder.Services.AddSingleton<ITelegramBotSender, SharedBotKernel.Infrastructure.Telegram.TelegramBotSender>();
 builder.Services.AddSingleton<ITelegramNavigationPresenter, TelegramNavigationPresenter>();
 builder.Services.AddSingleton<TelegramPendingStateStore>();
 builder.Services.AddScoped<ITelegramImportSourceReader, TelegramImportSourceReader>();

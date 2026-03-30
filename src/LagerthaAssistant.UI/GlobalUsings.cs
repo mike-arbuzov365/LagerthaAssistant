@@ -11,4 +11,3 @@ global using AiApiKeySource = SharedBotKernel.Models.AI.AiApiKeySource;
 global using IAiChatClient = SharedBotKernel.Infrastructure.AI.IAiChatClient;
 global using IAiRuntimeSettingsService = SharedBotKernel.Infrastructure.AI.IAiRuntimeSettingsService;
 global using IConversationScopeAccessor = SharedBotKernel.Infrastructure.AI.IConversationScopeAccessor;
-global using IAiSecretProtector = SharedBotKernel.Infrastructure.AI.IAiSecretProtector;

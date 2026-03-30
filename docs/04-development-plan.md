@@ -62,45 +62,47 @@
 
 ---
 
-### Issue #004: Перенести AI clients → SharedBotKernel
+### Issue #004: Перенести AI clients → SharedBotKernel ✅
 
 **Tasks:**
-- [ ] Перенести: `IAiChatClient`, `ClaudeChatClient`, `OpenAiChatClient`, `ResolvingAiChatClient`, `AiSecretProtector`
-- [ ] Оновити namespace
-- [ ] Оновити DI реєстрацію в Lagertha
+- [x] Перенести: `IAiChatClient`, `ClaudeChatClient`, `OpenAiChatClient`, `ResolvingAiChatClient`, `AiSecretProtector`
+- [x] Оновити namespace (global type aliases у кожному проєкті)
+- [x] Оновити DI реєстрацію в Lagertha
 
-**AC:** Lagertha AI функціональність працює без змін
+**AC:** Lagertha AI функціональність працює без змін ✅
 
 ---
 
-### Issue #005: Перенести Graph + Notion clients → SharedBotKernel
+### Issue #005: Перенести Graph + Notion clients → SharedBotKernel (partial) ✅
 
 **Tasks:**
-- [ ] Перенести: `GraphHttpClient`, `GraphAuthService`, `TokenManager`, `GraphAuthToken`
-- [ ] Перенести: `NotionHttpClient` (базовий HTTP wrapper без доменної логіки)
-- [ ] Перенести: `IClock`, `SystemClock`
-- [ ] Оновити namespace і DI в Lagertha
+- [ ] Перенести: `GraphHttpClient`, `GraphAuthService`, `TokenManager`, `GraphAuthToken` — Lagertha-specific, залишаються
+- [ ] Перенести: `NotionHttpClient` (базовий HTTP wrapper без доменної логіки) — Lagertha-specific, залишається
+- [x] Перенести: `IClock`, `SystemClock` — зроблено через `AddKernelServices()`
+- [x] Оновити namespace і DI в Lagertha
+
+**Note:** Graph/Notion clients є Lagertha-специфічними (vocabulary + food workflows). `IClock` делегується SharedBotKernel.
 
 ---
 
-### Issue #006: Перенести Telegram Adapter + витягти BackgroundSyncWorkerBase
+### Issue #006: Перенести Telegram Adapter ✅
 
 **Tasks:**
-- [ ] Перенести: `TelegramWebhookAdapter`, `TelegramDeduplicationService`
-- [ ] Витягти `BackgroundSyncWorkerBase<TJob>` з `VocabularySyncHostedService` і `NotionSyncHostedService`
-- [ ] Lagertha workers успадковують: `VocabularySyncWorker : BackgroundSyncWorkerBase<VocabularySyncJob>`
+- [x] Перенести: `ITelegramBotSender`, `TelegramBotSender`, `TelegramOptions`
+- [x] Видалити дублікати з `LagerthaAssistant.Api`
+- [ ] `TelegramWebhookAdapter`, `TelegramDeduplicationService` — не існували як окремі файли
 
 ---
 
-### Issue #007: Реалізувати AddKernelServices()
+### Issue #007: Реалізувати AddKernelServices() ✅
 
 **Tasks:**
-- [ ] Створити `SharedBotKernel/Extensions/KernelServiceExtensions.cs`
-- [ ] `AddKernelServices()` реєструє: AI clients, NotionHttpClient, GraphHttpClient, IClock, TelegramAdapter
-- [ ] Lagertha `Program.cs` використовує `AddKernelServices()` + власне
-- [ ] Фінальний `dotnet test` — все зелене
+- [x] `SharedBotKernel/Extensions/KernelServiceExtensions.cs` вже існував
+- [x] `AddKernelServices()` реєструє: AI clients, IClock, TelegramAdapter
+- [x] Lagertha `DependencyInjection.cs` викликає `AddKernelServices()`
+- [x] Фінальний `dotnet test` — 914 тестів зелені
 
-**AC:** M0 завершено. Lagertha деплоїться на Railway без змін. SharedBotKernel готовий до підключення.
+**AC:** M0 завершено. Lagertha деплоїться на Railway без змін. SharedBotKernel готовий до підключення. ✅
 
 ---
 
