@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\LagerthaAssistant.Application\LagerthaAssistant.Application.csproj" />
     <ProjectReference Include="..\..\src\LagerthaAssistant.Domain\LagerthaAssistant.Domain.csproj" />
+    <ProjectReference Include="..\..\src\LagerthaAssistant.Infrastructure\LagerthaAssistant.Infrastructure.csproj" />
   </ItemGroup>
 </Project>
 
