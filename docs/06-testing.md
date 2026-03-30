@@ -4,15 +4,18 @@
 
 ---
 
-## Current Test Count (updated: 2026-03-29)
+## Current Test Count (updated: 2026-03-30)
 
 | Project | Count | Type | Status |
 |---|---|---|---|
 | `LagerthaAssistant.Domain.Tests` | 5 | Unit | Green |
 | `LagerthaAssistant.Application.Tests` | 491 | Unit | Green |
 | `LagerthaAssistant.IntegrationTests` | 330 | Integration (Testcontainers) | Green |
-| `BaguetteDesign.Tests` | 12 | Unit | Green |
-| **Total** | **838** | | **All green** |
+| `SharedBotKernel.Tests` | 24 | Unit | Green |
+| `BaguetteDesign.Domain.Tests` | 24 | Unit | Green |
+| `BaguetteDesign.Application.Tests` | 77 | Unit | Green |
+| `BaguetteDesign.IntegrationTests` | 3 | Integration (Testcontainers) | Requires Docker |
+| **Total** | **954** | | **951 green (3 require Docker)** |
 
 ---
 
@@ -21,9 +24,9 @@
 ```
          E2E (manual only)
         ─────────────────
-       Integration (~330)
+       Integration (~333)
       ───────────────────
-     Unit (~508)
+     Unit (~621)
     ─────────────────────
 ```
 
@@ -36,8 +39,9 @@
 ## What We Test
 
 **Unit tests (fast, no infrastructure):**
-- Domain logic: `RoleRouter`, `BriefValidator`, conversation rules
-- Application handlers: `StartCommandHandler`, `QuestionHandler`
+- Domain logic: `RoleRouter`, `BriefValidator`, `BriefFlowState`, `ProjectEntity`
+- Application handlers: all BaguetteDesign and LagerthaAssistant handlers
+- SharedBotKernel: `BackgroundSyncWorkerBase.CalculateDelay`, `UserMemoryEntry`, `SystemPromptEntry`, `ResolvingAiChatClient` guard
 - Using fakes (hand-written stubs), not Moq
 
 **Integration tests (require Docker):**
@@ -58,7 +62,7 @@
 All fakes are hand-written inner classes in the test file. This keeps tests readable and avoids Moq magic.
 
 ```csharp
-// BaguetteDesign.Tests/QuestionHandlerTests.cs
+// BaguetteDesign.Application.Tests/Handlers/QuestionHandlerTests.cs
 private sealed class FakeAiChatClient : IAiChatClient
 {
     private readonly string _reply;
@@ -77,7 +81,7 @@ private sealed class FakeAiChatClient : IAiChatClient
 ```
 
 ```csharp
-// BaguetteDesign.Tests/StartCommandHandlerTests.cs
+// BaguetteDesign.Application.Tests/Handlers/StartCommandHandlerTests.cs
 private sealed class FakeTelegramSender : ITelegramBotSender
 {
     public List<(long ChatId, string Text)> SentMessages { get; } = [];
@@ -127,8 +131,15 @@ Docker must be running locally for integration tests to pass.
 # Full suite (requires Docker for integration tests)
 dotnet test BotPlatform.sln
 
-# Only BaguetteDesign unit tests
-dotnet test tests/BaguetteDesign.Tests
+# SharedBotKernel unit tests
+dotnet test tests/SharedBotKernel.Tests
+
+# BaguetteDesign unit tests
+dotnet test tests/BaguetteDesign.Domain.Tests
+dotnet test tests/BaguetteDesign.Application.Tests
+
+# BaguetteDesign integration tests (requires Docker)
+dotnet test tests/BaguetteDesign.IntegrationTests
 
 # Only Lagertha unit tests (fast, no Docker)
 dotnet test tests/LagerthaAssistant.Application.Tests

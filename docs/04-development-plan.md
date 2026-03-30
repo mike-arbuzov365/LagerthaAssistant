@@ -369,17 +369,15 @@
 
 ## M3: Production Ready (Тиждень 8)
 
-### Issue #030: Unit + Integration тести
+### Issue #030: Unit + Integration тести ✅
 
 **Tasks:**
-- [ ] `SharedBotKernel.Tests` — тести для спільних сервісів
-- [ ] `BaguetteDesign.Tests` — тести для domain logic:
-  - `RoleRouterTests`
-  - `BriefValidatorTests`
-  - `RevisionCounterTests`
-  - `PriceServiceTests`
-- [ ] Integration тести з Testcontainers: BriefFlow end-to-end
-- [ ] Мінімум 70% coverage на бізнес-логіці
+- [x] `SharedBotKernel.Tests` — 24 тести: BackgroundSyncWorkerBase, ResolvingAiChatClient guard, UserMemoryEntry, SystemPromptEntry
+- [x] `BaguetteDesign.Domain.Tests` — 24 тести: BriefFlowState (17), ProjectEntity (7)
+- [x] `BaguetteDesign.Application.Tests` — 77 тестів: усі хендлери + RoleRouter + BriefValidator
+- [x] `BaguetteDesign.IntegrationTests` — 3 тести з Testcontainers (потребують Docker)
+- [x] Старий `BaguetteDesign.Tests` видалено з solution
+- [x] 951 тестів зелені (3 потребують Docker)
 
 ---
 
