@@ -366,3 +366,7 @@ FodyWeavers.xsd
 # Local development overrides with secrets (API keys, connection strings)
 appsettings.Development.json
 appsettings.Local.json
+
+# Claude Code local files
+.claude/
+.dotnet/
