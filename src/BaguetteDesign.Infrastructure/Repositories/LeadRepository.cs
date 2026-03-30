@@ -23,7 +23,7 @@ public sealed class LeadRepository : ILeadRepository
     public Task<Lead?> GetLatestByUserIdAsync(string userId, CancellationToken cancellationToken = default)
         => _db.Leads
             .Where(l => l.UserId == userId)
-            .OrderByDescending(l => l.CreatedAtUtc)
+            .OrderByDescending(l => l.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken = default)

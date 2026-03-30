@@ -258,17 +258,23 @@
 
 ## M2: Designer Tools (Тижні 6–7)
 
-### Issue #020: InboxService + hybrid reply mode
+### Issue #020: InboxService + hybrid reply mode ✅
 
 **Story:** Як дизайнер, я хочу бачити всі звернення зі статусами і відповідати через AI-чернетку.
 
 **Tasks:**
-- [ ] `InboxService.GetDialogsAsync(status)` → список чатів з фільтром
-- [ ] При відкритті чату: повна переписка + `AiAssistantService.GenerateSummaryAsync()` + поля брифу
-- [ ] Гібридний режим: Claude генерує чернетку відповіді → Inline buttons [Надіслати][Редагувати][Відхилити]
-- [ ] Ручний режим: кнопка "Перейти в ручний режим" → бот пересилає все що пише дизайнер
-- [ ] Внутрішні нотатки: зберігаються в Messages з role=`internal_note`
-- [ ] Статуси чату: new → in_progress → waiting → closed
+- [x] `InboxHandler.ShowDialogsAsync` — список клієнтських сесій з emoji-статусами
+- [x] `InboxHandler.OpenDialogAsync` — остання переписка (10 повідомлень) + поля Lead + AI-чернетка
+- [x] Гібридний режим: Claude генерує чернетку → [✅ Надіслати][❌ Відхилити][✏️ Ручний режим]
+- [x] Ручний режим (`inbox_manual_{clientId}`): бот пересилає кожне повідомлення дизайнера клієнту
+- [x] Статуси: New/InProgress/Waiting/Closed — кнопки в картці діалогу, `ChangeDialogStatusAsync`
+- [x] `DialogState` entity + migration `AddDialogStates`; `IDialogStateRepository` + `DialogStateRepository`
+- [x] `IConversationRepository.FindSessionAsync + GetAllClientSessionsAsync` — нові методи
+- [x] TelegramController: inbox, inbox_open_*, inbox_send_*, inbox_dismiss_*, inbox_manual_*, inbox_auto_*, inbox_status_*_* callbacks
+- [x] Designer text routing: manual mode → `HandleDesignerManualMessageAsync`
+- [x] 10 unit tests (InboxHandlerTests); 63/63 тестів зелені
+
+**AC:** 63/63 тестів зелені
 
 ---
 

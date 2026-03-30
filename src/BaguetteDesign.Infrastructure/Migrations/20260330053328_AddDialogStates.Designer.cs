@@ -3,6 +3,7 @@ using System;
 using BaguetteDesign.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BaguetteDesign.Infrastructure.Migrations
 {
     [DbContext(typeof(BaguetteDbContext))]
-    partial class BaguetteDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260330053328_AddDialogStates")]
+    partial class AddDialogStates
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

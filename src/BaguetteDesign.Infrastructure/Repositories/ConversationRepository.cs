@@ -20,10 +20,7 @@ public sealed class ConversationRepository : IConversationRepository
         string userId,
         CancellationToken cancellationToken = default)
     {
-        var session = await _db.ConversationSessions
-            .FirstOrDefaultAsync(
-                s => s.UserId == userId && s.Channel == TelegramChannel,
-                cancellationToken);
+        var session = await FindSessionAsync(userId, cancellationToken);
 
         if (session is not null)
             return session;
@@ -39,6 +36,22 @@ public sealed class ConversationRepository : IConversationRepository
 
         return session;
     }
+
+    public Task<ConversationSession?> FindSessionAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+        => _db.ConversationSessions
+            .FirstOrDefaultAsync(
+                s => s.UserId == userId && s.Channel == TelegramChannel,
+                cancellationToken);
+
+    public async Task<IReadOnlyList<ConversationSession>> GetAllClientSessionsAsync(
+        string excludeUserId,
+        CancellationToken cancellationToken = default)
+        => await _db.ConversationSessions
+            .Where(s => s.Channel == TelegramChannel && s.UserId != excludeUserId)
+            .OrderByDescending(s => s.UpdatedAt)
+            .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<ConversationHistoryEntry>> GetRecentHistoryAsync(
         int sessionId,

@@ -22,6 +22,7 @@ public sealed class BaguetteDbContext : KernelDbContext
     public DbSet<PortfolioCase> PortfolioCases => Set<PortfolioCase>();
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<DialogState> DialogStates => Set<DialogState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -72,6 +73,15 @@ public sealed class BaguetteDbContext : KernelDbContext
             e.Property(x => x.UserId).IsRequired().HasMaxLength(64);
             e.Property(x => x.Trigger).HasConversion<string>();
             e.HasIndex(x => new { x.ScheduledAtUtc, x.IsSent });
+        });
+
+        modelBuilder.Entity<DialogState>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ClientUserId).IsRequired().HasMaxLength(64);
+            e.Property(x => x.Status).HasConversion<string>();
+            e.Property(x => x.LastClientMessagePreview).HasMaxLength(256);
+            e.HasIndex(x => x.ClientUserId).IsUnique();
         });
     }
 

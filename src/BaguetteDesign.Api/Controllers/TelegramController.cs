@@ -14,6 +14,12 @@ public sealed class TelegramController : ControllerBase
     private const string PortfolioCategoryPrefix = "portfolio_cat_";
     private const string PortfolioSimilarPrefix = "portfolio_similar_";
     private const string ContactSlotPrefix = "contact_slot_";
+    private const string InboxOpenPrefix = "inbox_open_";
+    private const string InboxSendPrefix = "inbox_send_";
+    private const string InboxDismissPrefix = "inbox_dismiss_";
+    private const string InboxManualPrefix = "inbox_manual_";
+    private const string InboxAutoPrefix = "inbox_auto_";
+    private const string InboxStatusPrefix = "inbox_status_";
 
     private readonly IStartCommandHandler _startHandler;
     private readonly IQuestionHandler _questionHandler;
@@ -22,6 +28,7 @@ public sealed class TelegramController : ControllerBase
     private readonly IPortfolioHandler _portfolioHandler;
     private readonly IContactHandler _contactHandler;
     private readonly IStatusHandler _statusHandler;
+    private readonly IInboxHandler _inboxHandler;
     private readonly IRoleRouter _roleRouter;
 
     public TelegramController(
@@ -32,6 +39,7 @@ public sealed class TelegramController : ControllerBase
         IPortfolioHandler portfolioHandler,
         IContactHandler contactHandler,
         IStatusHandler statusHandler,
+        IInboxHandler inboxHandler,
         IRoleRouter roleRouter)
     {
         _startHandler = startHandler;
@@ -41,6 +49,7 @@ public sealed class TelegramController : ControllerBase
         _portfolioHandler = portfolioHandler;
         _contactHandler = contactHandler;
         _statusHandler = statusHandler;
+        _inboxHandler = inboxHandler;
         _roleRouter = roleRouter;
     }
 
@@ -83,6 +92,46 @@ public sealed class TelegramController : ControllerBase
             else if (cbData == "status")
             {
                 await _statusHandler.ShowStatusAsync(cbChatId, cbUserId, cbLang, cancellationToken);
+            }
+            else if (cbData == "inbox")
+            {
+                await _inboxHandler.ShowDialogsAsync(cbChatId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(InboxOpenPrefix, StringComparison.Ordinal))
+            {
+                var clientId = cbData[InboxOpenPrefix.Length..];
+                await _inboxHandler.OpenDialogAsync(cbChatId, cbUserId, clientId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(InboxSendPrefix, StringComparison.Ordinal))
+            {
+                var clientId = cbData[InboxSendPrefix.Length..];
+                await _inboxHandler.SendDraftAsync(cbChatId, cbUserId, clientId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(InboxDismissPrefix, StringComparison.Ordinal))
+            {
+                var clientId = cbData[InboxDismissPrefix.Length..];
+                await _inboxHandler.DismissDraftAsync(cbChatId, cbUserId, clientId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(InboxManualPrefix, StringComparison.Ordinal))
+            {
+                var clientId = cbData[InboxManualPrefix.Length..];
+                await _inboxHandler.SetManualModeAsync(cbChatId, cbUserId, clientId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(InboxAutoPrefix, StringComparison.Ordinal))
+            {
+                var clientId = cbData[InboxAutoPrefix.Length..];
+                await _inboxHandler.SetManualModeAsync(cbChatId, cbUserId, clientId, cbLang, cancellationToken);
+            }
+            else if (cbData.StartsWith(InboxStatusPrefix, StringComparison.Ordinal))
+            {
+                var rest = cbData[InboxStatusPrefix.Length..];
+                var lastUnderscore = rest.LastIndexOf('_');
+                if (lastUnderscore > 0)
+                {
+                    var clientId = rest[..lastUnderscore];
+                    var newStatus = rest[(lastUnderscore + 1)..];
+                    await _inboxHandler.ChangeDialogStatusAsync(cbChatId, clientId, newStatus, cbLang, cancellationToken);
+                }
             }
             else if (cbData == "contact")
             {
@@ -133,6 +182,18 @@ public sealed class TelegramController : ControllerBase
         }
 
         var role = _roleRouter.Resolve(userId);
+
+        // Designer text message → check if in manual mode
+        if (role == UserRole.Designer && !string.IsNullOrWhiteSpace(text))
+        {
+            if (await _inboxHandler.IsDesignerInManualModeAsync(userId, cancellationToken))
+            {
+                await _inboxHandler.HandleDesignerManualMessageAsync(chatId, userId, text, languageCode, cancellationToken);
+                return Ok();
+            }
+            return Ok();
+        }
+
         if (role != UserRole.Client || string.IsNullOrWhiteSpace(text))
             return Ok();
 

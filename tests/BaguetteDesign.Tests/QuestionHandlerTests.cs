@@ -113,8 +113,14 @@ public sealed class QuestionHandlerTests
             return Task.FromResult(_session);
         }
 
+        public Task<ConversationSession?> FindSessionAsync(string userId, CancellationToken cancellationToken = default)
+            => Task.FromResult<ConversationSession?>(_session);
+
         public Task<IReadOnlyList<ConversationHistoryEntry>> GetRecentHistoryAsync(int sessionId, int limit, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<ConversationHistoryEntry>>(_history);
+
+        public Task<IReadOnlyList<ConversationSession>> GetAllClientSessionsAsync(string excludeUserId, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<ConversationSession>>([]);
 
         public Task AddEntryAsync(ConversationHistoryEntry entry, CancellationToken cancellationToken = default)
         {
