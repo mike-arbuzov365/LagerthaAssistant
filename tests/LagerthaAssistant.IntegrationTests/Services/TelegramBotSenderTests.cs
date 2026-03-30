@@ -4,9 +4,8 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using LagerthaAssistant.Api.Interfaces;
-using LagerthaAssistant.Api.Options;
-using LagerthaAssistant.Api.Services;
+using SharedBotKernel.Infrastructure.Telegram;
+using SharedBotKernel.Options;
 using Microsoft.Extensions.Options;
 using Xunit;
 

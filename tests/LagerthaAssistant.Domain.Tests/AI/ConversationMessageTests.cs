@@ -2,7 +2,7 @@ namespace LagerthaAssistant.Domain.Tests.AI;
 
 using LagerthaAssistant.Domain.AI;
 using LagerthaAssistant.Domain.Constants;
-using LagerthaAssistant.Domain.Exceptions;
+using SharedBotKernel.Domain.Exceptions;
 using Xunit;
 
 public sealed class ConversationMessageTests
