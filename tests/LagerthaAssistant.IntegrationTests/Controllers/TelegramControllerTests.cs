@@ -31,6 +31,7 @@ using Xunit;
 
 public sealed class TelegramControllerTests
 {
+    private const string TestWebhookSecret = "test-webhook-secret";
     [Fact]
     public async Task Webhook_ShouldMapScopeAndSendReply_ForTextMessage()
     {
@@ -2560,7 +2561,10 @@ public sealed class TelegramControllerTests
         FakeUnitOfWork? unitOfWork = null,
         FakeFoodTrackingService? foodTrackingService = null)
     {
-        return new TelegramController(
+        // Auto-populate webhook secret so IsSecretValid() passes (fail-secure).
+        options.WebhookSecret ??= TestWebhookSecret;
+
+        var controller = new TelegramController(
             orchestrator,
             assistantSessionService ?? new FakeAssistantSessionService(),
             scopeAccessor,
@@ -2595,6 +2599,13 @@ public sealed class TelegramControllerTests
             foodSyncWorkerOptions: null,
             foodTrackingService,
             pendingStateStore: new TelegramPendingStateStore());
+
+        // Set up HttpContext with matching webhook secret header.
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["X-Telegram-Bot-Api-Secret-Token"] = options.WebhookSecret;
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        return controller;
     }
 
     private static TelegramWebhookUpdateRequest BuildTextUpdate(

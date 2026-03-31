@@ -81,7 +81,7 @@ Properties:
 ### 3.2 Visual Contract
 
 1. Track: `52x32`
-2. Hit area (wrapper): `52x44`
+2. Hit area (wrapper): `52x44` — **обов'язково ≥ 44×44px** (WCAG 2.5.8 / Apple HIG minimum touch target)
 3. Thumb: `26x26`
 4. Radius track: `full`
 5. Colors:
@@ -205,7 +205,25 @@ interface StatusBadgeProps {
 
 ---
 
-## 7. Acceptance Criteria для `QUEUE-016`
+## 7. Правила truncation для українських текстів
+
+1. Довгі лейбли (> ширини контейнера): `text-overflow: ellipsis; overflow: hidden; white-space: nowrap`.
+2. Не розривати слова всередині: `overflow-wrap: break-word` тільки для Body/Caption у блоках з обмеженою висотою.
+3. Максимальна довжина лейблів у Badge/Toggle label — **24 символи** (враховуючи середню довжину українських слів ~6 символів).
+4. Для Section Header (All-caps): перевірити, що All-caps кирилиця не збільшує ширину > 120% від латиниці (через ширші літери Ш, Щ, Ж).
+5. Tooltip або expand-on-tap для обрізаного тексту — обов'язково для інтерактивних елементів.
+
+---
+
+## 8. iOS Dynamic Type
+
+1. Усі компоненти з фіксованою висотою (`52px`, `44px`, `68px`) використовують `min-height` замість `height` у реалізації.
+2. Шрифти масштабуються від 1× до 1.35× без втрати контенту.
+3. У Figma: додати variant `accessibility` = `default | large-text` для Input Field і Toggle (демонстрація при 1.35× scale).
+
+---
+
+## 9. Acceptance Criteria для `QUEUE-016`
 
 1. У Figma існують 4 component sets:
 - `Atom / Input Field`
@@ -214,5 +232,7 @@ interface StatusBadgeProps {
 - `Atom / Status Badge`
 2. У кожного set є variant properties зі специфікації цього файлу.
 3. Demo-сцени атомів українською мовою.
-4. Мінімальна touch зона не менше `44px` для інтерактивних контролів.
+4. Мінімальна touch зона не менше `44px` для інтерактивних контролів (WCAG 2.5.8).
 5. Компоненти готові до складання в `Settings` і `Dashboard` без додаткових ad-hoc правок.
+6. Truncation rules (секція 7) застосовані до всіх лейблів.
+7. Dynamic Type variant (секція 8) існує для Input Field і Toggle.

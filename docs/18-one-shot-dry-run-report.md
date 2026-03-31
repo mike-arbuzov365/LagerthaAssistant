@@ -1,80 +1,80 @@
-# BaguetteDesign - One-shot Dry-Run Report
+# BaguetteDesign — Звіт пробного запуску (One-shot Dry-Run)
 
-> Purpose: complete this report before owner approval to confirm one-shot readiness.
-> Hard gate: no Figma MCP connection without explicit owner approval.
-
----
-
-## 0. Latest Snapshot
-
-- Date: `2026-03-31`
-- Automated preflight: `PASS (39/39)`
-- Figma connection during dry-run: `none`
-- Overall status: `READY (waiting owner file URL/file key + explicit approval phrase)`
+> Мета: заповнити цей звіт перед апрувом власника для підтвердження готовності one-shot.
+> Жорстка умова: жодного підключення до Figma MCP без явного апруву власника.
 
 ---
 
-## 1. Session Metadata
+## 0. Останній знімок стану
 
-- Date:
-- Operator:
-- Target file URL/file key:
-- Queue range: `QUEUE-001...QUEUE-017`
-- Script version: `scripts/figma-one-shot-preflight.ps1`
+- Дата: `2026-03-31`
+- Автоматичний preflight: `PASS (39/39)`
+- Підключення до Figma під час dry-run: `немає`
+- Загальний статус: `READY (очікуємо URL/file key файлу + явну фразу апруву від власника)`
 
 ---
 
-## 2. Preflight Script Result
+## 1. Метадані сесії
 
-Run:
+- Дата:
+- Оператор:
+- URL/file key цільового файлу:
+- Діапазон черги: `QUEUE-001...QUEUE-017`
+- Версія скрипта: `scripts/figma-one-shot-preflight.ps1`
+
+---
+
+## 2. Результат preflight-скрипта
+
+Запуск:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\figma-one-shot-preflight.ps1
 ```
 
-Record:
+Зафіксувати:
 
-- Result: `PASS` / `FAIL`
-- Failed checks (if any):
-- Fixes applied:
-- Re-run result:
-
----
-
-## 3. Manual Dry-Run (No Figma Connection)
-
-Checklist:
-
-- [ ] `docs/11-figma-one-shot-runbook.md` reviewed and locked
-- [ ] `docs/13-one-shot-preflight-checklist.md` prepared for launch-day use
-- [ ] `docs/14-ux-copy-wave1-ua.md` confirmed as copy source of truth
-- [ ] `docs/15-component-specs-wave1.md` confirmed for `QUEUE-016`
-- [ ] `docs/16-interaction-matrix-wave1.md` confirmed for `QUEUE-017`
-- [ ] `docs/17-batch-execution-script.md` confirmed as execution sequence
-- [ ] Localization baseline confirmed: default language = `Українська`
-- [ ] No scope outside `QUEUE-001...QUEUE-017`
+- Результат: `PASS` / `FAIL`
+- Провалені перевірки (якщо є):
+- Застосовані виправлення:
+- Результат повторного запуску:
 
 ---
 
-## 4. Risk Register
+## 3. Ручний dry-run (без підключення до Figma)
 
-| Risk | Impact | Mitigation | Owner |
+Чеклист:
+
+- [ ] `docs/11-figma-one-shot-runbook.md` переглянуто та зафіксовано
+- [ ] `docs/13-one-shot-preflight-checklist.md` підготовлено для використання в день запуску
+- [ ] `docs/14-ux-copy-wave1-ua.md` підтверджено як джерело істини для copy
+- [ ] `docs/15-component-specs-wave1.md` підтверджено для `QUEUE-016`
+- [ ] `docs/16-interaction-matrix-wave1.md` підтверджено для `QUEUE-017`
+- [ ] `docs/17-batch-execution-script.md` підтверджено як послідовність виконання
+- [ ] Базова локалізація підтверджена: мова за замовчуванням = `Українська`
+- [ ] Жодного scope поза `QUEUE-001...QUEUE-017`
+
+---
+
+## 4. Реєстр ризиків
+
+| Ризик | Вплив | Мітигація | Відповідальний |
 |---|---|---|---|
-| Missing edit access to target file | Batch cannot start | Validate access in preflight section A | Owner |
-| Approval phrase mismatch | Hard gate blocks execution | Use exact template from `docs/figma-queue.md` | Owner |
-| Tool limit/permission error during run | Partial batch risk | Stop, log blocker, request new explicit approval | Codex + Owner |
-| Unexpected scope added during run | Quality and timeline risk | Freeze scope to `QUEUE-001...QUEUE-017` | Codex |
+| Немає доступу на редагування цільового файлу | Батч неможливо розпочати | Перевірити доступ у секції A preflight | Власник |
+| Невідповідність фрази апруву | Hard gate блокує виконання | Використати точний шаблон із `docs/figma-queue.md` | Власник |
+| Обмеження інструменту/дозволів під час запуску | Ризик часткового батчу | Зупинити, зафіксувати блокер, запросити новий явний апрув | Codex + Власник |
+| Додавання нового scope під час запуску | Ризик якості та таймлайну | Заморозити scope до `QUEUE-001...QUEUE-017` | Codex |
 
 ---
 
-## 5. Readiness Decision
+## 5. Рішення про готовність
 
-- Offline package status: `READY` / `NOT READY`
-- Blocking items:
-- What is still needed from owner:
-1. New Figma file URL/file key.
-2. Explicit approval phrase with queue range.
+- Статус офлайн-пакету: `READY` / `NOT READY`
+- Блокуючі елементи:
+- Що ще потрібно від власника:
+  1. URL/file key нового Figma-файлу.
+  2. Явна фраза апруву з діапазоном черги.
 
-Final note:
+Фінальна примітка:
 
-- [ ] Confirmed: no Figma connection was made during dry-run.
+- [ ] Підтверджено: під час dry-run не було жодного підключення до Figma.

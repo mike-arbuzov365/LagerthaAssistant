@@ -86,7 +86,7 @@
 /* ===== ТЕКСТ ===== */
 --color-text-primary:     #FFFFFF;   /* Заголовки, основний текст */
 --color-text-secondary:   rgba(255,255,255,0.60);  /* Підписи, підказки */
---color-text-tertiary:    rgba(255,255,255,0.35);  /* Placeholder, disabled */
+--color-text-tertiary:    rgba(255,255,255,0.55);  /* Placeholder, disabled (min 4.5:1 on bg-primary) */
 --color-text-inverse:     #0F0F0F;   /* Текст на золотому фоні */
 
 /* ===== МЕЖІ ===== */
@@ -169,6 +169,7 @@
 
 - Мінімальний розмір шрифту для інтерактивного/операційного тексту у TMA: **13px**
 - `12px` допускається лише для вторинного non-interactive metadata (дати, технічні підписи)
+- **iOS Dynamic Type:** компоненти мають підтримувати масштабування шрифтів від 1× до 1.35× без обрізання контенту; фіксовані висоти елементів замінюються на `min-height`
 - Section titles завжди: `13px / Bold / All-caps / letter-spacing: 0.5px`
 - Placeholder у інпутах: `15px / Regular / --color-text-tertiary`
 - Посилання: `--color-accent-gold`, underline тільки на hover
@@ -292,6 +293,17 @@ Padding: 14px 16px
 Height:  68px мінімум
 ```
 
+**Integration Card — станова матриця:**
+
+| Стан | Badge | Дія | Опис |
+|---|---|---|---|
+| Connected | `Підключено` (success) | Re-sync | Нормальна робота |
+| Error | `Помилка` (error, pulse) | Retry | Синхронізація не вдалася |
+| Not configured | `Не налаштовано` (neutral) | Connect | Початкове підключення |
+| Loading | spinner на badge | — (disabled) | Синхронізація у процесі |
+| Offline | `Офлайн` (warning) | Retry (disabled) | Немає мережі |
+| Retry pending | `Повтор...` (warning) | Cancel | Автоматичний retry через N сек |
+
 ---
 
 ### 6.3 Toggle (Switch)
@@ -378,9 +390,9 @@ Active segment:
 
 ---
 
-### 6.7 Section Header
+### 6.7 Section Header (Atom)
 
-Заголовок групи налаштувань або секції.
+Заголовок групи налаштувань або секції. Класифікація: **atom** (самостійний неінтерактивний елемент без внутрішніх компонентів).
 
 ```
 Font:     13px / Bold / All-caps / letter-spacing: 0.5px

@@ -97,6 +97,7 @@ Checkpoint B:
 - 4 wireframe-екрани створені
 - safe areas є в TMA екранах
 - IA TMA == IA Web (без втрати секцій)
+- Web adaptation перевірена на breakpoint `768px` (tablet) — всі секції видимі, layout не ламається
 
 ## Phase C — Visual + Components (`QUEUE-008,010,011`)
 
@@ -105,12 +106,12 @@ Checkpoint B:
 - типографіка по token scale
 - state colors
 
-2. `QUEUE-010`: core molecules set
-- Integration Card
-- KPI Card
-- Action Row
-- Alert Row
-- Section Header
+2. `QUEUE-010`: core molecules set + Section Header atom
+- Integration Card (molecule)
+- KPI Card (molecule)
+- Action Row (molecule)
+- Alert Row (molecule)
+- Section Header (atom — див. `docs/08` §6.7)
 
 3. `QUEUE-011`: state demo board
 - Loading/Error/Offline/Empty/Disabled
