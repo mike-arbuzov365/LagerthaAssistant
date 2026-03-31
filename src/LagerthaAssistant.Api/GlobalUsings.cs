@@ -4,13 +4,13 @@ global using SharedBotKernel.Domain.Entities;
 global using MessageRole = SharedBotKernel.Domain.AI.MessageRole;
 
 // Telegram types → SharedBotKernel (duplicates removed)
-global using ITelegramBotSender = SharedBotKernel.Infrastructure.Telegram.ITelegramBotSender;
-global using TelegramSendResult = SharedBotKernel.Infrastructure.Telegram.TelegramSendResult;
-global using TelegramSendOptions = SharedBotKernel.Infrastructure.Telegram.TelegramSendOptions;
+global using ITelegramBotSender = SharedBotKernel.Abstractions.ITelegramBotSender;
+global using TelegramSendResult = SharedBotKernel.Abstractions.TelegramSendResult;
+global using TelegramSendOptions = SharedBotKernel.Abstractions.TelegramSendOptions;
 global using TelegramOptions = SharedBotKernel.Options.TelegramOptions;
 
 // AI types → SharedBotKernel (duplicates removed)
-global using IAiChatClient = SharedBotKernel.Infrastructure.AI.IAiChatClient;
+global using IAiChatClient = SharedBotKernel.Abstractions.IAiChatClient;
 global using IAiRuntimeSettingsService = SharedBotKernel.Infrastructure.AI.IAiRuntimeSettingsService;
 global using IAiSecretProtector = SharedBotKernel.Infrastructure.AI.IAiSecretProtector;
 global using IConversationScopeAccessor = SharedBotKernel.Infrastructure.AI.IConversationScopeAccessor;

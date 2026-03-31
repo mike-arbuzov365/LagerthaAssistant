@@ -1,5 +1,6 @@
 namespace BaguetteDesign.Infrastructure.AI;
 
+using SharedBotKernel.Abstractions;
 using SharedBotKernel.Domain.AI;
 using SharedBotKernel.Infrastructure.AI;
 using SharedBotKernel.Models.AI;

@@ -5,8 +5,6 @@ using BaguetteDesign.Application.Interfaces;
 using BaguetteDesign.Domain.Entities;
 using BaguetteDesign.Domain.Enums;
 using BaguetteDesign.Domain.Models;
-using SharedBotKernel.Infrastructure.AI;
-using SharedBotKernel.Infrastructure.Telegram;
 
 public sealed class BriefFlowService : IBriefFlowService
 {

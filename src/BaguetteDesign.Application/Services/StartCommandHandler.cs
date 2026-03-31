@@ -3,7 +3,6 @@ namespace BaguetteDesign.Application.Services;
 using BaguetteDesign.Application.Interfaces;
 using BaguetteDesign.Domain.Enums;
 using BaguetteDesign.Domain.Interfaces;
-using SharedBotKernel.Infrastructure.Telegram;
 
 public sealed class StartCommandHandler : IStartCommandHandler
 {

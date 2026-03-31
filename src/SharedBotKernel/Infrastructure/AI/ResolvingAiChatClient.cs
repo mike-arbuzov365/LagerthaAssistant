@@ -1,5 +1,6 @@
 namespace SharedBotKernel.Infrastructure.AI;
 
+using SharedBotKernel.Abstractions;
 using SharedBotKernel.Constants;
 using SharedBotKernel.Domain.AI;
 using SharedBotKernel.Models.AI;

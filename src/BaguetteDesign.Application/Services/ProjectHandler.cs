@@ -3,7 +3,6 @@ namespace BaguetteDesign.Application.Services;
 using BaguetteDesign.Application.Interfaces;
 using BaguetteDesign.Domain.Entities;
 using BaguetteDesign.Domain.Enums;
-using SharedBotKernel.Infrastructure.Telegram;
 
 public sealed class ProjectHandler : IProjectHandler
 {

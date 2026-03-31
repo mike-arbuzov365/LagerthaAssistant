@@ -82,7 +82,8 @@ public sealed class CommercialProposalHandlerTests
         var leadRepo = new FakeLeadRepo(leads);
         var memory = new FakeMemoryRepo();
         var ai = new FakeAiClient();
-        var handler = new CommercialProposalHandler(leadRepo, memory, ai, sender);
+        var handler = new CommercialProposalHandler(leadRepo, memory, ai, sender,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<CommercialProposalHandler>.Instance);
         return (handler, sender, leadRepo, memory);
     }
 

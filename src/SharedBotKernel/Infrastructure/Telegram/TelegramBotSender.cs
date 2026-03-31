@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
+using SharedBotKernel.Abstractions;
 using SharedBotKernel.Options;
 
 public sealed class TelegramBotSender : ITelegramBotSender, IDisposable
