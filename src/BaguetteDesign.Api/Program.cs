@@ -13,6 +13,7 @@ using BaguetteDesign.Application.Interfaces;
 using BaguetteDesign.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using SharedBotKernel.Abstractions;
 using SharedBotKernel.Infrastructure.AI;
 using SharedBotKernel.Infrastructure.Telegram;
 using SharedBotKernel.Options;

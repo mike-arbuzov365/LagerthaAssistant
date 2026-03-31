@@ -21,7 +21,10 @@ public sealed class ClaudeChatClient
     {
         _options = options;
         _logger = logger;
-        _httpClient = new HttpClient
+        _httpClient = new HttpClient(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+        })
         {
             BaseAddress = new Uri(_options.BaseUrl),
             Timeout = TimeSpan.FromSeconds(ClaudeConstants.HttpTimeoutSeconds)

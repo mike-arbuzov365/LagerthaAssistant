@@ -6,8 +6,6 @@ using BaguetteDesign.Domain.Enums;
 using BaguetteDesign.Domain.Interfaces;
 using SharedBotKernel.Domain.AI;
 using SharedBotKernel.Domain.Entities;
-using SharedBotKernel.Infrastructure.AI;
-using SharedBotKernel.Infrastructure.Telegram;
 
 public sealed class InboxHandler : IInboxHandler
 {

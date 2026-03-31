@@ -21,7 +21,10 @@ public sealed class OpenAiChatClient
     {
         _options = options;
         _logger = logger;
-        _httpClient = new HttpClient
+        _httpClient = new HttpClient(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+        })
         {
             BaseAddress = new Uri(_options.BaseUrl),
             Timeout = TimeSpan.FromSeconds(OpenAiConstants.HttpTimeoutSeconds)
@@ -65,7 +68,7 @@ public sealed class OpenAiChatClient
         using var jsonDocument = JsonDocument.Parse(rawResponse);
 
         var root = jsonDocument.RootElement;
-        var responseModel = root.GetProperty("model").GetString() ?? model;
+        var responseModel = root.TryGetProperty("model", out var modelJson) ? modelJson.GetString() ?? model : model;
         var assistantContent = ExtractAssistantContent(root);
 
         if (string.IsNullOrWhiteSpace(assistantContent))

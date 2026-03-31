@@ -2,8 +2,6 @@ namespace BaguetteDesign.Application.Services;
 
 using BaguetteDesign.Application.Interfaces;
 using SharedBotKernel.Domain.AI;
-using SharedBotKernel.Infrastructure.AI;
-using SharedBotKernel.Infrastructure.Telegram;
 
 public sealed class QuestionHandler : IQuestionHandler
 {

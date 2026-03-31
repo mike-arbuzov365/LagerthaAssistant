@@ -5,7 +5,7 @@ global using MessageRole = SharedBotKernel.Domain.AI.MessageRole;
 global using ConversationMessage = SharedBotKernel.Domain.AI.ConversationMessage;
 
 // AI interfaces → SharedBotKernel (duplicates removed)
-global using IAiChatClient = SharedBotKernel.Infrastructure.AI.IAiChatClient;
+global using IAiChatClient = SharedBotKernel.Abstractions.IAiChatClient;
 global using IAiSecretProtector = SharedBotKernel.Infrastructure.AI.IAiSecretProtector;
 global using IAiRuntimeSettingsService = SharedBotKernel.Infrastructure.AI.IAiRuntimeSettingsService;
 global using IConversationScopeAccessor = SharedBotKernel.Infrastructure.AI.IConversationScopeAccessor;

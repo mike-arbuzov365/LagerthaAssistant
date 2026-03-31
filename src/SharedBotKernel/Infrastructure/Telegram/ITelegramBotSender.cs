@@ -1,4 +1,4 @@
-namespace SharedBotKernel.Infrastructure.Telegram;
+namespace SharedBotKernel.Abstractions;
 
 public interface ITelegramBotSender
 {

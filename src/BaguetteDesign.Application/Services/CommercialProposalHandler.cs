@@ -1,9 +1,8 @@
 namespace BaguetteDesign.Application.Services;
 
 using BaguetteDesign.Application.Interfaces;
+using Microsoft.Extensions.Logging;
 using SharedBotKernel.Domain.AI;
-using SharedBotKernel.Infrastructure.AI;
-using SharedBotKernel.Infrastructure.Telegram;
 
 public sealed class CommercialProposalHandler : ICommercialProposalHandler
 {
@@ -13,17 +12,20 @@ public sealed class CommercialProposalHandler : ICommercialProposalHandler
     private readonly IUserMemoryRepository _memory;
     private readonly IAiChatClient _ai;
     private readonly ITelegramBotSender _sender;
+    private readonly ILogger<CommercialProposalHandler> _logger;
 
     public CommercialProposalHandler(
         ILeadRepository leads,
         IUserMemoryRepository memory,
         IAiChatClient ai,
-        ITelegramBotSender sender)
+        ITelegramBotSender sender,
+        ILogger<CommercialProposalHandler> logger)
     {
         _leads = leads;
         _memory = memory;
         _ai = ai;
         _sender = sender;
+        _logger = logger;
     }
 
     public async Task GenerateDraftAsync(long chatId, int leadId, string? languageCode, CancellationToken ct = default)
@@ -70,8 +72,9 @@ public sealed class CommercialProposalHandler : ICommercialProposalHandler
             var result = await _ai.CompleteAsync(messages, ct);
             draft = result.Content;
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            _logger.LogWarning(ex, "AI draft generation failed for lead {LeadId}; using template fallback.", leadId);
             draft = locale == "uk"
                 ? $"Комерційна пропозиція для {lead.ServiceType ?? "дизайн-проєкту"}\n\nБюджет: {lead.Budget}\nТермін: {lead.Deadline}"
                 : $"Commercial Proposal for {lead.ServiceType ?? "design project"}\n\nBudget: {lead.Budget}\nTimeline: {lead.Deadline}";

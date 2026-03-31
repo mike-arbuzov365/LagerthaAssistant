@@ -3,7 +3,7 @@ namespace BaguetteDesign.Infrastructure.Telegram;
 using BaguetteDesign.Application.Interfaces;
 using BaguetteDesign.Domain.Models;
 using BaguetteDesign.Infrastructure.Options;
-using SharedBotKernel.Infrastructure.Telegram;
+using SharedBotKernel.Abstractions;
 
 public sealed class DesignerNotifier : IDesignerNotifier
 {

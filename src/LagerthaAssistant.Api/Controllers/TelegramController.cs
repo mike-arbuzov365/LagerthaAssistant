@@ -237,6 +237,7 @@ public sealed class TelegramController : ControllerBase
 
             if (!string.IsNullOrWhiteSpace(callbackQueryId))
             {
+                // CancellationToken.None: Telegram requires ack within 30s regardless of request cancellation.
                 await TryAnswerCallbackQueryAsync(callbackQueryId, CancellationToken.None);
                 callbackQueryId = null;
             }
@@ -322,6 +323,7 @@ public sealed class TelegramController : ControllerBase
             }
 
             await _processedUpdates.MarkProcessedAsync(update.UpdateId, cancellationToken);
+            // CancellationToken.None: cleanup is a best-effort background operation, must not be skipped on cancellation.
             await CleanupOldUpdatesAsync(CancellationToken.None);
 
             if (!sendResult.Succeeded)
@@ -349,6 +351,7 @@ public sealed class TelegramController : ControllerBase
         }
         finally
         {
+            // CancellationToken.None: must ack pending callback even if the request was cancelled/errored.
             await TryAnswerCallbackQueryAsync(callbackQueryId, CancellationToken.None);
         }
     }
@@ -3693,7 +3696,9 @@ public sealed class TelegramController : ControllerBase
         var secret = _options.WebhookSecret;
         if (string.IsNullOrWhiteSpace(secret))
         {
-            return true;
+            // Fail-secure: reject all requests when secret is not configured.
+            // Set TelegramOptions:WebhookSecret in Railway variables.
+            return false;
         }
 
         var received = Request.Headers[TelegramSecretHeader].FirstOrDefault();

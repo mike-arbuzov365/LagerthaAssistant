@@ -5,6 +5,7 @@ using BaguetteDesign.Domain.Enums;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using SharedBotKernel.Abstractions;
 using System.Text.Json;
 
 public sealed class ReminderWorker : BackgroundService
@@ -42,7 +43,7 @@ public sealed class ReminderWorker : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
-        var sender = scope.ServiceProvider.GetRequiredService<SharedBotKernel.Infrastructure.Telegram.ITelegramBotSender>();
+        var sender = scope.ServiceProvider.GetRequiredService<ITelegramBotSender>();
 
         var due = await notifications.GetDueAsync(DateTimeOffset.UtcNow, ct);
 
@@ -64,7 +65,7 @@ public sealed class ReminderWorker : BackgroundService
     }
 
     private static async Task SendReminderAsync(
-        SharedBotKernel.Infrastructure.Telegram.ITelegramBotSender sender,
+        ITelegramBotSender sender,
         Domain.Entities.Notification notification,
         CancellationToken ct)
     {
