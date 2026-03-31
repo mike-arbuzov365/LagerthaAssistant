@@ -4,14 +4,16 @@
 
 ---
 
-## Current State (2026-03-29)
+## Current State (2026-03-31)
 
 | Bot | Status | URL |
 |---|---|---|
 | **LagerthaAssistant** | Production on Railway | — |
-| **BaguetteDesign** | Not yet deployed (M1 in progress) | — |
+| **BaguetteDesign** | Ready to deploy (M1+M2 merged, runbook ready) | — |
 
-CI/CD pipeline: **not yet configured** (planned in M3 #031)
+CI/CD pipeline: **configured** — `.github/workflows/ci.yml` (PR checks) + `.github/workflows/deploy-baguette.yml` (auto-deploy on master push)
+
+> Детальна покрокова інструкція деплою BaguetteDesign: `docs/21-baguette-deploy-runbook.md`
 
 ---
 
@@ -85,11 +87,12 @@ Graph__TenantId=...
 Lagertha__AdminUserId=...
 ```
 
-**BaguetteDesign (Railway, planned):**
+**BaguetteDesign (Railway):**
 ```
 ConnectionStrings__DefaultConnection=Host=...;Database=baguette_design;...
 Telegram__BotToken=...
 Telegram__Enabled=true
+Telegram__WebhookSecret=...
 Claude__ApiKey=...
 Claude__Model=claude-sonnet-4-6
 Baguette__AdminUserId=...
@@ -147,33 +150,23 @@ dotnet ef database update \
 
 ---
 
-## Planned: GitHub Actions CI/CD (M3 #031)
+## GitHub Actions CI/CD
 
-```yaml
-# .github/workflows/ci.yml — on every PR
-name: CI
-on: [pull_request]
-jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with: { dotnet-version: '10.x' }
-      - run: dotnet build BotPlatform.sln
-      - run: dotnet test BotPlatform.sln
+Workflows у `.github/workflows/`:
 
-# .github/workflows/deploy-baguette.yml — on push to master
-# path filter: only if src/BaguetteDesign.* or src/SharedBotKernel changed
-```
+- **`ci.yml`** — запускається на кожен PR у master і push у dev: restore → build → test
+- **`deploy-baguette.yml`** — запускається на push у master якщо змінились `src/BaguetteDesign.*` або `src/SharedBotKernel`: build → test → `railway up --service baguette-design`
+
+Потрібний secret у GitHub: `RAILWAY_TOKEN` (Railway → Account Settings → Tokens).
 
 ---
 
 ## Pre-deploy Checklist
 
-- [ ] `dotnet test BotPlatform.sln` — all green
-- [ ] Migrations applied to target DB
+- [ ] `dotnet test LagerthaAssistant.sln` — all green (945/945)
+- [ ] Migrations applied to target DB (8 міграцій BaguetteDesign)
 - [ ] `GET /health` → `{"status":"healthy","db":"connected"}`
-- [ ] Telegram webhook registered and verified
+- [ ] Telegram webhook registered and verified (`setWebhook` + `secret_token`)
 - [ ] No secrets hardcoded in appsettings.json
+- [ ] `Telegram__WebhookSecret` встановлено на Railway
 - [ ] Tested manually in Telegram: /start as client + as designer

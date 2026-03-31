@@ -1,0 +1,34 @@
+name: Deploy BaguetteDesign
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'src/BaguetteDesign.**/**'
+      - 'src/SharedBotKernel/**'
+      - 'src/BaguetteDesign.Api/Dockerfile'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Build & Test
+        run: |
+          dotnet restore LagerthaAssistant.sln
+          dotnet build LagerthaAssistant.sln --no-restore --configuration Release
+          dotnet test LagerthaAssistant.sln --no-build --configuration Release
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service baguette-design --detach
