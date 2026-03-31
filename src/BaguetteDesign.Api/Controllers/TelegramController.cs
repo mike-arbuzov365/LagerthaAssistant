@@ -6,6 +6,7 @@ using BaguetteDesign.Domain.Enums;
 using BaguetteDesign.Domain.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using SharedBotKernel.Abstractions;
 using SharedBotKernel.Options;
 
 [ApiController]
@@ -45,6 +46,7 @@ public sealed class TelegramController : ControllerBase
     private readonly IProjectHandler _projectHandler;
     private readonly ICommercialProposalHandler _proposalHandler;
     private readonly IRoleRouter _roleRouter;
+    private readonly ITelegramBotSender _sender;
     private readonly TelegramOptions _options;
 
     public TelegramController(
@@ -60,6 +62,7 @@ public sealed class TelegramController : ControllerBase
         IProjectHandler projectHandler,
         ICommercialProposalHandler proposalHandler,
         IRoleRouter roleRouter,
+        ITelegramBotSender sender,
         IOptions<TelegramOptions> options)
     {
         _startHandler = startHandler;
@@ -74,6 +77,7 @@ public sealed class TelegramController : ControllerBase
         _projectHandler = projectHandler;
         _proposalHandler = proposalHandler;
         _roleRouter = roleRouter;
+        _sender = sender;
         _options = options.Value;
     }
 
@@ -251,6 +255,14 @@ public sealed class TelegramController : ControllerBase
             else if (cbData.StartsWith("brief_", StringComparison.Ordinal))
             {
                 await _briefFlow.HandleCallbackAsync(cbChatId, cbUserId.ToString(), cbData, cbLang, cancellationToken);
+            }
+            else if (cbData == "settings")
+            {
+                // Fallback: WebAppUrl not configured — guide user to set it up.
+                var msg = cbLang?.StartsWith("uk", StringComparison.OrdinalIgnoreCase) == true
+                    ? "⚙️ Налаштування поки недоступні. Зверніться до адміністратора."
+                    : "⚙️ Settings are not available yet. Contact the administrator.";
+                await _sender.SendTextAsync(cbChatId, msg, cancellationToken: cancellationToken);
             }
 
             return Ok();

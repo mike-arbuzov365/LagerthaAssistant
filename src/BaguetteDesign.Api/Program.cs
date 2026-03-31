@@ -33,7 +33,11 @@ builder.Services.Configure<TelegramOptions>(
     builder.Configuration.GetSection(TelegramOptions.SectionName));
 builder.Services.AddHttpClient("telegram");
 builder.Services.AddSingleton<ITelegramBotSender, TelegramBotSender>();
-builder.Services.AddScoped<IStartCommandHandler, StartCommandHandler>();
+builder.Services.AddScoped<IStartCommandHandler>(_ =>
+    new StartCommandHandler(
+        _.GetRequiredService<IRoleRouter>(),
+        _.GetRequiredService<ITelegramBotSender>(),
+        baguetteOptions.WebAppUrl));
 
 var claudeOptions = builder.Configuration
     .GetSection("Claude")
@@ -117,6 +121,9 @@ app.MapGet("/health", async (BaguetteDbContext db) =>
         return Results.Ok(new { status = "healthy", db = "unavailable" });
     }
 });
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 app.MapControllers();
 
