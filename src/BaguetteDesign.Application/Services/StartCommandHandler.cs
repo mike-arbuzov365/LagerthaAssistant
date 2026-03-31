@@ -8,11 +8,13 @@ public sealed class StartCommandHandler : IStartCommandHandler
 {
     private readonly IRoleRouter _roleRouter;
     private readonly ITelegramBotSender _sender;
+    private readonly string _webAppUrl;
 
-    public StartCommandHandler(IRoleRouter roleRouter, ITelegramBotSender sender)
+    public StartCommandHandler(IRoleRouter roleRouter, ITelegramBotSender sender, string webAppUrl = "")
     {
         _roleRouter = roleRouter;
         _sender = sender;
+        _webAppUrl = webAppUrl.TrimEnd('/');
     }
 
     public async Task HandleAsync(
@@ -56,11 +58,15 @@ public sealed class StartCommandHandler : IStartCommandHandler
         return (text, keyboard);
     }
 
-    private static (string text, object keyboard) BuildDesignerMenu(string locale)
+    private (string text, object keyboard) BuildDesignerMenu(string locale)
     {
         var text = locale == "uk"
             ? "Привіт! Твоя робоча панель:"
             : "Hello! Your workspace:";
+
+        var settingsBtn = string.IsNullOrWhiteSpace(_webAppUrl)
+            ? Btn("⚙️ Налаштування", "settings")
+            : BtnWebApp("⚙️ Налаштування", $"{_webAppUrl}/settings.html");
 
         var keyboard = new
         {
@@ -68,7 +74,7 @@ public sealed class StartCommandHandler : IStartCommandHandler
             {
                 new[] { Btn("📩 Inbox", "inbox"), Btn("👤 Ліди", "leads") },
                 new[] { Btn("📁 Проєкти", "projects"), Btn("⚡ Швидка дія", "quick") },
-                new[] { Btn("⚙️ Налаштування", "settings") }
+                new[] { settingsBtn }
             }
         };
 
@@ -77,6 +83,9 @@ public sealed class StartCommandHandler : IStartCommandHandler
 
     private static object Btn(string text, string callbackData)
         => new { text, callback_data = callbackData };
+
+    private static object BtnWebApp(string text, string url)
+        => new { text, web_app = new { url } };
 
     private static string ResolveLocale(string? languageCode)
         => languageCode?.StartsWith("uk", StringComparison.OrdinalIgnoreCase) == true ? "uk" : "en";

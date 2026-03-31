@@ -5,11 +5,15 @@ using BaguetteDesign.Application.Interfaces;
 using BaguetteDesign.Domain.Enums;
 using BaguetteDesign.Domain.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using SharedBotKernel.Abstractions;
+using SharedBotKernel.Options;
 
 [ApiController]
 [Route("api/telegram")]
 public sealed class TelegramController : ControllerBase
 {
+    private const string TelegramSecretHeader = "X-Telegram-Bot-Api-Secret-Token";
     private const string PriceCategoryPrefix = "price_cat_";
     private const string PortfolioCategoryPrefix = "portfolio_cat_";
     private const string PortfolioSimilarPrefix = "portfolio_similar_";
@@ -42,6 +46,8 @@ public sealed class TelegramController : ControllerBase
     private readonly IProjectHandler _projectHandler;
     private readonly ICommercialProposalHandler _proposalHandler;
     private readonly IRoleRouter _roleRouter;
+    private readonly ITelegramBotSender _sender;
+    private readonly TelegramOptions _options;
 
     public TelegramController(
         IStartCommandHandler startHandler,
@@ -55,7 +61,9 @@ public sealed class TelegramController : ControllerBase
         ILeadHandler leadHandler,
         IProjectHandler projectHandler,
         ICommercialProposalHandler proposalHandler,
-        IRoleRouter roleRouter)
+        IRoleRouter roleRouter,
+        ITelegramBotSender sender,
+        IOptions<TelegramOptions> options)
     {
         _startHandler = startHandler;
         _questionHandler = questionHandler;
@@ -69,6 +77,8 @@ public sealed class TelegramController : ControllerBase
         _projectHandler = projectHandler;
         _proposalHandler = proposalHandler;
         _roleRouter = roleRouter;
+        _sender = sender;
+        _options = options.Value;
     }
 
     [HttpPost("webhook")]
@@ -76,6 +86,10 @@ public sealed class TelegramController : ControllerBase
         [FromBody] TelegramUpdate update,
         CancellationToken cancellationToken)
     {
+        if (!IsSecretValid())
+            return Unauthorized();
+
+
         // ── Callback query (inline keyboard button press) ─────────────────
         if (update.CallbackQuery is { } cb)
         {
@@ -242,6 +256,14 @@ public sealed class TelegramController : ControllerBase
             {
                 await _briefFlow.HandleCallbackAsync(cbChatId, cbUserId.ToString(), cbData, cbLang, cancellationToken);
             }
+            else if (cbData == "settings")
+            {
+                // Fallback: WebAppUrl not configured — guide user to set it up.
+                var msg = cbLang?.StartsWith("uk", StringComparison.OrdinalIgnoreCase) == true
+                    ? "⚙️ Налаштування поки недоступні. Зверніться до адміністратора."
+                    : "⚙️ Settings are not available yet. Contact the administrator.";
+                await _sender.SendTextAsync(cbChatId, msg, cancellationToken: cancellationToken);
+            }
 
             return Ok();
         }
@@ -295,6 +317,20 @@ public sealed class TelegramController : ControllerBase
         // Otherwise route to AI question handler
         await _questionHandler.HandleAsync(chatId, userId, text, languageCode, cancellationToken);
         return Ok();
+    }
+
+    private bool IsSecretValid()
+    {
+        var secret = _options.WebhookSecret;
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            // Fail-secure: reject all requests when secret is not configured.
+            // Set Telegram:WebhookSecret in Railway variables.
+            return false;
+        }
+
+        var received = Request.Headers[TelegramSecretHeader].FirstOrDefault();
+        return string.Equals(secret, received, StringComparison.Ordinal);
     }
 }
 

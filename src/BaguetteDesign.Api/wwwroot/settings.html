@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Налаштування студії</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* ═══════════════════════════════════════════════
+   DESIGN TOKENS (docs/08-design-system.md)
+═══════════════════════════════════════════════ */
+:root {
+  --color-bg-primary:     #0F0F0F;
+  --color-bg-surface:     #1A1A1A;
+  --color-bg-elevated:    #242424;
+  --color-bg-input:       #1F1F1F;
+
+  --color-accent-gold:    #D4AF37;
+  --color-accent-gold-dim:#B8942E;
+  --color-accent-ai:      #7C4DFF;
+  --color-accent-ai-dim:  #6B3FE0;
+  --color-accent-client:  #2D87FF;
+
+  --color-success:        #34C759;
+  --color-error:          #FF3B30;
+  --color-warning:        #FF9F0A;
+  --color-info:           #5AC8FA;
+  --color-success-soft:   rgba(52,199,89,0.15);
+  --color-error-soft:     rgba(255,59,48,0.15);
+  --color-warning-soft:   rgba(255,159,10,0.15);
+  --color-info-soft:      rgba(90,200,250,0.15);
+  --color-neutral-soft:   rgba(255,255,255,0.08);
+
+  --color-text-primary:   #FFFFFF;
+  --color-text-secondary: rgba(255,255,255,0.60);
+  --color-text-tertiary:  rgba(255,255,255,0.55);
+  --color-text-inverse:   #0F0F0F;
+
+  --color-border-default: rgba(255,255,255,0.08);
+  --color-border-focus:   rgba(212,175,55,0.60);
+  --color-border-error:   rgba(255,59,48,0.60);
+
+  --font-family:          'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-size-display:    24px;
+  --font-size-title:      20px;
+  --font-size-headline:   17px;
+  --font-size-body:       15px;
+  --font-size-label:      13px;
+  --font-size-caption:    12px;
+
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+  --radius-full: 9999px;
+
+  --shadow-card:   0 2px 12px rgba(0,0,0,0.40);
+  --shadow-modal:  0 8px 32px rgba(0,0,0,0.60);
+  --shadow-button: 0 2px 8px rgba(212,175,55,0.25);
+
+  --duration-fast:   150ms;
+  --duration-normal: 250ms;
+  --easing-default:  cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --tma-header-height: 56px;
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+/* ═══════════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { height: 100%; }
+
+body {
+  font-family: var(--font-family);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body);
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* ═══════════════════════════════════════════════
+   HEADER (docs/08 §6.11)
+═══════════════════════════════════════════════ */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: var(--tma-header-height);
+  padding: 0 var(--space-4);
+  padding-top: var(--safe-top);
+  background: var(--color-bg-primary);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.header__title {
+  font-size: var(--font-size-headline);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-label);
+  font-weight: 500;
+  background: rgba(212,175,55,0.15);
+  color: var(--color-accent-gold);
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--easing-default);
+}
+.role-badge:active { opacity: 0.7; }
+.role-badge--client {
+  background: rgba(45,135,255,0.15);
+  color: var(--color-accent-client);
+}
+
+/* ═══════════════════════════════════════════════
+   SCROLL CONTAINER
+═══════════════════════════════════════════════ */
+.page {
+  padding: var(--space-5) var(--space-4);
+  padding-bottom: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* ═══════════════════════════════════════════════
+   SECTION HEADER — ATOM (docs/08 §6.7)
+═══════════════════════════════════════════════ */
+.section-header {
+  font-size: var(--font-size-label);
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+/* ═══════════════════════════════════════════════
+   CARD (docs/08 §6.2)
+═══════════════════════════════════════════════ */
+.card {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ═══════════════════════════════════════════════
+   LIST ROW (docs/08 §6.8)
+═══════════════════════════════════════════════ */
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 0 var(--space-4);
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-default);
+}
+.list-row:first-child { border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
+.list-row:last-child {
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  border-bottom: none;
+}
+.list-row:only-child { border-radius: var(--radius-xl); border-bottom: none; }
+
+.list-row__left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.list-row__icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.list-row__label { font-size: var(--font-size-body); color: var(--color-text-primary); }
+.list-row__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.list-row__value { font-size: var(--font-size-body); color: var(--color-text-secondary); }
+.list-row__chevron { color: var(--color-text-tertiary); font-size: 14px; }
+
+/* ═══════════════════════════════════════════════
+   TOGGLE (docs/08 §6.3 + docs/15 §3)
+═══════════════════════════════════════════════ */
+.toggle-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  gap: var(--space-3);
+}
+.toggle-wrapper__label {
+  font-size: var(--font-size-body);
+  color: var(--color-text-primary);
+  flex: 1;
+}
+
+.toggle {
+  position: relative;
+  width: 52px;
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.toggle input { display: none; }
+
+.toggle__track {
+  width: 52px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--color-border-default);
+  position: relative;
+  transition: background var(--duration-normal) var(--easing-default);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.toggle input:checked ~ .toggle__track {
+  background: var(--color-accent-gold);
+  border-color: transparent;
+}
+.toggle input:disabled ~ .toggle__track { opacity: 0.30; }
+
+.toggle__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.40);
+  transition: transform var(--duration-normal) var(--easing-spring);
+}
+.toggle input:checked ~ .toggle__track .toggle__thumb {
+  transform: translateX(20px);
+}
+
+/* ═══════════════════════════════════════════════
+   SEGMENTED CONTROL (docs/08 §6.6 + docs/15 §4)
+═══════════════════════════════════════════════ */
+.segmented {
+  display: flex;
+  background: rgba(255,255,255,0.05);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  gap: 0;
+  height: 44px;
+}
+
+.segmented__option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: calc(var(--radius-sm) - 2px);
+  font-size: var(--font-size-label);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--easing-default);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  white-space: nowrap;
+  padding: 0 var(--space-2);
+}
+.segmented__option--active {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-card);
+}
+
+/* ═══════════════════════════════════════════════
+   STATUS BADGE (docs/08 §6.5 + docs/15 §5)
+═══════════════════════════════════════════════ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-label);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.badge--connected {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+.badge--connected .badge__dot { background: var(--color-success); }
+
+.badge--error {
+  background: var(--color-error-soft);
+  color: var(--color-error);
+}
+.badge--error .badge__dot {
+  background: var(--color-error);
+  animation: pulse-error 1.5s ease-in-out infinite;
+}
+
+.badge--pending {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+.badge--pending .badge__dot { background: var(--color-warning); }
+
+.badge--not-configured {
+  background: var(--color-neutral-soft);
+  color: var(--color-text-tertiary);
+}
+.badge--not-configured .badge__dot { background: var(--color-text-tertiary); border: 1px solid rgba(255,255,255,0.20); }
+
+@keyframes pulse-error {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ═══════════════════════════════════════════════
+   INTEGRATION CARD (docs/08 §6.2 + state matrix)
+═══════════════════════════════════════════════ */
+.integration-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 68px;
+  padding: 14px var(--space-4);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--easing-default);
+  -webkit-tap-highlight-color: transparent;
+}
+.integration-row:active { background: var(--color-bg-elevated); }
+
+.integration-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  background: var(--color-bg-elevated);
+}
+.integration-info { flex: 1; min-width: 0; }
+.integration-name {
+  font-size: var(--font-size-body);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+.integration-sync {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+}
+.integration-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════
+   INPUT FIELD (docs/08 §6.4 + docs/15 §2)
+═══════════════════════════════════════════════ */
+.input-field {
+  position: relative;
+  height: 52px;
+}
+.input-field input {
+  width: 100%;
+  height: 52px;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-4);
+  font-size: var(--font-size-body);
+  font-family: var(--font-family);
+  color: var(--color-text-primary);
+  outline: none;
+  transition: border-color var(--duration-fast) var(--easing-default),
+              box-shadow var(--duration-fast) var(--easing-default);
+}
+.input-field input::placeholder { color: var(--color-text-tertiary); }
+.input-field input:focus {
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 3px rgba(212,175,55,0.15);
+}
+
+.input-label {
+  display: block;
+  font-size: var(--font-size-label);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+/* ═══════════════════════════════════════════════
+   AI SLIDER (docs/08 §6.10)
+═══════════════════════════════════════════════ */
+.ai-slider {
+  padding: var(--space-2) 0;
+}
+.ai-slider__track {
+  position: relative;
+  height: 4px;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-full);
+  margin: 0 12px;
+}
+.ai-slider__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--color-accent-ai);
+  border-radius: var(--radius-full);
+  transition: width var(--duration-normal) var(--easing-default);
+}
+.ai-slider__thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-accent-ai);
+  box-shadow: 0 2px 8px rgba(124,77,255,0.50);
+  cursor: pointer;
+  transition: left var(--duration-normal) var(--easing-spring),
+              transform var(--duration-fast) var(--easing-default);
+  -webkit-tap-highlight-color: transparent;
+}
+.ai-slider__thumb:active { transform: translate(-50%, -50%) scale(1.2); }
+.ai-slider__labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-2);
+  padding: 0 4px;
+}
+.ai-slider__labels span {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-secondary);
+}
+
+/* ═══════════════════════════════════════════════
+   BUTTONS (docs/08 §6.1)
+═══════════════════════════════════════════════ */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-label);
+  font-weight: 500;
+  font-family: var(--font-family);
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all var(--duration-fast) var(--easing-default);
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn--primary {
+  background: var(--color-accent-gold);
+  color: var(--color-text-inverse);
+  box-shadow: var(--shadow-button);
+  font-weight: 600;
+  font-size: var(--font-size-body);
+  min-height: 52px;
+}
+.btn--primary:active { background: var(--color-accent-gold-dim); }
+
+.btn--ghost {
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.60);
+  border: 1px solid var(--color-border-default);
+}
+.btn--ghost:active { background: rgba(255,255,255,0.08); }
+
+.btn--destructive {
+  background: transparent;
+  color: var(--color-error);
+  border: 1px solid rgba(255,59,48,0.30);
+}
+.btn--destructive:active { background: rgba(255,59,48,0.08); }
+
+.btn--full { width: 100%; }
+
+/* ═══════════════════════════════════════════════
+   SAVE BAR (sticky bottom)
+═══════════════════════════════════════════════ */
+.save-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-4);
+  padding-bottom: calc(var(--space-4) + var(--safe-bottom));
+  background: linear-gradient(to top, var(--color-bg-primary) 70%, transparent);
+  z-index: 90;
+}
+
+/* ═══════════════════════════════════════════════
+   ROW SEPARATOR inside card
+═══════════════════════════════════════════════ */
+.divider {
+  height: 1px;
+  background: var(--color-border-default);
+  margin: 0 calc(-1 * var(--space-4));
+}
+
+/* ═══════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════ */
+.toast {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-label);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-modal);
+  z-index: 200;
+  opacity: 0;
+  transition: all var(--duration-normal) var(--easing-default);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.toast--success { border-color: rgba(52,199,89,0.40); }
+
+/* ═══════════════════════════════════════════════
+   BOTTOM SHEET
+═══════════════════════════════════════════════ */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.60);
+  z-index: 150;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-normal) var(--easing-default);
+}
+.overlay--visible { opacity: 1; pointer-events: all; }
+
+.bottom-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-bg-elevated);
+  border-radius: 20px 20px 0 0;
+  padding: var(--space-6) var(--space-4);
+  padding-bottom: calc(var(--space-6) + var(--safe-bottom));
+  z-index: 160;
+  transform: translateY(100%);
+  transition: transform var(--duration-normal) var(--easing-spring);
+}
+.bottom-sheet--visible { transform: translateY(0); }
+
+.bottom-sheet__handle {
+  width: 32px;
+  height: 4px;
+  background: rgba(255,255,255,0.20);
+  border-radius: var(--radius-full);
+  margin: 0 auto var(--space-5);
+}
+.bottom-sheet__title {
+  font-size: var(--font-size-headline);
+  font-weight: 600;
+  margin-bottom: var(--space-4);
+}
+.bottom-sheet__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  border-bottom: 1px solid var(--color-border-default);
+  font-size: var(--font-size-body);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity var(--duration-fast);
+}
+.bottom-sheet__option:last-child { border-bottom: none; }
+.bottom-sheet__option:active { opacity: 0.6; }
+.bottom-sheet__option--selected { color: var(--color-accent-gold); font-weight: 500; }
+.bottom-sheet__check { color: var(--color-accent-gold); font-size: 18px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header class="header">
+  <span class="header__title">Налаштування студії</span>
+  <button class="role-badge" id="roleBadge" onclick="toggleRole()">
+    Режим дизайнера
+  </button>
+</header>
+
+<!-- ═══════════ PAGE CONTENT ═══════════ -->
+<main class="page">
+
+  <!-- ── 1. Профіль і студія ────────────────── -->
+  <section>
+    <div class="section-header">Профіль і студія</div>
+    <div class="list-row">
+      <div class="list-row__left">
+        <div class="list-row__icon">🏢</div>
+        <span class="list-row__label">Назва студії</span>
+      </div>
+      <div class="list-row__right">
+        <span class="list-row__value">Baguette Design</span>
+        <span class="list-row__chevron">›</span>
+      </div>
+    </div>
+    <div class="list-row">
+      <div class="list-row__left">
+        <div class="list-row__icon">🌐</div>
+        <span class="list-row__label">Мова інтерфейсу</span>
+      </div>
+      <div class="list-row__right">
+        <span class="list-row__value" id="langValue">Українська</span>
+        <span class="list-row__chevron">›</span>
+      </div>
+    </div>
+    <div class="list-row" style="cursor:pointer" onclick="openLangSheet()">
+      <div class="list-row__left">
+        <div class="list-row__icon">🕐</div>
+        <span class="list-row__label">Часовий пояс</span>
+      </div>
+      <div class="list-row__right">
+        <span class="list-row__value">Kyiv (UTC+3)</span>
+        <span class="list-row__chevron">›</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 2. AI-асистент ─────────────────────── -->
+  <section>
+    <div class="section-header">AI-асистент</div>
+    <div class="card">
+
+      <div>
+        <div class="input-label">Модель</div>
+        <div class="segmented" role="group" aria-label="Модель AI">
+          <div class="segmented__option segmented__option--active" onclick="selectSegment(this, 'model')">Claude</div>
+          <div class="segmented__option" onclick="selectSegment(this, 'model')">GPT-4o</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div>
+        <div class="input-label">Стиль відповіді</div>
+        <div class="segmented" role="group" aria-label="Стиль відповіді">
+          <div class="segmented__option" onclick="selectSegment(this, 'tone')">Чернетка</div>
+          <div class="segmented__option segmented__option--active" onclick="selectSegment(this, 'tone')">Стандарт</div>
+          <div class="segmented__option" onclick="selectSegment(this, 'tone')">Дослідження</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div>
+        <div class="input-label">Рівень креативності</div>
+        <div class="ai-slider" id="aiSlider">
+          <div class="ai-slider__track">
+            <div class="ai-slider__fill" id="sliderFill" style="width: 50%"></div>
+            <div class="ai-slider__thumb" id="sliderThumb" style="left: 50%"
+                 onclick="cycleSlider()"></div>
+          </div>
+          <div class="ai-slider__labels">
+            <span>Чернетка</span>
+            <span>Стандарт</span>
+            <span>Дослідження</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── 3. Інтеграції ──────────────────────── -->
+  <section>
+    <div class="section-header">Інтеграції</div>
+    <div style="display:flex;flex-direction:column;gap:var(--space-3)">
+
+      <div class="integration-row" onclick="resync('notion')">
+        <div class="integration-logo">📝</div>
+        <div class="integration-info">
+          <div class="integration-name">Notion</div>
+          <div class="integration-sync" id="notionSync">Оновлено 2 хв тому</div>
+        </div>
+        <div class="integration-right">
+          <span class="badge badge--connected" id="notionBadge">
+            <span class="badge__dot"></span>Підключено
+          </span>
+          <span class="list-row__chevron">›</span>
+        </div>
+      </div>
+
+      <div class="integration-row" onclick="resync('drive')">
+        <div class="integration-logo">📁</div>
+        <div class="integration-info">
+          <div class="integration-name">Google Drive</div>
+          <div class="integration-sync" id="driveSync">Помилка синхронізації</div>
+        </div>
+        <div class="integration-right">
+          <span class="badge badge--error" id="driveBadge">
+            <span class="badge__dot"></span>Помилка
+          </span>
+          <span class="list-row__chevron">›</span>
+        </div>
+      </div>
+
+      <div class="integration-row" onclick="connectCalendar()">
+        <div class="integration-logo">📅</div>
+        <div class="integration-info">
+          <div class="integration-name">Google Calendar</div>
+          <div class="integration-sync">Натисніть, щоб підключити</div>
+        </div>
+        <div class="integration-right">
+          <span class="badge badge--not-configured" id="calendarBadge">
+            <span class="badge__dot"></span>Не налаштовано
+          </span>
+          <span class="list-row__chevron">›</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── 4. Параметри проєктів ──────────────── -->
+  <section>
+    <div class="section-header">Параметри проєктів</div>
+    <div class="card">
+
+      <div>
+        <label class="input-label" for="portfolioUrl">URL портфоліо</label>
+        <div class="input-field">
+          <input id="portfolioUrl" type="url"
+                 placeholder="https://behance.net/studio"
+                 value="">
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="list-row" style="border-radius:var(--radius-sm);border:none;padding:0;cursor:pointer"
+           onclick="openCurrencySheet()">
+        <div class="list-row__left">
+          <span class="list-row__label">Валюта</span>
+        </div>
+        <div class="list-row__right">
+          <span class="list-row__value" id="currencyValue">UAH</span>
+          <span class="list-row__chevron">›</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div>
+        <label class="input-label" for="workHours">Робочі години</label>
+        <div style="display:flex;gap:var(--space-3)">
+          <div class="input-field" style="flex:1">
+            <input id="workHoursFrom" type="text" placeholder="09:00" value="09:00">
+          </div>
+          <div style="display:flex;align-items:center;color:var(--color-text-tertiary)">—</div>
+          <div class="input-field" style="flex:1">
+            <input id="workHoursTo" type="text" placeholder="18:00" value="18:00">
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── 5. Сповіщення ──────────────────────── -->
+  <section>
+    <div class="section-header">Сповіщення</div>
+    <div class="card">
+
+      <div>
+        <div class="input-label">Режим сповіщень</div>
+        <div class="segmented" role="group" aria-label="Режим сповіщень">
+          <div class="segmented__option" onclick="selectSegment(this, 'notif')">Лише критичні</div>
+          <div class="segmented__option segmented__option--active" onclick="selectSegment(this, 'notif')">Повна підтримка</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <label class="toggle-wrapper">
+        <span class="toggle-wrapper__label">Новий лід</span>
+        <span class="toggle">
+          <input type="checkbox" checked onchange="onToggle(this,'new_lead')">
+          <span class="toggle__track"><span class="toggle__thumb"></span></span>
+        </span>
+      </label>
+
+      <label class="toggle-wrapper">
+        <span class="toggle-wrapper__label">Нагадування про дедлайн</span>
+        <span class="toggle">
+          <input type="checkbox" checked onchange="onToggle(this,'deadline')">
+          <span class="toggle__track"><span class="toggle__thumb"></span></span>
+        </span>
+      </label>
+
+      <label class="toggle-wrapper">
+        <span class="toggle-wrapper__label">Клієнт не відповідає</span>
+        <span class="toggle">
+          <input type="checkbox" onchange="onToggle(this,'client_inactive')">
+          <span class="toggle__track"><span class="toggle__thumb"></span></span>
+        </span>
+      </label>
+
+    </div>
+  </section>
+
+  <!-- ── 6. Дані та приватність ─────────────── -->
+  <section>
+    <div class="section-header">Дані та приватність</div>
+    <div class="list-row" style="cursor:pointer" onclick="exportData()">
+      <div class="list-row__left">
+        <div class="list-row__icon">📤</div>
+        <span class="list-row__label">Експортувати дані</span>
+      </div>
+      <div class="list-row__right">
+        <span class="list-row__chevron">›</span>
+      </div>
+    </div>
+    <div class="list-row" style="cursor:pointer" onclick="clearContext()">
+      <div class="list-row__left">
+        <div class="list-row__icon">🗑️</div>
+        <span class="list-row__label" style="color:var(--color-error)">Очистити контекст AI</span>
+      </div>
+      <div class="list-row__right">
+        <span class="list-row__chevron">›</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 7. Розширені ───────────────────────── -->
+  <section id="advancedSection">
+    <div class="section-header" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding-right:var(--space-4)"
+         onclick="toggleAdvanced()">
+      <span>Розширені налаштування</span>
+      <span id="advancedChevron" style="color:var(--color-text-tertiary);transition:transform var(--duration-fast)">›</span>
+    </div>
+    <div id="advancedContent" style="display:none">
+      <div class="card">
+        <div>
+          <label class="input-label" for="apiToken">API-токени</label>
+          <div class="input-field">
+            <input id="apiToken" type="password" placeholder="sk-ant-...">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="advancedHint" style="font-size:var(--font-size-caption);color:var(--color-text-tertiary);padding-left:var(--space-4)">
+      Відкрийте, щоб змінити технічні параметри
+    </div>
+  </section>
+
+  <!-- ── 8. Система ─────────────────────────── -->
+  <section>
+    <div class="section-header">Система</div>
+    <div class="list-row">
+      <div class="list-row__left">
+        <div class="list-row__icon">ℹ️</div>
+        <span class="list-row__label">Версія</span>
+      </div>
+      <div class="list-row__right">
+        <span class="list-row__value" style="font-size:var(--font-size-caption);color:var(--color-text-tertiary)">1.0.0-m2</span>
+      </div>
+    </div>
+    <div style="margin-top:var(--space-3);display:flex;flex-direction:column;gap:var(--space-2)">
+      <button class="btn btn--ghost btn--full" onclick="exportData()">📤 Експортувати мої дані</button>
+      <button class="btn btn--destructive btn--full" onclick="confirmDelete()">Видалити акаунт</button>
+    </div>
+  </section>
+
+</main>
+
+<!-- ═══════════ SAVE BAR ═══════════ -->
+<div class="save-bar">
+  <button class="btn btn--primary btn--full" id="saveBtn" onclick="saveSettings()">
+    Зберегти зміни
+  </button>
+</div>
+
+<!-- ═══════════ TOAST ═══════════ -->
+<div class="toast" id="toast"></div>
+
+<!-- ═══════════ OVERLAY ═══════════ -->
+<div class="overlay" id="overlay" onclick="closeAllSheets()"></div>
+
+<!-- ═══════════ LANGUAGE BOTTOM SHEET ═══════════ -->
+<div class="bottom-sheet" id="langSheet">
+  <div class="bottom-sheet__handle"></div>
+  <div class="bottom-sheet__title">Мова інтерфейсу</div>
+  <div class="bottom-sheet__option bottom-sheet__option--selected" onclick="selectLang('uk', 'Українська')">
+    <span>🇺🇦 Українська</span>
+    <span class="bottom-sheet__check" id="checkUk">✓</span>
+  </div>
+  <div class="bottom-sheet__option" onclick="selectLang('en', 'English')">
+    <span>🇬🇧 English</span>
+    <span class="bottom-sheet__check" id="checkEn" style="opacity:0">✓</span>
+  </div>
+</div>
+
+<!-- ═══════════ CURRENCY BOTTOM SHEET ═══════════ -->
+<div class="bottom-sheet" id="currencySheet">
+  <div class="bottom-sheet__handle"></div>
+  <div class="bottom-sheet__title">Валюта</div>
+  <div class="bottom-sheet__option bottom-sheet__option--selected" onclick="selectCurrency('UAH')">
+    <span>₴ UAH — Гривня</span>
+    <span class="bottom-sheet__check" id="checkUAH">✓</span>
+  </div>
+  <div class="bottom-sheet__option" onclick="selectCurrency('USD')">
+    <span>$ USD — Долар</span>
+    <span class="bottom-sheet__check" id="checkUSD" style="opacity:0">✓</span>
+  </div>
+  <div class="bottom-sheet__option" onclick="selectCurrency('EUR')">
+    <span>€ EUR — Євро</span>
+    <span class="bottom-sheet__check" id="checkEUR" style="opacity:0">✓</span>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// TMA INIT
+// ═══════════════════════════════════════════════
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  tg.enableClosingConfirmation();
+  document.documentElement.style.setProperty('--safe-top', tg.contentSafeAreaInsets?.top + 'px' || '0px');
+}
+
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+const state = {
+  role: 'designer',
+  lang: 'uk',
+  currency: 'UAH',
+  sliderPos: 1, // 0=Чернетка, 1=Стандарт, 2=Дослідження
+  dirty: false,
+};
+
+// ═══════════════════════════════════════════════
+// ROLE TOGGLE
+// ═══════════════════════════════════════════════
+function toggleRole() {
+  state.role = state.role === 'designer' ? 'client' : 'designer';
+  const badge = document.getElementById('roleBadge');
+  if (state.role === 'designer') {
+    badge.textContent = 'Режим дизайнера';
+    badge.className = 'role-badge';
+  } else {
+    badge.textContent = 'Режим клієнта';
+    badge.className = 'role-badge role-badge--client';
+  }
+  markDirty();
+}
+
+// ═══════════════════════════════════════════════
+// SEGMENTED CONTROL
+// ═══════════════════════════════════════════════
+function selectSegment(el, group) {
+  const parent = el.closest('.segmented');
+  parent.querySelectorAll('.segmented__option').forEach(o => o.classList.remove('segmented__option--active'));
+  el.classList.add('segmented__option--active');
+  markDirty();
+}
+
+// ═══════════════════════════════════════════════
+// AI SLIDER
+// ═══════════════════════════════════════════════
+const sliderPositions = [0, 50, 100];
+
+function cycleSlider() {
+  state.sliderPos = (state.sliderPos + 1) % 3;
+  updateSlider();
+  markDirty();
+}
+
+function updateSlider() {
+  const pct = sliderPositions[state.sliderPos];
+  document.getElementById('sliderFill').style.width = pct + '%';
+  document.getElementById('sliderThumb').style.left = pct + '%';
+}
+
+// ═══════════════════════════════════════════════
+// TOGGLE
+// ═══════════════════════════════════════════════
+function onToggle(el, key) {
+  markDirty();
+}
+
+// ═══════════════════════════════════════════════
+// INTEGRATIONS
+// ═══════════════════════════════════════════════
+function resync(service) {
+  const badgeId = service + 'Badge';
+  const syncId = service + 'Sync';
+  const badge = document.getElementById(badgeId);
+  const sync = document.getElementById(syncId);
+
+  // Loading state
+  badge.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite"></span>';
+
+  setTimeout(() => {
+    badge.className = 'badge badge--connected';
+    badge.innerHTML = '<span class="badge__dot"></span>Підключено';
+    sync.textContent = 'Оновлено щойно';
+    showToast('✓ Синхронізацію виконано', true);
+  }, 1500);
+}
+
+function connectCalendar() {
+  showToast('Відкриваємо налаштування…');
+}
+
+// ═══════════════════════════════════════════════
+// BOTTOM SHEETS
+// ═══════════════════════════════════════════════
+function openSheet(id) {
+  document.getElementById('overlay').classList.add('overlay--visible');
+  document.getElementById(id).classList.add('bottom-sheet--visible');
+}
+function closeAllSheets() {
+  document.getElementById('overlay').classList.remove('overlay--visible');
+  document.querySelectorAll('.bottom-sheet').forEach(s => s.classList.remove('bottom-sheet--visible'));
+}
+function openLangSheet() { openSheet('langSheet'); }
+function openCurrencySheet() { openSheet('currencySheet'); }
+
+function selectLang(code, label) {
+  state.lang = code;
+  document.getElementById('langValue').textContent = label;
+  document.getElementById('checkUk').style.opacity = code === 'uk' ? '1' : '0';
+  document.getElementById('checkEn').style.opacity = code === 'en' ? '1' : '0';
+  document.querySelectorAll('#langSheet .bottom-sheet__option').forEach(o => o.classList.remove('bottom-sheet__option--selected'));
+  event.currentTarget.classList.add('bottom-sheet__option--selected');
+  closeAllSheets();
+  markDirty();
+}
+
+function selectCurrency(code) {
+  state.currency = code;
+  document.getElementById('currencyValue').textContent = code;
+  ['UAH','USD','EUR'].forEach(c => {
+    document.getElementById('check' + c).style.opacity = c === code ? '1' : '0';
+  });
+  document.querySelectorAll('#currencySheet .bottom-sheet__option').forEach(o => o.classList.remove('bottom-sheet__option--selected'));
+  event.currentTarget.classList.add('bottom-sheet__option--selected');
+  closeAllSheets();
+  markDirty();
+}
+
+// ═══════════════════════════════════════════════
+// ADVANCED SECTION
+// ═══════════════════════════════════════════════
+let advancedOpen = false;
+function toggleAdvanced() {
+  advancedOpen = !advancedOpen;
+  const content = document.getElementById('advancedContent');
+  const hint = document.getElementById('advancedHint');
+  const chevron = document.getElementById('advancedChevron');
+  content.style.display = advancedOpen ? 'block' : 'none';
+  hint.style.display = advancedOpen ? 'none' : 'block';
+  chevron.style.transform = advancedOpen ? 'rotate(90deg)' : '';
+}
+
+// ═══════════════════════════════════════════════
+// SAVE
+// ═══════════════════════════════════════════════
+function markDirty() {
+  state.dirty = true;
+  const btn = document.getElementById('saveBtn');
+  btn.style.boxShadow = '0 0 0 2px rgba(212,175,55,0.40), ' + getComputedStyle(document.documentElement).getPropertyValue('--shadow-button');
+}
+
+function saveSettings() {
+  const btn = document.getElementById('saveBtn');
+  btn.textContent = '…';
+  btn.disabled = true;
+
+  setTimeout(() => {
+    btn.textContent = 'Зберегти зміни';
+    btn.disabled = false;
+    btn.style.boxShadow = '';
+    state.dirty = false;
+    showToast('✓ Зміни збережено', true);
+
+    if (tg) tg.HapticFeedback?.notificationOccurred('success');
+  }, 800);
+}
+
+// ═══════════════════════════════════════════════
+// ACTIONS
+// ═══════════════════════════════════════════════
+function exportData() { showToast('📤 Експорт підготовлено'); }
+
+function clearContext() {
+  if (confirm('Очистити контекст AI? Цю дію не можна скасувати.')) {
+    showToast('🗑️ Контекст очищено');
+    if (tg) tg.HapticFeedback?.notificationOccurred('warning');
+  }
+}
+
+function confirmDelete() {
+  if (confirm('Видалити акаунт? Усі дані будуть втрачені.')) {
+    showToast('Акаунт видалено');
+  }
+}
+
+// ═══════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════
+let toastTimer;
+function showToast(msg, success = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast toast--visible' + (success ? ' toast--success' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, 2200);
+}
+
+// ═══════════════════════════════════════════════
+// SPINNER KEYFRAME
+// ═══════════════════════════════════════════════
+const style = document.createElement('style');
+style.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
+document.head.appendChild(style);
+
+// Add click handler to profile rows
+document.querySelectorAll('.list-row').forEach(row => {
+  if (row.querySelector('.list-row__chevron')) {
+    row.style.cursor = 'pointer';
+    row.addEventListener('click', function(e) {
+      if (!e.target.closest('input')) {
+        const label = this.querySelector('.list-row__label')?.textContent;
+        if (label === 'Мова інтерфейсу') openLangSheet();
+        if (label === 'Валюта') openCurrencySheet();
+      }
+    });
+  }
+});
+</script>
+
+</body>
+</html>
