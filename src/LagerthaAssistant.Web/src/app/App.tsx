@@ -8,13 +8,15 @@ import { SettingsPage } from '../pages/SettingsPage'
 import { useAppStore } from '../state/appStore'
 
 function AppShellHeader() {
+  const locale = useAppStore((s) => s.locale)
+  const title = locale === 'en' ? 'Settings' : 'Налаштування'
+  const subtitle = locale === 'en' ? 'Lagertha Assistant Bot' : 'Lagertha Assistant Bot'
+
   return (
     <header className="shell-header">
       <div>
-        <h1 className="shell-title">Налаштування Lagertha</h1>
-        <p className="shell-subtitle">
-          Керуйте мовою, AI, режимами збереження та інтеграціями в одному екрані.
-        </p>
+        <h1 className="shell-title">{title}</h1>
+        <p className="shell-subtitle">{subtitle}</p>
       </div>
     </header>
   )
@@ -74,12 +76,12 @@ export function App() {
 
       {status === 'loading' && (
         <div className="card" role="status" aria-live="polite">
-          Завантаження Mini App...
+          {locale === 'en' ? 'Loading Mini App…' : 'Завантаження Mini App…'}
         </div>
       )}
       {status === 'error' && (
         <div className="card status-error" role="alert">
-          Помилка: {error}
+          {locale === 'en' ? 'Error' : 'Помилка'}: {error}
         </div>
       )}
       {status === 'ready' && (
