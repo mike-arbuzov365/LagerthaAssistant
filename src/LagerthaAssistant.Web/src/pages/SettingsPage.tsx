@@ -1,13 +1,13 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   completeGraphLogin,
-  getIntegrationNotionStatus,
   getAiKeyStatus,
   getAiModel,
   getAiProvider,
   getGraphStatus,
-  graphLogout,
+  getIntegrationNotionStatus,
   graphClearCache,
+  graphLogout,
   graphRebuildIndex,
   graphSyncNow,
   removeAiKey,
@@ -20,52 +20,246 @@ import {
 } from '../api/client'
 import type { GraphDeviceLoginChallengeResponse } from '../api/contracts'
 import type { AppLocale } from '../lib/locale'
-import { formatAiKeySource, getScopedUserId } from '../lib/settings-utils'
-import { buildSettingsSchema } from '../settings/settings-schema'
+import { getScopedUserId } from '../lib/settings-utils'
 import { useAppStore } from '../state/appStore'
 
 type BannerTone = 'ok' | 'error' | 'warn'
 
-function mapSaveMode(mode: string): string {
-  switch (mode) {
-    case 'auto':
-      return 'Автоматично'
-    case 'ask':
-      return 'Запитувати перед збереженням'
-    case 'off':
-      return 'Вимкнено'
-    default:
-      return mode
+interface CopyPack {
+  screenTitle: string
+  screenSubtitle: string
+  online: string
+  offline: string
+  noBootstrap: string
+  loadingAi: string
+  loadingIntegrations: string
+  loadingModels: string
+  retry: string
+  generalSection: string
+  aiSection: string
+  integrationsSection: string
+  languageLabel: string
+  saveModeLabel: string
+  storageModeLabel: string
+  providerLabel: string
+  modelLabel: string
+  apiKeyLabel: string
+  apiKeyPlaceholder: string
+  removeStoredKeyLabel: string
+  keySourceLabel: string
+  keyStoredLabel: string
+  modelCountLabel: string
+  oneDriveStatusLabel: string
+  oneDriveTokenLabel: string
+  notionLabel: string
+  connected: string
+  disconnected: string
+  enabled: string
+  disabled: string
+  yes: string
+  no: string
+  notConfigured: string
+  noData: string
+  saveChanges: string
+  saving: string
+  unsavedChanges: string
+  allSaved: string
+  noChanges: string
+  saveSuccess: string
+  offlineError: string
+  errorPrefix: string
+  loadErrorPrefix: string
+  refreshStatus: string
+  startLogin: string
+  finishLogin: string
+  logout: string
+  serviceActions: string
+  syncNow: string
+  rebuildIndex: string
+  clearCache: string
+  loginCodeLabel: string
+  openLoginPage: string
+  enterCodeFirst: string
+  storageLockedHint: string
+}
+
+interface PersistedSnapshot {
+  locale: AppLocale
+  saveMode: string
+  storageMode: string
+  aiProvider: string
+  aiModel: string
+}
+
+const copyByLocale: Record<AppLocale, CopyPack> = {
+  uk: {
+    screenTitle: 'Налаштування Lagertha',
+    screenSubtitle: 'Єдиний екран для мови, AI та інтеграцій.',
+    online: 'Онлайн',
+    offline: 'Офлайн',
+    noBootstrap: 'Немає даних bootstrap.',
+    loadingAi: 'Завантаження AI-налаштувань…',
+    loadingIntegrations: 'Завантаження статусів інтеграцій…',
+    loadingModels: 'Оновлюємо список моделей…',
+    retry: 'Спробувати знову',
+    generalSection: 'Загальні',
+    aiSection: 'AI',
+    integrationsSection: 'Інтеграції',
+    languageLabel: 'Мова інтерфейсу',
+    saveModeLabel: 'Режим збереження',
+    storageModeLabel: 'Режим сховища',
+    providerLabel: 'Провайдер',
+    modelLabel: 'Модель',
+    apiKeyLabel: 'API ключ',
+    apiKeyPlaceholder: 'Введіть новий ключ (необовʼязково)',
+    removeStoredKeyLabel: 'Видалити збережений ключ при збереженні',
+    keySourceLabel: 'Джерело ключа',
+    keyStoredLabel: 'Ключ у сховищі',
+    modelCountLabel: 'Доступно моделей',
+    oneDriveStatusLabel: 'OneDrive / Graph',
+    oneDriveTokenLabel: 'Токен до',
+    notionLabel: 'Notion',
+    connected: 'Підключено',
+    disconnected: 'Не підключено',
+    enabled: 'Увімкнено',
+    disabled: 'Вимкнено',
+    yes: 'Так',
+    no: 'Ні',
+    notConfigured: 'Не налаштовано',
+    noData: 'Немає',
+    saveChanges: 'Зберегти зміни',
+    saving: 'Збереження…',
+    unsavedChanges: 'Є незбережені зміни',
+    allSaved: 'Усі зміни збережено',
+    noChanges: 'Немає нових змін для збереження.',
+    saveSuccess: 'Налаштування збережено.',
+    offlineError: 'Немає мережі. Збереження недоступне.',
+    errorPrefix: 'Помилка',
+    loadErrorPrefix: 'Не вдалося завантажити дані',
+    refreshStatus: 'Оновити статус',
+    startLogin: 'Почати вхід',
+    finishLogin: 'Завершити вхід',
+    logout: 'Вийти',
+    serviceActions: 'Сервісні дії',
+    syncNow: 'Синхронізувати зараз',
+    rebuildIndex: 'Перебудувати індекс',
+    clearCache: 'Очистити кеш',
+    loginCodeLabel: 'Код входу',
+    openLoginPage: 'Відкрити сторінку входу',
+    enterCodeFirst: 'Спочатку ініціюйте вхід у OneDrive.',
+    storageLockedHint: 'Режим сховища обмежено policy Wave 1.',
+  },
+  en: {
+    screenTitle: 'Lagertha Settings',
+    screenSubtitle: 'One screen for language, AI, and integrations.',
+    online: 'Online',
+    offline: 'Offline',
+    noBootstrap: 'No bootstrap data available.',
+    loadingAi: 'Loading AI settings…',
+    loadingIntegrations: 'Loading integration statuses…',
+    loadingModels: 'Updating model list…',
+    retry: 'Retry',
+    generalSection: 'General',
+    aiSection: 'AI',
+    integrationsSection: 'Integrations',
+    languageLabel: 'Interface language',
+    saveModeLabel: 'Save mode',
+    storageModeLabel: 'Storage mode',
+    providerLabel: 'Provider',
+    modelLabel: 'Model',
+    apiKeyLabel: 'API key',
+    apiKeyPlaceholder: 'Enter a new key (optional)',
+    removeStoredKeyLabel: 'Remove stored key on save',
+    keySourceLabel: 'Key source',
+    keyStoredLabel: 'Key in storage',
+    modelCountLabel: 'Models available',
+    oneDriveStatusLabel: 'OneDrive / Graph',
+    oneDriveTokenLabel: 'Token valid until',
+    notionLabel: 'Notion',
+    connected: 'Connected',
+    disconnected: 'Disconnected',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    yes: 'Yes',
+    no: 'No',
+    notConfigured: 'Not configured',
+    noData: 'None',
+    saveChanges: 'Save changes',
+    saving: 'Saving…',
+    unsavedChanges: 'You have unsaved changes',
+    allSaved: 'All changes saved',
+    noChanges: 'No new changes to save.',
+    saveSuccess: 'Settings saved.',
+    offlineError: 'No network. Saving is unavailable.',
+    errorPrefix: 'Error',
+    loadErrorPrefix: 'Failed to load data',
+    refreshStatus: 'Refresh status',
+    startLogin: 'Start login',
+    finishLogin: 'Complete login',
+    logout: 'Sign out',
+    serviceActions: 'Service actions',
+    syncNow: 'Sync now',
+    rebuildIndex: 'Rebuild index',
+    clearCache: 'Clear cache',
+    loginCodeLabel: 'Login code',
+    openLoginPage: 'Open login page',
+    enterCodeFirst: 'Start OneDrive login first.',
+    storageLockedHint: 'Storage mode is locked by Wave 1 policy.',
+  },
+}
+
+function mapSaveMode(mode: string, locale: AppLocale): string {
+  const labels = {
+    uk: {
+      auto: 'Автоматично',
+      ask: 'Запитувати перед збереженням',
+      off: 'Вимкнено',
+    },
+    en: {
+      auto: 'Automatic',
+      ask: 'Ask before save',
+      off: 'Disabled',
+    },
   }
+
+  return labels[locale][mode as keyof typeof labels.uk] ?? mode
 }
 
-function mapStorageMode(mode: string): string {
-  switch (mode) {
-    case 'graph':
-      return 'Graph (OneDrive)'
-    case 'local':
-      return 'Локальне'
-    default:
-      return mode
+function mapStorageMode(mode: string, locale: AppLocale): string {
+  const labels = {
+    uk: {
+      graph: 'Graph (OneDrive)',
+      local: 'Локальне',
+    },
+    en: {
+      graph: 'Graph (OneDrive)',
+      local: 'Local',
+    },
   }
+
+  return labels[locale][mode as keyof typeof labels.uk] ?? mode
 }
 
-function mapPolicy(policy: string): string {
-  switch (policy) {
-    case 'graph_only_v1':
-      return 'Лише Graph у Wave 1'
-    default:
-      return policy
+function mapAiKeySource(source: string, locale: AppLocale): string {
+  const labels = {
+    uk: {
+      stored: 'Збережений ключ',
+      environment: 'Ключ із середовища',
+      missing: 'Ключ відсутній',
+    },
+    en: {
+      stored: 'Stored key',
+      environment: 'Environment key',
+      missing: 'Key missing',
+    },
   }
+
+  return labels[locale][source as keyof typeof labels.uk] ?? source
 }
 
-function mapLocale(locale: AppLocale): string {
-  return locale === 'uk' ? 'Українська' : 'English'
-}
-
-function formatDateTime(value: string | null): string {
+function formatDateTime(value: string | null, locale: AppLocale, emptyLabel: string): string {
   if (!value) {
-    return 'Немає'
+    return emptyLabel
   }
 
   const date = new Date(value)
@@ -73,7 +267,7 @@ function formatDateTime(value: string | null): string {
     return value
   }
 
-  return new Intl.DateTimeFormat('uk-UA', {
+  return new Intl.DateTimeFormat(locale === 'uk' ? 'uk-UA' : 'en-US', {
     dateStyle: 'short',
     timeStyle: 'short',
     hour12: false,
@@ -81,11 +275,11 @@ function formatDateTime(value: string | null): string {
 }
 
 function resolveBannerTone(value: string): BannerTone {
-  if (value.startsWith('Помилка')) {
+  if (value.startsWith('Помилка') || value.startsWith('Error')) {
     return 'error'
   }
 
-  if (value.startsWith('Увага')) {
+  if (value.startsWith('Увага') || value.startsWith('Warning')) {
     return 'warn'
   }
 
@@ -94,26 +288,6 @@ function resolveBannerTone(value: string): BannerTone {
 
 function StatusChip({ tone, children }: { tone: BannerTone; children: string }) {
   return <span className={`chip chip--${tone}`}>{children}</span>
-}
-
-function SectionTitle({
-  icon,
-  title,
-  description,
-}: {
-  icon: string
-  title: string
-  description: string
-}) {
-  return (
-    <div className="section-head">
-      <span className="section-icon" aria-hidden="true">{icon}</span>
-      <div>
-        <h3 className="section-title">{title}</h3>
-        <p className="section-description">{description}</p>
-      </div>
-    </div>
-  )
 }
 
 export function SettingsPage() {
@@ -138,11 +312,15 @@ export function SettingsPage() {
   const [saveModeDraft, setSaveModeDraft] = useState('ask')
   const [storageModeDraft, setStorageModeDraft] = useState('graph')
 
-  const [aiProvider, setAiProviderState] = useState('openai')
+  const [aiProviderDraft, setAiProviderDraft] = useState('openai')
   const [aiProviders, setAiProviders] = useState<string[]>([])
-  const [aiModel, setAiModelState] = useState('')
+  const [aiModelDraft, setAiModelDraft] = useState('')
   const [aiModels, setAiModels] = useState<string[]>([])
-  const [apiKey, setApiKey] = useState('')
+  const [modelsLoading, setModelsLoading] = useState(false)
+
+  const [apiKeyDraft, setApiKeyDraft] = useState('')
+  const [removeStoredKeyRequested, setRemoveStoredKeyRequested] = useState(false)
+
   const [integrationStatus, setIntegrationStatus] = useState<Awaited<ReturnType<typeof getIntegrationNotionStatus>> | null>(null)
   const [graphStatus, setGraphStatus] = useState(bootstrap?.graph ?? null)
   const [loginChallenge, setLoginChallenge] = useState<GraphDeviceLoginChallengeResponse | null>(null)
@@ -150,36 +328,13 @@ export function SettingsPage() {
     hasStoredKey: false,
     source: 'missing',
   })
+  const [snapshot, setSnapshot] = useState<PersistedSnapshot | null>(null)
 
-  const settingsSchema = useMemo(
-    () => buildSettingsSchema({ modules: ['core', 'lagertha'] }),
-    [],
-  )
-
-  const schemaById = useMemo(
-    () => new Map(settingsSchema.map((section) => [section.id, section])),
-    [settingsSchema],
-  )
-
-  const titleLocale = schemaById.get('locale')
-  const titleSession = schemaById.get('session')
-  const titleAi = schemaById.get('ai')
-  const titleOneDrive = schemaById.get('onedriveAuth')
-  const titleIntegrations = schemaById.get('integrations')
+  const providerRequestVersion = useRef(0)
 
   useEffect(() => {
     setLocaleDraft(locale)
   }, [locale])
-
-  useEffect(() => {
-    if (!bootstrap) {
-      return
-    }
-
-    setSaveModeDraft(bootstrap.preferences.saveMode)
-    setStorageModeDraft(bootstrap.preferences.storageMode)
-    setGraphStatus(bootstrap.graph)
-  }, [bootstrap])
 
   useEffect(() => {
     function handleOnline() {
@@ -199,6 +354,74 @@ export function SettingsPage() {
     }
   }, [])
 
+  const uiLocale = localeDraft
+  const copy = copyByLocale[uiLocale]
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (!snapshot) {
+      return false
+    }
+
+    return (
+      localeDraft !== snapshot.locale
+      || saveModeDraft !== snapshot.saveMode
+      || storageModeDraft !== snapshot.storageMode
+      || aiProviderDraft !== snapshot.aiProvider
+      || aiModelDraft !== snapshot.aiModel
+      || removeStoredKeyRequested
+      || apiKeyDraft.trim().length > 0
+    )
+  }, [
+    aiModelDraft,
+    aiProviderDraft,
+    apiKeyDraft,
+    localeDraft,
+    removeStoredKeyRequested,
+    saveModeDraft,
+    snapshot,
+    storageModeDraft,
+  ])
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) {
+      return
+    }
+
+    function beforeUnloadHandler(event: BeforeUnloadEvent) {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', beforeUnloadHandler)
+
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnloadHandler)
+    }
+  }, [hasUnsavedChanges])
+
+  useEffect(() => {
+    const webApp = window.Telegram?.WebApp as
+      | {
+        enableClosingConfirmation?: () => void
+        disableClosingConfirmation?: () => void
+      }
+      | undefined
+
+    if (!webApp) {
+      return
+    }
+
+    if (hasUnsavedChanges) {
+      webApp.enableClosingConfirmation?.()
+    } else {
+      webApp.disableClosingConfirmation?.()
+    }
+
+    return () => {
+      webApp.disableClosingConfirmation?.()
+    }
+  }, [hasUnsavedChanges])
+
   const loadSettings = useCallback(async () => {
     if (!bootstrap) {
       return
@@ -216,9 +439,9 @@ export function SettingsPage() {
         getGraphStatus(),
       ])
 
-      setAiProviderState(providerResponse.provider)
+      setAiProviderDraft(providerResponse.provider)
       setAiProviders(providerResponse.availableProviders)
-      setAiModelState(modelResponse.model)
+      setAiModelDraft(modelResponse.model)
       setAiModels(modelResponse.availableModels)
       setKeyStatus({
         hasStoredKey: keyResponse.hasStoredKey,
@@ -226,37 +449,97 @@ export function SettingsPage() {
       })
       setIntegrationStatus(notionHubStatus)
       setGraphStatus(graphStatusResponse)
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Не вдалося завантажити налаштування')
+      setLoginChallenge(null)
+      setRemoveStoredKeyRequested(false)
+      setApiKeyDraft('')
+
+      const normalizedLocale: AppLocale = locale === 'en' ? 'en' : 'uk'
+      setLocaleDraft(normalizedLocale)
+      setSaveModeDraft(bootstrap.preferences.saveMode)
+      setStorageModeDraft(bootstrap.preferences.storageMode)
+      setSnapshot({
+        locale: normalizedLocale,
+        saveMode: bootstrap.preferences.saveMode,
+        storageMode: bootstrap.preferences.storageMode,
+        aiProvider: providerResponse.provider,
+        aiModel: modelResponse.model,
+      })
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Load failed')
     } finally {
       setLoading(false)
     }
-  }, [bootstrap, scopedUserId])
+  }, [bootstrap, locale, scopedUserId])
 
   useEffect(() => {
     if (!bootstrap) {
       return
     }
 
+    setGraphStatus(bootstrap.graph)
     void loadSettings()
   }, [bootstrap, loadSettings])
 
+  useEffect(() => {
+    if (!bootstrap || !aiProviderDraft) {
+      return
+    }
+
+    const requestVersion = ++providerRequestVersion.current
+    setModelsLoading(true)
+
+    void (async () => {
+      try {
+        const [modelResponse, keyResponse] = await Promise.all([
+          getAiModel(scopedUserId, aiProviderDraft),
+          getAiKeyStatus(scopedUserId, aiProviderDraft),
+        ])
+
+        if (requestVersion !== providerRequestVersion.current) {
+          return
+        }
+
+        setAiModels(modelResponse.availableModels)
+        setAiModelDraft((currentModel) => (
+          modelResponse.availableModels.includes(currentModel)
+            ? currentModel
+            : modelResponse.model
+        ))
+        setKeyStatus({
+          hasStoredKey: keyResponse.hasStoredKey,
+          source: keyResponse.apiKeySource,
+        })
+      } catch (error) {
+        if (requestVersion !== providerRequestVersion.current) {
+          return
+        }
+
+        const message = error instanceof Error ? error.message : 'Model list update failed'
+        setSaveStatus(`Error: ${message}`)
+      } finally {
+        if (requestVersion === providerRequestVersion.current) {
+          setModelsLoading(false)
+        }
+      }
+    })()
+  }, [aiProviderDraft, bootstrap, scopedUserId])
+
   if (!bootstrap || !policy) {
-    return <div className="card">Немає даних bootstrap.</div>
+    return <div className="card">{copy.noBootstrap}</div>
   }
 
-  const bootstrapData = bootstrap
-  const policyData = policy
-  const activeGraphStatus = graphStatus ?? bootstrapData.graph
-  const policyStorageMode = policyData.allowedStorageModes[0] ?? 'graph'
-  const storagePolicyMismatch = storageModeDraft !== policyStorageMode
-  const storageLocked = policyData.allowedStorageModes.length === 1
+  const activeGraphStatus = graphStatus ?? bootstrap.graph
+  const storageLocked = policy.allowedStorageModes.length === 1
+  const storageOptions = storageLocked
+    ? policy.allowedStorageModes
+    : bootstrap.preferences.availableStorageModes
+
   const oneDriveConnected = activeGraphStatus.isAuthenticated
   const notionEnabled = integrationStatus?.notionVocabulary.enabled || integrationStatus?.notionFood.enabled
 
-  async function runSave(task: () => Promise<void>, successMessage: string) {
+  async function runAction(task: () => Promise<void>, successMessage: string) {
     if (!isOnline) {
-      setSaveStatus('Увага: Немає мережі. Спробуйте ще раз після відновлення зʼєднання.')
+      setSaveStatus(copy.offlineError)
       return
     }
 
@@ -266,230 +549,181 @@ export function SettingsPage() {
     try {
       await task()
       setSaveStatus(successMessage)
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : 'Операція не виконана'
-      setSaveStatus(`Помилка: ${errorMessage}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Operation failed'
+      setSaveStatus(`${copy.errorPrefix}: ${message}`)
     } finally {
       setSaving(false)
     }
   }
 
-  async function handleSaveLocale() {
-    await runSave(async () => {
-      const response = await setLocale({
-        locale: localeDraft,
-        selectedManually: true,
-        channel: 'telegram',
-        userId: scopedUserId ?? undefined,
-      })
-
-      const normalized = response.locale === 'en' ? 'en' : 'uk'
-      setLocaleInStore(normalized)
-    }, 'Мову інтерфейсу оновлено.')
-  }
-
-  async function handleSaveSession() {
-    await runSave(async () => {
-      const response = await setPreferenceSession({
-        saveMode: saveModeDraft,
-        channel: 'telegram',
-        userId: scopedUserId ?? undefined,
-      })
-
-      setSaveModeDraft(response.saveMode)
-      setStorageModeDraft(response.storageMode)
-      setBootstrapPreferences(response)
-    }, 'Налаштування сесії оновлено.')
-  }
-
-  async function handleApplyStoragePolicy() {
-    await runSave(async () => {
-      const response = await setPreferenceSession({
-        storageMode: policyStorageMode,
-        channel: 'telegram',
-        userId: scopedUserId ?? undefined,
-      })
-
-      setSaveModeDraft(response.saveMode)
-      setStorageModeDraft(response.storageMode)
-      setBootstrapPreferences(response)
-    }, 'Політику сховища застосовано.')
-  }
-
-  async function handleSaveProvider() {
-    await runSave(async () => {
-      const providerResponse = await setAiProvider({
-        provider: aiProvider,
-        channel: 'telegram',
-        userId: scopedUserId ?? undefined,
-      })
-
-      const [modelResponse, keyResponse] = await Promise.all([
-        getAiModel(scopedUserId, providerResponse.provider),
-        getAiKeyStatus(scopedUserId, providerResponse.provider),
-      ])
-
-      setAiProviderState(providerResponse.provider)
-      setAiProviders(providerResponse.availableProviders)
-      setAiModelState(modelResponse.model)
-      setAiModels(modelResponse.availableModels)
-      setKeyStatus({
-        hasStoredKey: keyResponse.hasStoredKey,
-        source: keyResponse.apiKeySource,
-      })
-    }, 'Провайдера AI оновлено.')
-  }
-
-  async function handleSaveModel() {
-    await runSave(async () => {
-      const response = await setAiModel({
-        provider: aiProvider,
-        model: aiModel,
-        channel: 'telegram',
-        userId: scopedUserId ?? undefined,
-      })
-
-      setAiModelState(response.model)
-      setAiModels(response.availableModels)
-    }, 'Модель AI оновлено.')
-  }
-
-  async function handleSaveApiKey() {
-    if (!apiKey.trim()) {
-      setSaveStatus('Помилка: Введіть API ключ перед збереженням.')
+  async function handleSaveAll() {
+    if (!snapshot) {
       return
     }
 
-    await runSave(async () => {
-      const response = await setAiKey({
-        provider: aiProvider,
-        apiKey: apiKey.trim(),
-        channel: 'telegram',
-        userId: scopedUserId ?? undefined,
-      })
+    if (!hasUnsavedChanges) {
+      setSaveStatus(copy.noChanges)
+      return
+    }
 
-      setKeyStatus({
-        hasStoredKey: response.hasStoredKey,
-        source: response.apiKeySource,
-      })
-      setApiKey('')
-    }, 'API ключ збережено.')
+    await runAction(async () => {
+      let activeProvider = aiProviderDraft
+
+      if (localeDraft !== snapshot.locale) {
+        const localeResponse = await setLocale({
+          locale: localeDraft,
+          selectedManually: true,
+          channel: 'telegram',
+          userId: scopedUserId ?? undefined,
+        })
+
+        const normalizedLocale: AppLocale = localeResponse.locale === 'en' ? 'en' : 'uk'
+        setLocaleInStore(normalizedLocale)
+      }
+
+      if (
+        saveModeDraft !== snapshot.saveMode
+        || storageModeDraft !== snapshot.storageMode
+      ) {
+        const sessionResponse = await setPreferenceSession({
+          saveMode: saveModeDraft,
+          storageMode: storageModeDraft,
+          channel: 'telegram',
+          userId: scopedUserId ?? undefined,
+        })
+
+        setBootstrapPreferences(sessionResponse)
+      }
+
+      if (aiProviderDraft !== snapshot.aiProvider) {
+        const providerResponse = await setAiProvider({
+          provider: aiProviderDraft,
+          channel: 'telegram',
+          userId: scopedUserId ?? undefined,
+        })
+
+        activeProvider = providerResponse.provider
+        setAiProviders(providerResponse.availableProviders)
+      }
+
+      if (aiProviderDraft !== snapshot.aiProvider || aiModelDraft !== snapshot.aiModel) {
+        const modelResponse = await setAiModel({
+          provider: activeProvider,
+          model: aiModelDraft,
+          channel: 'telegram',
+          userId: scopedUserId ?? undefined,
+        })
+
+        activeProvider = modelResponse.provider
+        setAiModelDraft(modelResponse.model)
+        setAiModels(modelResponse.availableModels)
+      }
+
+      if (removeStoredKeyRequested) {
+        const keyResponse = await removeAiKey(scopedUserId, activeProvider)
+        setKeyStatus({
+          hasStoredKey: keyResponse.hasStoredKey,
+          source: keyResponse.apiKeySource,
+        })
+      } else if (apiKeyDraft.trim().length > 0) {
+        const keyResponse = await setAiKey({
+          provider: activeProvider,
+          apiKey: apiKeyDraft.trim(),
+          channel: 'telegram',
+          userId: scopedUserId ?? undefined,
+        })
+
+        setKeyStatus({
+          hasStoredKey: keyResponse.hasStoredKey,
+          source: keyResponse.apiKeySource,
+        })
+      }
+
+      await loadSettings()
+    }, copy.saveSuccess)
   }
 
-  async function handleRemoveApiKey() {
-    await runSave(async () => {
-      const response = await removeAiKey(scopedUserId, aiProvider)
-      setKeyStatus({
-        hasStoredKey: response.hasStoredKey,
-        source: response.apiKeySource,
-      })
-    }, 'API ключ видалено.')
-  }
-
-  async function handleSyncNow() {
-    await runSave(async () => {
-      await graphSyncNow()
-    }, 'Синхронізацію з OneDrive виконано.')
-  }
-
-  async function handleRebuildIndex() {
-    await runSave(async () => {
-      await graphRebuildIndex()
-    }, 'Індекс OneDrive перебудовано.')
-  }
-
-  async function handleClearCache() {
-    await runSave(async () => {
-      await graphClearCache()
-    }, 'Кеш OneDrive очищено.')
-  }
-
-  async function handleRefreshOneDriveStatus() {
-    await runSave(async () => {
-      const status = await getGraphStatus()
-      setGraphStatus(status)
-    }, 'Статус OneDrive оновлено.')
+  async function handleRefreshStatus() {
+    await runAction(async () => {
+      const [notionStatus, currentGraphStatus] = await Promise.all([
+        getIntegrationNotionStatus(),
+        getGraphStatus(),
+      ])
+      setIntegrationStatus(notionStatus)
+      setGraphStatus(currentGraphStatus)
+    }, copy.saveSuccess)
   }
 
   async function handleStartOneDriveLogin() {
-    await runSave(async () => {
+    await runAction(async () => {
       const response = await startGraphLogin()
-      if (!response.succeeded) {
+      if (!response.succeeded || !response.challenge) {
         throw new Error(response.message)
       }
       setLoginChallenge(response.challenge)
-    }, 'Крок входу в OneDrive ініційовано.')
+    }, copy.saveSuccess)
   }
 
   async function handleCompleteOneDriveLogin() {
     if (!loginChallenge) {
-      setSaveStatus('Помилка: Спочатку ініціюйте вхід у OneDrive.')
+      setSaveStatus(`${copy.errorPrefix}: ${copy.enterCodeFirst}`)
       return
     }
 
-    await runSave(async () => {
+    await runAction(async () => {
       const response = await completeGraphLogin(loginChallenge)
       setGraphStatus(response.status)
       if (!response.succeeded) {
         throw new Error(response.message)
       }
       setLoginChallenge(null)
-    }, 'Вхід у OneDrive завершено.')
+    }, copy.saveSuccess)
   }
 
   async function handleLogoutOneDrive() {
-    await runSave(async () => {
+    await runAction(async () => {
       const status = await graphLogout()
       setGraphStatus(status)
       setLoginChallenge(null)
-    }, 'OneDrive відключено.')
+    }, copy.saveSuccess)
+  }
+
+  async function handleSyncNow() {
+    await runAction(async () => {
+      await graphSyncNow()
+    }, copy.saveSuccess)
+  }
+
+  async function handleRebuildIndex() {
+    await runAction(async () => {
+      await graphRebuildIndex()
+    }, copy.saveSuccess)
+  }
+
+  async function handleClearCache() {
+    await runAction(async () => {
+      await graphClearCache()
+    }, copy.saveSuccess)
   }
 
   return (
     <div className="settings-page" aria-busy={saving || loading}>
-      <section className="card settings-hero">
-        <div className="settings-hero__header">
+      <section className="tg-profile-card">
+        <div className="tg-profile-main">
+          <div className="tg-avatar" aria-hidden="true">⚙️</div>
           <div>
-            <h2 className="settings-hero__title">Центр налаштувань</h2>
-            <p className="settings-hero__subtitle">
-              Ті самі ключові налаштування, що у Telegram-кнопках, але в зручному Mini App форматі.
-            </p>
-          </div>
-          <StatusChip tone={isOnline ? 'ok' : 'warn'}>{isOnline ? 'Онлайн' : 'Офлайн'}</StatusChip>
-        </div>
-
-        <div className="settings-overview">
-          <div className="overview-item">
-            <span className="overview-label">Мова</span>
-            <strong className="overview-value">{mapLocale(locale)}</strong>
-          </div>
-          <div className="overview-item">
-            <span className="overview-label">Режим збереження</span>
-            <strong className="overview-value">{mapSaveMode(saveModeDraft)}</strong>
-          </div>
-          <div className="overview-item">
-            <span className="overview-label">AI</span>
-            <strong className="overview-value">{aiProvider} / {aiModel || '—'}</strong>
-          </div>
-          <div className="overview-item">
-            <span className="overview-label">OneDrive / Graph</span>
-            <strong className={`overview-value ${oneDriveConnected ? 'status-ok' : 'status-error'}`}>
-              {oneDriveConnected ? 'Підключено' : 'Не підключено'}
-            </strong>
-          </div>
-          <div className="overview-item">
-            <span className="overview-label">Notion</span>
-            <strong className={`overview-value ${notionEnabled ? 'status-ok' : 'status-warn'}`}>
-              {notionEnabled ? 'Активно' : 'Не налаштовано'}
-            </strong>
+            <h2 className="tg-profile-title">{copy.screenTitle}</h2>
+            <p className="tg-profile-subtitle">{copy.screenSubtitle}</p>
           </div>
         </div>
+        <StatusChip tone={isOnline ? 'ok' : 'warn'}>{isOnline ? copy.online : copy.offline}</StatusChip>
       </section>
 
       {saveStatus && (
         <section
           className={`status-banner status-banner--${resolveBannerTone(saveStatus)}`}
-          role={saveStatus.startsWith('Помилка') ? 'alert' : 'status'}
+          role={saveStatus.startsWith(copy.errorPrefix) ? 'alert' : 'status'}
           aria-live="polite"
         >
           {saveStatus}
@@ -498,117 +732,81 @@ export function SettingsPage() {
 
       {loadError && (
         <section className="status-banner status-banner--error" role="alert">
-          Не вдалося завантажити дані налаштувань: {loadError}
+          {copy.loadErrorPrefix}: {loadError}
           <button type="button" className="btn-secondary" onClick={() => void loadSettings()} disabled={saving}>
-            Спробувати знову
+            {copy.retry}
           </button>
         </section>
       )}
 
-      <section className="card settings-section" data-settings-section="locale">
-        <SectionTitle
-          icon="🌐"
-          title={titleLocale?.title ?? 'Мова інтерфейсу'}
-          description={titleLocale?.description ?? 'Основна мова Mini App. За замовчуванням — українська.'}
-        />
-        <div className="field">
-          <label htmlFor="locale-select">Оберіть мову</label>
-          <select
-            id="locale-select"
-            value={localeDraft}
-            onChange={(e) => setLocaleDraft(e.target.value === 'en' ? 'en' : 'uk')}
-            disabled={saving || !isOnline}
-          >
-            <option value="uk">Українська</option>
-            <option value="en">English</option>
-          </select>
-        </div>
-        <div className="actions-row">
-          <button type="button" className="btn-primary" onClick={handleSaveLocale} disabled={saving || !isOnline}>
-            Зберегти мову
-          </button>
-        </div>
-      </section>
-
-      <section className="card settings-section" data-settings-section="session">
-        <SectionTitle
-          icon="💾"
-          title={titleSession?.title ?? 'Сесія і сховище'}
-          description={titleSession?.description ?? 'Режими збереження та політика сховища для поточного каналу.'}
-        />
-
-        <div className="field-grid">
-          <div className="field">
-            <label htmlFor="save-mode-select">Режим збереження</label>
+      <section className="tg-card">
+        <h3 className="tg-section-title">{copy.generalSection}</h3>
+        <div className="tg-list">
+          <label className="tg-row" htmlFor="locale-select">
+            <span className="tg-row-label">{copy.languageLabel}</span>
             <select
-              id="save-mode-select"
-              value={saveModeDraft}
-              onChange={(e) => setSaveModeDraft(e.target.value)}
+              id="locale-select"
+              className="tg-select"
+              value={localeDraft}
+              onChange={(event) => setLocaleDraft(event.target.value === 'en' ? 'en' : 'uk')}
               disabled={saving || !isOnline}
             >
-              {bootstrapData.preferences.availableSaveModes.map((saveMode) => (
-                <option key={saveMode} value={saveMode}>
-                  {mapSaveMode(saveMode)}
+              <option value="uk">Українська</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+
+          <label className="tg-row" htmlFor="save-mode-select">
+            <span className="tg-row-label">{copy.saveModeLabel}</span>
+            <select
+              id="save-mode-select"
+              className="tg-select"
+              value={saveModeDraft}
+              onChange={(event) => setSaveModeDraft(event.target.value)}
+              disabled={saving || !isOnline}
+            >
+              {bootstrap.preferences.availableSaveModes.map((mode) => (
+                <option key={mode} value={mode}>
+                  {mapSaveMode(mode, uiLocale)}
                 </option>
               ))}
             </select>
-          </div>
+          </label>
 
-          <div className="field">
-            <label htmlFor="storage-mode-select">Режим сховища</label>
+          <label className="tg-row" htmlFor="storage-mode-select">
+            <span className="tg-row-label">{copy.storageModeLabel}</span>
             <select
               id="storage-mode-select"
+              className="tg-select"
               value={storageModeDraft}
-              onChange={(e) => setStorageModeDraft(e.target.value)}
+              onChange={(event) => setStorageModeDraft(event.target.value)}
               disabled={saving || !isOnline || storageLocked}
             >
-              {(storageLocked ? policyData.allowedStorageModes : bootstrapData.preferences.availableStorageModes).map((mode) => (
+              {storageOptions.map((mode) => (
                 <option key={mode} value={mode}>
-                  {mapStorageMode(mode)}
+                  {mapStorageMode(mode, uiLocale)}
                 </option>
               ))}
             </select>
-          </div>
+          </label>
         </div>
-
-        <p className="helper-text">
-          Політика Wave 1: <strong>{mapPolicy(policyData.storageModePolicy)}</strong>
-        </p>
-
-        <div className="actions-row">
-          <button type="button" className="btn-primary" onClick={handleSaveSession} disabled={saving || !isOnline}>
-            Зберегти режими
-          </button>
-          {storagePolicyMismatch && (
-            <button type="button" className="btn-secondary" onClick={handleApplyStoragePolicy} disabled={saving || !isOnline}>
-              Повернути policy-режим
-            </button>
-          )}
-        </div>
+        {storageLocked && <p className="tg-helper">{copy.storageLockedHint}</p>}
       </section>
 
-      <section className="card settings-section" data-settings-section="ai">
-        <SectionTitle
-          icon="🤖"
-          title={titleAi?.title ?? 'AI налаштування'}
-          description={titleAi?.description ?? 'Керування провайдером, моделлю та API ключем.'}
-        />
-
-        {loading && (
-          <p className="muted-text" role="status" aria-live="polite">
-            Завантаження AI налаштувань...
-          </p>
-        )}
+      <section className="tg-card">
+        <h3 className="tg-section-title">{copy.aiSection}</h3>
+        {loading && <p className="tg-helper">{copy.loadingAi}</p>}
 
         {!loading && (
           <>
-            <div className="field-grid">
-              <div className="field">
-                <label htmlFor="provider-select">Провайдер</label>
+            <div className="tg-list">
+              <label className="tg-row" htmlFor="provider-select">
+                <span className="tg-row-label">{copy.providerLabel}</span>
                 <select
                   id="provider-select"
-                  value={aiProvider}
-                  onChange={(e) => setAiProviderState(e.target.value)}
+                  className="tg-select"
+                  value={aiProviderDraft}
+                  onChange={(event) => setAiProviderDraft(event.target.value)}
                   disabled={saving || !isOnline}
                 >
                   {aiProviders.map((provider) => (
@@ -617,14 +815,16 @@ export function SettingsPage() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div className="field">
-                <label htmlFor="model-select">Модель</label>
+              </label>
+
+              <label className="tg-row" htmlFor="model-select">
+                <span className="tg-row-label">{copy.modelLabel}</span>
                 <select
                   id="model-select"
-                  value={aiModel}
-                  onChange={(e) => setAiModelState(e.target.value)}
-                  disabled={saving || !isOnline}
+                  className="tg-select"
+                  value={aiModelDraft}
+                  onChange={(event) => setAiModelDraft(event.target.value)}
+                  disabled={saving || !isOnline || modelsLoading}
                 >
                   {aiModels.map((model) => (
                     <option key={model} value={model}>
@@ -632,232 +832,148 @@ export function SettingsPage() {
                     </option>
                   ))}
                 </select>
-              </div>
+              </label>
+
+              <label className="tg-row" htmlFor="api-key-input">
+                <span className="tg-row-label">{copy.apiKeyLabel}</span>
+                <input
+                  id="api-key-input"
+                  className="tg-input"
+                  type="password"
+                  value={apiKeyDraft}
+                  onChange={(event) => {
+                    setApiKeyDraft(event.target.value)
+                    if (event.target.value.trim().length > 0) {
+                      setRemoveStoredKeyRequested(false)
+                    }
+                  }}
+                  placeholder={copy.apiKeyPlaceholder}
+                  disabled={saving || !isOnline}
+                />
+              </label>
             </div>
 
-            <div className="actions-row">
-              <button type="button" className="btn-secondary" onClick={handleSaveProvider} disabled={saving || !isOnline}>
-                Зберегти провайдера
-              </button>
-              <button type="button" className="btn-secondary" onClick={handleSaveModel} disabled={saving || !isOnline}>
-                Зберегти модель
-              </button>
-            </div>
-
-            <div className="field">
-              <label htmlFor="api-key-input">API ключ</label>
+            <label className="tg-check">
               <input
-                id="api-key-input"
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Введіть ключ для обраного провайдера"
-                disabled={saving || !isOnline}
+                type="checkbox"
+                checked={removeStoredKeyRequested}
+                onChange={(event) => {
+                  setRemoveStoredKeyRequested(event.target.checked)
+                  if (event.target.checked) {
+                    setApiKeyDraft('')
+                  }
+                }}
+                disabled={saving || !isOnline || !keyStatus.hasStoredKey}
               />
-            </div>
+              <span>{copy.removeStoredKeyLabel}</span>
+            </label>
 
-            <div className="actions-row">
-              <button type="button" className="btn-primary" onClick={handleSaveApiKey} disabled={saving || !isOnline}>
-                Зберегти ключ
-              </button>
-              <button type="button" className="btn-danger" onClick={handleRemoveApiKey} disabled={saving || !isOnline}>
-                Видалити ключ
-              </button>
-            </div>
-
-            <div className="kv">
-              <span>Статус ключа</span>
-              <span>{formatAiKeySource(keyStatus.source)}</span>
-            </div>
-            <div className="kv">
-              <span>Ключ у сховищі</span>
-              <span>{keyStatus.hasStoredKey ? 'Так' : 'Ні'}</span>
+            <div className="tg-inline-meta">
+              <span>{copy.keySourceLabel}: {mapAiKeySource(keyStatus.source, uiLocale)}</span>
+              <span>{copy.keyStoredLabel}: {keyStatus.hasStoredKey ? copy.yes : copy.no}</span>
+              <span>
+                {copy.modelCountLabel}: {aiModels.length}
+                {modelsLoading ? ` (${copy.loadingModels})` : ''}
+              </span>
             </div>
           </>
         )}
       </section>
 
-      <section className="card settings-section" data-settings-section="onedrive-auth">
-        <SectionTitle
-          icon="☁️"
-          title={titleOneDrive?.title ?? 'OneDrive авторизація'}
-          description={titleOneDrive?.description ?? 'Підключення та керування доступом до Graph.'}
-        />
+      <section className="tg-card">
+        <h3 className="tg-section-title">{copy.integrationsSection}</h3>
 
         <div className="kv">
-          <span>Конфігурація</span>
-          <span>{activeGraphStatus.isConfigured ? 'Готово' : 'Не налаштовано'}</span>
-        </div>
-        <div className="kv">
-          <span>Підключення</span>
+          <span>{copy.oneDriveStatusLabel}</span>
           <span className={oneDriveConnected ? 'status-ok' : 'status-error'}>
-            {oneDriveConnected ? 'Активне' : 'Не активне'}
+            {activeGraphStatus.isConfigured
+              ? (oneDriveConnected ? copy.connected : copy.disconnected)
+              : copy.notConfigured}
           </span>
         </div>
         <div className="kv">
-          <span>Термін токена</span>
-          <span>{formatDateTime(activeGraphStatus.accessTokenExpiresAtUtc)}</span>
+          <span>{copy.oneDriveTokenLabel}</span>
+          <span>{formatDateTime(activeGraphStatus.accessTokenExpiresAtUtc, uiLocale, copy.noData)}</span>
         </div>
         <div className="kv">
-          <span>Повідомлення</span>
-          <span>{activeGraphStatus.message || '—'}</span>
+          <span>{copy.notionLabel}</span>
+          <span className={notionEnabled ? 'status-ok' : 'status-warn'}>
+            {notionEnabled ? copy.enabled : copy.disabled}
+          </span>
         </div>
+
+        {!integrationStatus && <p className="tg-helper">{copy.loadingIntegrations}</p>}
 
         {loginChallenge && (
           <div className="challenge-block">
             <div className="challenge-grid">
-              <span>Код входу</span>
+              <span>{copy.loginCodeLabel}</span>
               <strong className="mono">{loginChallenge.userCode}</strong>
             </div>
-            <div className="challenge-grid">
-              <span>Сторінка підтвердження</span>
-              <a href={loginChallenge.verificationUri} target="_blank" rel="noreferrer">
-                Відкрити сторінку входу
-              </a>
-            </div>
+            <a href={loginChallenge.verificationUri} target="_blank" rel="noreferrer">
+              {copy.openLoginPage}
+            </a>
           </div>
         )}
 
         <div className="actions-row">
-          <button type="button" className="btn-secondary" onClick={handleRefreshOneDriveStatus} disabled={saving || !isOnline}>
-            Оновити статус
+          <button type="button" className="btn-secondary" onClick={handleRefreshStatus} disabled={saving || !isOnline}>
+            {copy.refreshStatus}
           </button>
           {!oneDriveConnected && (
             <>
               <button type="button" className="btn-secondary" onClick={handleStartOneDriveLogin} disabled={saving || !isOnline}>
-                Почати вхід
+                {copy.startLogin}
               </button>
               <button
                 type="button"
-                className="btn-primary"
+                className="btn-secondary"
                 onClick={handleCompleteOneDriveLogin}
                 disabled={saving || !isOnline || !loginChallenge}
               >
-                Завершити вхід
+                {copy.finishLogin}
               </button>
             </>
           )}
           {oneDriveConnected && (
             <button type="button" className="btn-danger" onClick={handleLogoutOneDrive} disabled={saving || !isOnline}>
-              Вийти з OneDrive
+              {copy.logout}
             </button>
           )}
         </div>
-      </section>
 
-      <section className="card settings-section" data-settings-section="integrations">
-        <SectionTitle
-          icon="📝"
-          title={titleIntegrations?.title ?? 'Інтеграції (Notion)'}
-          description={titleIntegrations?.description ?? 'Операційний стан синхронізацій Vocabulary та Food.'}
-        />
-
-        {!integrationStatus && (
-          <p className="muted-text" role="status" aria-live="polite">
-            Завантаження статусів інтеграцій...
-          </p>
-        )}
-
-        {integrationStatus && (
-          <>
-            <div className="kv">
-              <span>Notion Vocabulary</span>
-              <span className={integrationStatus.notionVocabulary.enabled ? 'status-ok' : 'status-warn'}>
-                {integrationStatus.notionVocabulary.enabled ? 'Увімкнено' : 'Вимкнено'}
-              </span>
-            </div>
-            <div className="kv">
-              <span>Черга / помилки</span>
-              <span>{integrationStatus.notionVocabulary.pendingCards} / {integrationStatus.notionVocabulary.failedCards}</span>
-            </div>
-            <div className="kv">
-              <span>Notion Food</span>
-              <span className={integrationStatus.notionFood.enabled ? 'status-ok' : 'status-warn'}>
-                {integrationStatus.notionFood.enabled ? 'Увімкнено' : 'Вимкнено'}
-              </span>
-            </div>
-            <div className="kv">
-              <span>Inventory + Grocery (pending/failed)</span>
-              <span>
-                {integrationStatus.notionFood.inventoryPendingOrFailed + integrationStatus.notionFood.groceryPendingOrFailed}
-              </span>
-            </div>
-          </>
-        )}
-
-        <div className="actions-row">
-          <button type="button" className="btn-secondary" onClick={() => void loadSettings()} disabled={saving || loading}>
-            Оновити інтеграції
-          </button>
-        </div>
-      </section>
-
-      <details className="details-block">
-        <summary>Розширені та технічні дані</summary>
-
-        <div className="details-content">
-          <section className="card settings-subcard" data-settings-section="state">
-            <h4>Діагностика сесії</h4>
-            <div className="kv">
-              <span>Канал</span>
-              <span>{bootstrapData.scope.channel}</span>
-            </div>
-            <div className="kv">
-              <span>Користувач</span>
-              <span>{bootstrapData.scope.userId}</span>
-            </div>
-            <div className="kv">
-              <span>Режим збереження</span>
-              <span>{mapSaveMode(bootstrapData.preferences.saveMode)}</span>
-            </div>
-            <div className="kv">
-              <span>Режим сховища</span>
-              <span>{mapStorageMode(bootstrapData.preferences.storageMode)}</span>
-            </div>
-          </section>
-
-          <section className="card settings-subcard" data-settings-section="policy">
-            <h4>Policy Mini App v1</h4>
-            <div className="kv">
-              <span>Мова за замовчуванням</span>
-              <span>{policyData.defaultLocale}</span>
-            </div>
-            <div className="kv">
-              <span>Політика сховища</span>
-              <span>{mapPolicy(policyData.storageModePolicy)}</span>
-            </div>
-            <div className="kv">
-              <span>Дозволені режими</span>
-              <span>{policyData.allowedStorageModes.map(mapStorageMode).join(', ')}</span>
-            </div>
-            <div className="kv">
-              <span>Перевірка initData</span>
-              <span>{policyData.requiresInitDataVerification ? 'Обовʼязкова' : 'Вимкнена'}</span>
-            </div>
-            <ul className="notes-list">
-              {policyData.notes.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="card settings-subcard" data-settings-section="onedrive-ops">
-            <h4>Сервісні операції OneDrive</h4>
-            <p className="helper-text">Використовуйте ці дії лише за потреби технічного обслуговування.</p>
+        <details className="details-block">
+          <summary>{copy.serviceActions}</summary>
+          <div className="details-content">
             <div className="actions-row">
               <button type="button" className="btn-secondary" onClick={handleSyncNow} disabled={saving || !isOnline}>
-                Синхронізувати зараз
+                {copy.syncNow}
               </button>
               <button type="button" className="btn-secondary" onClick={handleRebuildIndex} disabled={saving || !isOnline}>
-                Перебудувати індекс
+                {copy.rebuildIndex}
               </button>
               <button type="button" className="btn-danger" onClick={handleClearCache} disabled={saving || !isOnline}>
-                Очистити кеш
+                {copy.clearCache}
               </button>
             </div>
-          </section>
+          </div>
+        </details>
+      </section>
+
+      <div className="settings-savebar">
+        <div className="settings-savebar__meta">
+          <span className={`save-indicator ${hasUnsavedChanges ? 'save-indicator--dirty' : 'save-indicator--clean'}`} />
+          <span>{hasUnsavedChanges ? copy.unsavedChanges : copy.allSaved}</span>
         </div>
-      </details>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={handleSaveAll}
+          disabled={saving || loading || !isOnline || !hasUnsavedChanges}
+        >
+          {saving ? copy.saving : copy.saveChanges}
+        </button>
+      </div>
     </div>
   )
 }
