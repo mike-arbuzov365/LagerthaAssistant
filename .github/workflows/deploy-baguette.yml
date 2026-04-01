@@ -2,15 +2,12 @@ name: Deploy BaguetteDesign
 
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - 'src/BaguetteDesign.**/**'
-      - 'src/SharedBotKernel/**'
-      - 'src/BaguetteDesign.Api/Dockerfile'
 
 jobs:
   deploy:
+    # Temporary freeze: keep Baguette deploy disabled until Lagertha validation is complete.
+    # To re-enable, set repository variable ENABLE_BAGUETTE_DEPLOY=true.
+    if: ${{ vars.ENABLE_BAGUETTE_DEPLOY == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
