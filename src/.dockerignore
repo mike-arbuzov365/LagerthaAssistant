@@ -1,0 +1,10 @@
+**/node_modules
+**/bin
+**/obj
+**/TestResults
+**/.vs
+**/.vscode
+**/*.user
+**/*.suo
+**/*.nupkg
+LagerthaAssistant.Api/wwwroot/miniapp

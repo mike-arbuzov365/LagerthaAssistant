@@ -1,0 +1,100 @@
+﻿import { useEffect, useMemo } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { getLocale, getMiniAppPolicy, getSessionBootstrap, verifyMiniAppInitData } from '../api/client'
+import { createHostContext } from '../host/createHost'
+import { resolvePreferredLocale } from '../lib/locale'
+import { DashboardPage } from '../pages/DashboardPage'
+import { SettingsPage } from '../pages/SettingsPage'
+import { useAppStore } from '../state/appStore'
+
+function AppShellHeader() {
+  return (
+    <header className="shell-header">
+      <div>
+        <h1 className="shell-title">Налаштування Lagertha</h1>
+        <p className="shell-subtitle">
+          Керуйте мовою, AI, режимами збереження та інтеграціями в одному екрані.
+        </p>
+      </div>
+    </header>
+  )
+}
+
+export function App() {
+  const host = useMemo(() => createHostContext(), [])
+  const status = useAppStore((s) => s.status)
+  const locale = useAppStore((s) => s.locale)
+  const error = useAppStore((s) => s.error)
+  const setLoading = useAppStore((s) => s.setLoading)
+  const setReady = useAppStore((s) => s.setReady)
+  const setError = useAppStore((s) => s.setError)
+
+  useEffect(() => {
+    void (async () => {
+      setLoading()
+
+      try {
+        host.ready()
+        document.documentElement.style.setProperty('--safe-top', `${host.safeAreaTop}px`)
+        document.documentElement.dataset.theme = host.theme
+
+        if (host.isTelegram && host.initData) {
+          const verification = await verifyMiniAppInitData({ initData: host.initData })
+          if (!verification.isValid) {
+            throw new Error(`InitData verify failed: ${verification.reason}`)
+          }
+        }
+
+        const [policy, bootstrap, localeResponse] = await Promise.all([
+          getMiniAppPolicy(),
+          getSessionBootstrap(host.userId),
+          getLocale(host.userId),
+        ])
+
+        const normalizedLocale = resolvePreferredLocale(
+          localeResponse.locale ?? policy.defaultLocale,
+          host.userLanguageCode,
+        )
+
+        setReady({ locale: normalizedLocale, bootstrap, policy })
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Помилка ініціалізації'
+        setError(message)
+      }
+    })()
+  }, [host, setError, setLoading, setReady])
+
+  useEffect(() => {
+    document.documentElement.lang = locale
+  }, [locale])
+
+  return (
+    <div className="shell">
+      <AppShellHeader />
+
+      {status === 'loading' && (
+        <div className="card" role="status" aria-live="polite">
+          Завантаження Mini App...
+        </div>
+      )}
+      {status === 'error' && (
+        <div className="card status-error" role="alert">
+          Помилка: {error}
+        </div>
+      )}
+      {status === 'ready' && (
+        <main aria-label="Основний контент Mini App">
+          <Routes>
+            <Route path="/" element={<Navigate to="/settings" replace />} />
+            <Route path="/miniapp" element={<Navigate to="/miniapp/settings" replace />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/miniapp/settings" element={<SettingsPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/miniapp/dashboard" element={<DashboardPage />} />
+            <Route path="*" element={<Navigate to="/settings" replace />} />
+          </Routes>
+        </main>
+      )}
+    </div>
+  )
+}
