@@ -17,6 +17,7 @@
 - Create PRs from `dev` → `master`
 - One PR = one logical milestone (not one commit)
 - No new branches without explicit instruction
+- PR authoring/formatting rules: `docs/shared/01-pr-authoring-guide.md`
 
 **Commit convention:** `feat` / `fix` / `refactor` / `test` / `docs` / `chore`
 

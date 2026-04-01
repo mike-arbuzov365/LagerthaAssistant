@@ -1,6 +1,7 @@
 name: Deploy BaguetteDesign
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
     paths:
@@ -19,11 +20,14 @@ jobs:
         with:
           dotnet-version: '10.x'
 
-      - name: Build & Test
+      - name: Build & Test (Baguette scope)
         run: |
-          dotnet restore LagerthaAssistant.sln
-          dotnet build LagerthaAssistant.sln --no-restore --configuration Release
-          dotnet test LagerthaAssistant.sln --no-build --configuration Release
+          dotnet restore BotPlatform.sln
+          dotnet build src/BaguetteDesign.Api/BaguetteDesign.Api.csproj --no-restore --configuration Release
+          dotnet test tests/SharedBotKernel.Tests/SharedBotKernel.Tests.csproj --configuration Release --verbosity normal
+          dotnet test tests/BaguetteDesign.Domain.Tests/BaguetteDesign.Domain.Tests.csproj --configuration Release --verbosity normal
+          dotnet test tests/BaguetteDesign.Application.Tests/BaguetteDesign.Application.Tests.csproj --configuration Release --verbosity normal
+          dotnet test tests/BaguetteDesign.IntegrationTests/BaguetteDesign.IntegrationTests.csproj --configuration Release --verbosity normal
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli

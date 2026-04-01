@@ -18,10 +18,17 @@ jobs:
           dotnet-version: '10.x'
 
       - name: Restore
-        run: dotnet restore LagerthaAssistant.sln
+        run: dotnet restore BotPlatform.sln
 
       - name: Build
-        run: dotnet build LagerthaAssistant.sln --no-restore --configuration Release
+        run: dotnet build BotPlatform.sln --no-restore --configuration Release
 
-      - name: Test
-        run: dotnet test LagerthaAssistant.sln --no-build --configuration Release --verbosity normal
+      # Keep CI stable and fast on GitHub-hosted runners.
+      # DB-dependent integration suites are validated in dedicated deploy workflows and locally with Docker.
+      - name: Test (stable unit suites)
+        run: |
+          dotnet test tests/SharedBotKernel.Tests/SharedBotKernel.Tests.csproj --configuration Release --verbosity normal
+          dotnet test tests/LagerthaAssistant.Domain.Tests/LagerthaAssistant.Domain.Tests.csproj --configuration Release --verbosity normal
+          dotnet test tests/LagerthaAssistant.Application.Tests/LagerthaAssistant.Application.Tests.csproj --configuration Release --verbosity normal
+          dotnet test tests/BaguetteDesign.Domain.Tests/BaguetteDesign.Domain.Tests.csproj --configuration Release --verbosity normal
+          dotnet test tests/BaguetteDesign.Application.Tests/BaguetteDesign.Application.Tests.csproj --configuration Release --verbosity normal
