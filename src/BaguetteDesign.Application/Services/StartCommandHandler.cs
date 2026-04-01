@@ -66,7 +66,7 @@ public sealed class StartCommandHandler : IStartCommandHandler
 
         var settingsBtn = string.IsNullOrWhiteSpace(_webAppUrl)
             ? Btn("⚙️ Налаштування", "settings")
-            : BtnWebApp("⚙️ Налаштування", $"{_webAppUrl}/settings.html");
+            : BtnWebApp("⚙️ Налаштування", $"{_webAppUrl}/");
 
         var keyboard = new
         {

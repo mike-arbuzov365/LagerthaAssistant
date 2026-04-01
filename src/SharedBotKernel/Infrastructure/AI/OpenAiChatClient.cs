@@ -18,17 +18,25 @@ public sealed class OpenAiChatClient
     private readonly ILogger<OpenAiChatClient> _logger;
 
     public OpenAiChatClient(OpenAiOptions options, ILogger<OpenAiChatClient> logger)
+        : this(options, logger, httpClient: null)
+    {
+    }
+
+    public OpenAiChatClient(OpenAiOptions options, ILogger<OpenAiChatClient> logger, HttpClient? httpClient)
     {
         _options = options;
         _logger = logger;
-        _httpClient = new HttpClient(new SocketsHttpHandler
+
+        _httpClient = httpClient ?? new HttpClient(new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(2)
-        })
+        });
+
+        _httpClient.BaseAddress ??= new Uri(_options.BaseUrl);
+        if (httpClient is null)
         {
-            BaseAddress = new Uri(_options.BaseUrl),
-            Timeout = TimeSpan.FromSeconds(OpenAiConstants.HttpTimeoutSeconds)
-        };
+            _httpClient.Timeout = TimeSpan.FromSeconds(OpenAiConstants.HttpTimeoutSeconds);
+        }
     }
 
     public async Task<AssistantCompletionResult> CompleteAsync(
