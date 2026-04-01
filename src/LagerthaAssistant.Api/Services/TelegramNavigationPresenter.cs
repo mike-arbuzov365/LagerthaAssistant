@@ -9,10 +9,12 @@ namespace LagerthaAssistant.Api.Services;
 public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
 {
     private readonly ILocalizationService _localizationService;
+    private readonly string? _miniAppSettingsUrl;
 
-    public TelegramNavigationPresenter(ILocalizationService localizationService)
+    public TelegramNavigationPresenter(ILocalizationService localizationService, string? miniAppSettingsUrl = null)
     {
         _localizationService = localizationService;
+        _miniAppSettingsUrl = NormalizeMiniAppSettingsUrl(miniAppSettingsUrl);
     }
 
     public MainMenuLabels GetMainMenuLabels(string locale)
@@ -51,7 +53,7 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             [
                 [new TelegramKeyboardButton(labels.Chat), new TelegramKeyboardButton(labels.Vocabulary)],
                 [new TelegramKeyboardButton(labels.Shopping), new TelegramKeyboardButton(labels.WeeklyMenu)],
-                [new TelegramKeyboardButton(labels.Settings)]
+                [BuildSettingsMainKeyboardButton(labels.Settings)]
             ],
             ResizeKeyboard: true,
             IsPersistent: true);
@@ -403,4 +405,35 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
 
     private TelegramInlineKeyboardButton LanguageButton(string locale, string key, string callbackData)
         => new(_localizationService.Get(key, locale), callbackData);
+
+    private TelegramKeyboardButton BuildSettingsMainKeyboardButton(string text)
+    {
+        if (string.IsNullOrWhiteSpace(_miniAppSettingsUrl))
+        {
+            return new TelegramKeyboardButton(text);
+        }
+
+        return new TelegramKeyboardButton(text, new TelegramWebAppInfo(_miniAppSettingsUrl));
+    }
+
+    private static string? NormalizeMiniAppSettingsUrl(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        var trimmed = raw.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return uri.AbsoluteUri;
+    }
 }

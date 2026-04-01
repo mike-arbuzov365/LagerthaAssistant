@@ -691,6 +691,7 @@ OpenAI__ApiKey                       = sk-...
 Telegram__Enabled                    = true
 Telegram__BotToken                   = <token from BotFather>
 Telegram__WebhookSecret              = <your secret>
+Telegram__MiniAppSettingsUrl         = https://<your-app.up.railway.app>/miniapp/settings
 ```
 
 Optional Graph/OneDrive mode:

@@ -1,10 +1,12 @@
 ﻿using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.DependencyInjection;
+using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Models.AI;
 using LagerthaAssistant.Infrastructure;
 using LagerthaAssistant.Infrastructure.Data;
@@ -49,7 +51,12 @@ builder.Services.AddHttpClient<LagerthaAssistant.Application.Interfaces.Food.INo
 });
 builder.Services.AddSingleton<ITelegramConversationResponseFormatter, TelegramConversationResponseFormatter>();
 builder.Services.AddSingleton<ITelegramBotSender, SharedBotKernel.Infrastructure.Telegram.TelegramBotSender>();
-builder.Services.AddSingleton<ITelegramNavigationPresenter, TelegramNavigationPresenter>();
+builder.Services.AddSingleton<ITelegramNavigationPresenter>(sp =>
+{
+    var localizationService = sp.GetRequiredService<ILocalizationService>();
+    var settingsUrl = ResolveMiniAppSettingsUrl(builder.Configuration);
+    return new TelegramNavigationPresenter(localizationService, settingsUrl);
+});
 builder.Services.AddSingleton<TelegramPendingStateStore>();
 builder.Services.AddScoped<ITelegramImportSourceReader, TelegramImportSourceReader>();
 builder.Services.AddScoped<IVocabularyDiscoveryService, VocabularyDiscoveryService>();
@@ -93,9 +100,33 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+var miniAppRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "miniapp");
+if (Directory.Exists(miniAppRoot))
+{
+    var miniAppFiles = new PhysicalFileProvider(miniAppRoot);
+    app.UseDefaultFiles(new DefaultFilesOptions
+    {
+        FileProvider = miniAppFiles,
+        RequestPath = "/miniapp"
+    });
+
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = miniAppFiles,
+        RequestPath = "/miniapp"
+    });
+}
 app.UseRateLimiter();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", utc = DateTimeOffset.UtcNow }));
 app.MapControllers();
+
+if (Directory.Exists(miniAppRoot))
+{
+    app.MapFallbackToFile("/miniapp/{*path:nonfile}", "index.html", new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(miniAppRoot)
+    });
+}
 
 await app.RunAsync();
 
@@ -122,3 +153,47 @@ static AssistantSessionOptions BuildSessionOptions(IConfiguration configuration)
 }
 
 
+
+static string? ResolveMiniAppSettingsUrl(IConfiguration configuration)
+{
+    var explicitSettingsUrl = configuration[$"{TelegramOptions.SectionName}:MiniAppSettingsUrl"];
+    if (TryNormalizeHttpsUrl(explicitSettingsUrl, out var resolvedExplicitUrl))
+    {
+        return resolvedExplicitUrl;
+    }
+
+    var publicBaseUrl = configuration["PublicBaseUrl"];
+    if (!TryNormalizeHttpsUrl(publicBaseUrl, out var resolvedPublicBaseUrl))
+    {
+        return null;
+    }
+
+    var builder = new UriBuilder(resolvedPublicBaseUrl)
+    {
+        Path = "/miniapp/settings"
+    };
+
+    return builder.Uri.AbsoluteUri;
+}
+
+static bool TryNormalizeHttpsUrl(string? raw, out string value)
+{
+    value = string.Empty;
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    if (!Uri.TryCreate(raw.Trim(), UriKind.Absolute, out var parsed))
+    {
+        return false;
+    }
+
+    if (!string.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    value = parsed.AbsoluteUri;
+    return true;
+}

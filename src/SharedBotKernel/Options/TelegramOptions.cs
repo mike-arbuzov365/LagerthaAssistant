@@ -12,5 +12,7 @@ public sealed class TelegramOptions
 
     public string? WebhookSecret { get; set; }
 
+    public string? MiniAppSettingsUrl { get; set; }
+
     public int TextLengthLimit { get; set; } = 3900;
 }

@@ -20,6 +20,20 @@ public sealed class TelegramNavigationPresenterTests
     }
 
     [Fact]
+    public void BuildMainReplyKeyboard_ShouldUseWebAppForSettings_WhenMiniAppUrlConfigured()
+    {
+        var sut = new TelegramNavigationPresenter(
+            new LocalizationService(),
+            "https://lagertha.example.com/miniapp/settings");
+
+        var keyboard = sut.BuildMainReplyKeyboard("uk");
+        var settingsButton = keyboard.Keyboard[2][0];
+
+        Assert.NotNull(settingsButton.WebApp);
+        Assert.Equal("https://lagertha.example.com/miniapp/settings", settingsButton.WebApp!.Url);
+    }
+
+    [Fact]
     public void BuildMainReplyKeyboard_ShouldUseEnglishLabels_ForEnglishLocale()
     {
         var sut = new TelegramNavigationPresenter(new LocalizationService());
