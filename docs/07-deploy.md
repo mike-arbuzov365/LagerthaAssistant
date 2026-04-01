@@ -11,7 +11,7 @@
 | **LagerthaAssistant** | Production on Railway | — |
 | **BaguetteDesign** | Ready to deploy (M1+M2 merged, runbook ready) | — |
 
-CI/CD pipeline: **configured** — `.github/workflows/ci.yml` (PR checks) + `.github/workflows/deploy-baguette.yml` (auto-deploy on master push)
+CI/CD pipeline: **configured** — `.github/workflows/ci.yml` (PR checks) + `.github/workflows/deploy-baguette.yml` (manual, currently paused by guard variable)
 
 > Детальна покрокова інструкція деплою BaguetteDesign: `docs/21-baguette-deploy-runbook.md`
 
@@ -155,7 +155,8 @@ dotnet ef database update \
 Workflows у `.github/workflows/`:
 
 - **`ci.yml`** — запускається на кожен PR у master і push у dev: restore → build → test
-- **`deploy-baguette.yml`** — запускається на push у master якщо змінились `src/BaguetteDesign.*` або `src/SharedBotKernel`: build → test → `railway up --service baguette-design`
+- **`deploy-baguette.yml`** — запускається вручну (`workflow_dispatch`), і додатково має guard `if: vars.ENABLE_BAGUETTE_DEPLOY == 'true'`.
+  Поточне правило: **Baguette deploy pause** (поки тестуємо Lagertha, деплой Baguette вимкнений).
 
 Потрібний secret у GitHub: `RAILWAY_TOKEN` (Railway → Account Settings → Tokens).
 
