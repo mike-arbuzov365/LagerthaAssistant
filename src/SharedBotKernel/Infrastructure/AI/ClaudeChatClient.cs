@@ -18,17 +18,25 @@ public sealed class ClaudeChatClient
     private readonly ILogger<ClaudeChatClient> _logger;
 
     public ClaudeChatClient(ClaudeOptions options, ILogger<ClaudeChatClient> logger)
+        : this(options, logger, httpClient: null)
+    {
+    }
+
+    public ClaudeChatClient(ClaudeOptions options, ILogger<ClaudeChatClient> logger, HttpClient? httpClient)
     {
         _options = options;
         _logger = logger;
-        _httpClient = new HttpClient(new SocketsHttpHandler
+
+        _httpClient = httpClient ?? new HttpClient(new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(2)
-        })
+        });
+
+        _httpClient.BaseAddress ??= new Uri(_options.BaseUrl);
+        if (httpClient is null)
         {
-            BaseAddress = new Uri(_options.BaseUrl),
-            Timeout = TimeSpan.FromSeconds(ClaudeConstants.HttpTimeoutSeconds)
-        };
+            _httpClient.Timeout = TimeSpan.FromSeconds(ClaudeConstants.HttpTimeoutSeconds);
+        }
     }
 
     public async Task<AssistantCompletionResult> CompleteAsync(
