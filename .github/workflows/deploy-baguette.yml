@@ -1,6 +1,7 @@
 name: Deploy BaguetteDesign
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
     paths:
