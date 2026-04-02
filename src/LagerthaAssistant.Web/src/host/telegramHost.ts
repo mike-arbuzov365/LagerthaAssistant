@@ -13,9 +13,13 @@ declare global {
         }
         colorScheme?: 'light' | 'dark'
         contentSafeAreaInsets?: { top?: number }
+        isExpanded?: boolean
+        isFullscreen?: boolean
         ready(): void
         expand(): void
         requestFullscreen?: () => void
+        onEvent?: (eventType: string, handler: (payload?: unknown) => void) => void
+        offEvent?: (eventType: string, handler: (payload?: unknown) => void) => void
       }
     }
   }
@@ -61,6 +65,16 @@ function parseInitDataUser(
   }
 }
 
+function requestBestEffortFullscreen(webApp: NonNullable<NonNullable<typeof window.Telegram>['WebApp']>) {
+  webApp.expand()
+
+  try {
+    webApp.requestFullscreen?.()
+  } catch {
+    // Older Telegram clients may not support fullscreen requests.
+  }
+}
+
 export function createTelegramHost(): HostContext | null {
   const webApp = window.Telegram?.WebApp
   if (!webApp) {
@@ -82,13 +96,40 @@ export function createTelegramHost(): HostContext | null {
     conversationId: userId,
     ready() {
       webApp.ready()
-      webApp.expand()
+      requestBestEffortFullscreen(webApp)
+    },
+    enableBestEffortFullscreen() {
+      let disposed = false
+      let fullscreenAttempted = false
 
-      try {
-        webApp.requestFullscreen?.()
-      } catch {
-        // Older Telegram clients may not support fullscreen requests.
+      const tryRequest = () => {
+        if (disposed || fullscreenAttempted) {
+          return
+        }
+
+        fullscreenAttempted = true
+        requestBestEffortFullscreen(webApp)
+        cleanup()
       }
+
+      const cleanup = () => {
+        disposed = true
+        window.removeEventListener('pointerdown', tryRequest, true)
+        window.removeEventListener('touchstart', tryRequest, true)
+        window.removeEventListener('keydown', tryRequest, true)
+        window.removeEventListener('scroll', tryRequest, true)
+        webApp.offEvent?.('fullscreenChanged', tryRequest)
+      }
+
+      window.addEventListener('pointerdown', tryRequest, { capture: true, passive: true })
+      window.addEventListener('touchstart', tryRequest, { capture: true, passive: true })
+      window.addEventListener('keydown', tryRequest, true)
+      window.addEventListener('scroll', tryRequest, { capture: true, passive: true })
+
+      // If Telegram changes viewport state while the app is opening, try to maximize again.
+      webApp.onEvent?.('fullscreenChanged', tryRequest)
+
+      return cleanup
     },
   }
 }

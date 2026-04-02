@@ -9,4 +9,5 @@ export interface HostContext {
   userId: string | null
   conversationId: string | null
   ready(): void
+  enableBestEffortFullscreen(): () => void
 }

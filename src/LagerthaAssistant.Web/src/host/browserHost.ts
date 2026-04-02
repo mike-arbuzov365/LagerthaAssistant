@@ -12,5 +12,8 @@ export function createBrowserHost(): HostContext {
     ready() {
       // no-op
     },
+    enableBestEffortFullscreen() {
+      return () => {}
+    },
   }
 }
