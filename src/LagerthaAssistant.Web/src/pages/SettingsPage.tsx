@@ -840,6 +840,7 @@ export function SettingsPage() {
         channel: bootstrapChannel,
         userId: scopedUserId ?? undefined,
         conversationId: bootstrapConversationId,
+        initData: window.Telegram?.WebApp?.initData || undefined,
       })
       applyCommittedSettings(response)
       setSaveStatus(copy.saveSuccess)

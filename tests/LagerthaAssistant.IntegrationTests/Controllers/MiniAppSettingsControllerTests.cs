@@ -1,5 +1,7 @@
 namespace LagerthaAssistant.IntegrationTests.Controllers;
 
+using System.Security.Cryptography;
+using System.Text;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Controllers;
 using LagerthaAssistant.Api.Services;
@@ -11,14 +13,18 @@ using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Navigation;
 using LagerthaAssistant.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using SharedBotKernel.Abstractions;
 using SharedBotKernel.Infrastructure.AI;
 using SharedBotKernel.Models.AI;
 using SharedBotKernel.Models.Agents;
+using SharedBotKernel.Options;
 using Xunit;
 
 public sealed class MiniAppSettingsControllerTests
 {
+    private const string BotToken = "123456:ABCDEF_fake_token_for_tests";
+
     [Fact]
     public async Task Commit_ShouldRefreshTelegramMainKeyboardInSavedLocale()
     {
@@ -28,7 +34,12 @@ public sealed class MiniAppSettingsControllerTests
         var sender = new FakeTelegramBotSender();
         var commitService = CreateCommitService(localeService);
         var presenter = new TelegramNavigationPresenter(new LocalizationService(), "https://example.com/miniapp/settings");
-        var sut = new MiniAppSettingsController(scopeAccessor, commitService, navigationState, presenter, sender);
+        var sut = CreateSut(scopeAccessor, commitService, navigationState, presenter, sender, BotToken);
+        var initData = BuildInitData(
+            BotToken,
+            authDateUtc: DateTimeOffset.UtcNow.AddMinutes(-1),
+            ("query_id", "AAHx"),
+            ("user", "{\"id\":2002,\"first_name\":\"Mike\"}"));
 
         var response = await sut.Commit(
             new MiniAppSettingsCommitRequest(
@@ -38,8 +49,9 @@ public sealed class MiniAppSettingsControllerTests
                 AiProvider: "openai",
                 AiModel: "gpt-4.1-mini",
                 Channel: "telegram",
-                UserId: "2002",
-                ConversationId: "2002"),
+                UserId: "9999",
+                ConversationId: "2002",
+                InitData: initData),
             CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(response.Result);
@@ -72,7 +84,12 @@ public sealed class MiniAppSettingsControllerTests
         var sender = new FakeTelegramBotSender();
         var commitService = CreateCommitService(localeService);
         var presenter = new TelegramNavigationPresenter(new LocalizationService(), "https://example.com/miniapp/settings");
-        var sut = new MiniAppSettingsController(scopeAccessor, commitService, navigationState, presenter, sender);
+        var sut = CreateSut(scopeAccessor, commitService, navigationState, presenter, sender, BotToken);
+        var initData = BuildInitData(
+            BotToken,
+            authDateUtc: DateTimeOffset.UtcNow.AddMinutes(-1),
+            ("query_id", "AAHx"),
+            ("user", "{\"id\":2002,\"first_name\":\"Mike\"}"));
 
         var response = await sut.Commit(
             new MiniAppSettingsCommitRequest(
@@ -83,17 +100,149 @@ public sealed class MiniAppSettingsControllerTests
                 AiModel: "gpt-4.1-mini",
                 Channel: "telegram",
                 UserId: "2002",
-                ConversationId: null),
+                ConversationId: null,
+                InitData: initData),
             CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(response.Result);
         var payload = Assert.IsType<MiniAppSettingsCommitResponse>(ok.Value);
 
         Assert.Equal("uk", payload.Locale);
-        Assert.Equal(ConversationScope.DefaultConversationId, scopeAccessor.Current.ConversationId);
+        Assert.Equal("2002", scopeAccessor.Current.ConversationId);
         Assert.Equal(NavigationSections.Main, navigationState.CurrentSection);
         Assert.Single(sender.SentMessages);
         Assert.Equal(2002L, sender.SentMessages.Single().ChatId);
+    }
+
+    [Fact]
+    public async Task Commit_ShouldRejectInvalidTelegramInitData()
+    {
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var localeService = new FakeUserLocaleStateService { SetLocaleResult = "en" };
+        var navigationState = new FakeNavigationStateService();
+        var sender = new FakeTelegramBotSender();
+        var commitService = CreateCommitService(localeService);
+        var presenter = new TelegramNavigationPresenter(new LocalizationService(), "https://example.com/miniapp/settings");
+        var sut = CreateSut(scopeAccessor, commitService, navigationState, presenter, sender, BotToken);
+
+        var initData = BuildInitData(
+            BotToken,
+            authDateUtc: DateTimeOffset.UtcNow.AddMinutes(-1),
+            ("query_id", "AAHx"),
+            ("user", "{\"id\":2002,\"first_name\":\"Mike\"}")) + "0";
+
+        var response = await sut.Commit(
+            new MiniAppSettingsCommitRequest(
+                Locale: "en",
+                SaveMode: "ask",
+                StorageMode: "graph",
+                AiProvider: "openai",
+                AiModel: "gpt-4.1-mini",
+                Channel: "telegram",
+                UserId: "2002",
+                ConversationId: "2002",
+                InitData: initData),
+            CancellationToken.None);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal("initData is invalid: hash_mismatch.", badRequest.Value);
+        Assert.Empty(sender.SentMessages);
+        Assert.Equal(ConversationScope.Default, scopeAccessor.Current);
+    }
+
+    [Fact]
+    public async Task Commit_ShouldRejectSpoofedTelegramTarget_WhenInitDataMissing()
+    {
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var localeService = new FakeUserLocaleStateService { SetLocaleResult = "en" };
+        var navigationState = new FakeNavigationStateService();
+        var sender = new FakeTelegramBotSender();
+        var commitService = CreateCommitService(localeService);
+        var presenter = new TelegramNavigationPresenter(new LocalizationService(), "https://example.com/miniapp/settings");
+        var sut = CreateSut(scopeAccessor, commitService, navigationState, presenter, sender, BotToken);
+
+        var response = await sut.Commit(
+            new MiniAppSettingsCommitRequest(
+                Locale: "en",
+                SaveMode: "ask",
+                StorageMode: "graph",
+                AiProvider: "openai",
+                AiModel: "gpt-4.1-mini",
+                Channel: "telegram",
+                UserId: "2002",
+                ConversationId: "2002"),
+            CancellationToken.None);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal("initData is required for Telegram-scoped writes.", badRequest.Value);
+        Assert.Empty(sender.SentMessages);
+        Assert.Equal(ConversationScope.Default, scopeAccessor.Current);
+    }
+
+    [Fact]
+    public async Task Commit_ShouldAllowAnonymousDevFallback_WhenTelegramInitDataMissing()
+    {
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var localeService = new FakeUserLocaleStateService { SetLocaleResult = "en" };
+        var navigationState = new FakeNavigationStateService();
+        var sender = new FakeTelegramBotSender();
+        var commitService = CreateCommitService(localeService);
+        var presenter = new TelegramNavigationPresenter(new LocalizationService(), "https://example.com/miniapp/settings");
+        var sut = CreateSut(scopeAccessor, commitService, navigationState, presenter, sender, BotToken);
+
+        var response = await sut.Commit(
+            new MiniAppSettingsCommitRequest(
+                Locale: "en",
+                SaveMode: "ask",
+                StorageMode: "graph",
+                AiProvider: "openai",
+                AiModel: "gpt-4.1-mini",
+                Channel: "telegram"),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<MiniAppSettingsCommitResponse>(ok.Value);
+
+        Assert.Equal("en", payload.Locale);
+        Assert.Equal("telegram", scopeAccessor.Current.Channel);
+        Assert.Equal(ConversationScope.DefaultUserId, scopeAccessor.Current.UserId);
+        Assert.Equal(ConversationScope.DefaultConversationId, scopeAccessor.Current.ConversationId);
+        Assert.Empty(sender.SentMessages);
+    }
+
+    [Fact]
+    public async Task Commit_ShouldRejectConversationIdThatDoesNotMatchVerifiedTelegramUser()
+    {
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var localeService = new FakeUserLocaleStateService { SetLocaleResult = "en" };
+        var navigationState = new FakeNavigationStateService();
+        var sender = new FakeTelegramBotSender();
+        var commitService = CreateCommitService(localeService);
+        var presenter = new TelegramNavigationPresenter(new LocalizationService(), "https://example.com/miniapp/settings");
+        var sut = CreateSut(scopeAccessor, commitService, navigationState, presenter, sender, BotToken);
+        var initData = BuildInitData(
+            BotToken,
+            authDateUtc: DateTimeOffset.UtcNow.AddMinutes(-1),
+            ("query_id", "AAHx"),
+            ("user", "{\"id\":2002,\"first_name\":\"Mike\"}"));
+
+        var response = await sut.Commit(
+            new MiniAppSettingsCommitRequest(
+                Locale: "en",
+                SaveMode: "ask",
+                StorageMode: "graph",
+                AiProvider: "openai",
+                AiModel: "gpt-4.1-mini",
+                Channel: "telegram",
+                UserId: "2002",
+                ConversationId: "9999",
+                InitData: initData),
+            CancellationToken.None);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal("conversationId does not match verified Telegram user.", badRequest.Value);
+        Assert.Empty(sender.SentMessages);
+        Assert.Equal(ConversationScope.Default, scopeAccessor.Current);
     }
 
     private static MiniAppSettingsCommitService CreateCommitService(FakeUserLocaleStateService localeService)
@@ -104,6 +253,47 @@ public sealed class MiniAppSettingsControllerTests
             new FakeVocabularyStoragePreferenceService(),
             new FakeVocabularyStorageModeProvider(),
             new FakeAiRuntimeSettingsService());
+    }
+
+    private static MiniAppSettingsController CreateSut(
+        FakeConversationScopeAccessor scopeAccessor,
+        MiniAppSettingsCommitService commitService,
+        FakeNavigationStateService navigationState,
+        TelegramNavigationPresenter presenter,
+        FakeTelegramBotSender sender,
+        string botToken)
+    {
+        var options = Options.Create(new TelegramOptions
+        {
+            BotToken = botToken
+        });
+
+        return new MiniAppSettingsController(scopeAccessor, commitService, navigationState, presenter, sender, options);
+    }
+
+    private static string BuildInitData(
+        string botToken,
+        DateTimeOffset authDateUtc,
+        params (string Key, string Value)[] fields)
+    {
+        var parameters = fields.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
+        parameters["auth_date"] = authDateUtc.ToUnixTimeSeconds().ToString();
+
+        var dataCheckString = string.Join(
+            '\n',
+            parameters
+                .OrderBy(x => x.Key, StringComparer.Ordinal)
+                .Select(x => $"{x.Key}={x.Value}"));
+
+        var secret = HMACSHA256.HashData(
+            Encoding.UTF8.GetBytes("WebAppData"),
+            Encoding.UTF8.GetBytes(botToken));
+        var hash = HMACSHA256.HashData(secret, Encoding.UTF8.GetBytes(dataCheckString));
+        parameters["hash"] = Convert.ToHexStringLower(hash);
+
+        return string.Join(
+            "&",
+            parameters.Select(x => $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"));
     }
 
     private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
