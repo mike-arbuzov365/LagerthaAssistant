@@ -119,6 +119,31 @@ public sealed class ConversationBootstrapServiceTests
         Assert.Empty(snapshot.PartOfSpeechOptions);
     }
 
+    [Fact]
+    public async Task BuildAsync_ShouldReadSessionBeforeGraphStatus_WhenServicesCannotRunConcurrently()
+    {
+        var guard = new SequentialBootstrapGuard();
+        var sessionPreferenceService = new GuardedSessionPreferenceService(guard);
+        var saveModePreferenceService = new FakeSaveModePreferenceService();
+        var storageModeProvider = new FakeStorageModeProvider();
+        var deckService = new FakeDeckService();
+        var graphAuthService = new GuardedGraphAuthService(guard);
+
+        var sut = new ConversationBootstrapService(
+            sessionPreferenceService,
+            saveModePreferenceService,
+            storageModeProvider,
+            deckService,
+            graphAuthService,
+            new ConversationCommandCatalogService());
+
+        var snapshot = await sut.BuildAsync(ConversationScope.Default, cancellationToken: CancellationToken.None);
+
+        Assert.Equal("ask", snapshot.SaveMode);
+        Assert.False(snapshot.Graph.IsAuthenticated);
+        Assert.Equal(["session:start", "session:end", "graph:start", "graph:end"], guard.Events);
+    }
+
     private sealed class FakeSessionPreferenceService : IVocabularySessionPreferenceService
     {
         public IReadOnlyList<string> SupportedSaveModes { get; } = ["ask", "auto", "off"];
@@ -259,5 +284,100 @@ public sealed class ConversationBootstrapServiceTests
 
         public Task<IReadOnlyList<VocabularyDeckEntry>> GetAllEntriesAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<VocabularyDeckEntry>>([]);
+    }
+
+    private sealed class SequentialBootstrapGuard
+    {
+        public bool SessionCompleted { get; private set; }
+
+        public List<string> Events { get; } = [];
+
+        public void SessionStarted() => Events.Add("session:start");
+
+        public void SessionFinished()
+        {
+            SessionCompleted = true;
+            Events.Add("session:end");
+        }
+
+        public void GraphStarted()
+        {
+            Events.Add("graph:start");
+            if (!SessionCompleted)
+            {
+                throw new InvalidOperationException("Graph status started before session preference read completed.");
+            }
+        }
+
+        public void GraphFinished() => Events.Add("graph:end");
+    }
+
+    private sealed class GuardedSessionPreferenceService : IVocabularySessionPreferenceService
+    {
+        private readonly SequentialBootstrapGuard _guard;
+
+        public GuardedSessionPreferenceService(SequentialBootstrapGuard guard)
+        {
+            _guard = guard;
+        }
+
+        public IReadOnlyList<string> SupportedSaveModes { get; } = ["ask", "auto", "off"];
+
+        public IReadOnlyList<string> SupportedStorageModes { get; } = ["local", "graph"];
+
+        public Task<VocabularySessionPreferences> GetAsync(
+            ConversationScope scope,
+            CancellationToken cancellationToken = default)
+        {
+            _guard.SessionStarted();
+            _guard.SessionFinished();
+            return Task.FromResult(new VocabularySessionPreferences(VocabularySaveMode.Ask, VocabularyStorageMode.Local));
+        }
+
+        public Task<VocabularySessionPreferences> SetAsync(
+            ConversationScope scope,
+            VocabularySaveMode? saveMode = null,
+            VocabularyStorageMode? storageMode = null,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new VocabularySessionPreferences(VocabularySaveMode.Ask, VocabularyStorageMode.Local));
+    }
+
+    private sealed class GuardedGraphAuthService : IGraphAuthService
+    {
+        private readonly SequentialBootstrapGuard _guard;
+
+        public GuardedGraphAuthService(SequentialBootstrapGuard guard)
+        {
+            _guard = guard;
+        }
+
+        public Task<GraphAuthStatus> GetStatusAsync(CancellationToken cancellationToken = default)
+        {
+            _guard.GraphStarted();
+            _guard.GraphFinished();
+            return Task.FromResult(new GraphAuthStatus(true, false, "Not authenticated.", null));
+        }
+
+        public Task<GraphLoginResult> LoginAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphLoginResult(false, "Not implemented."));
+
+        public Task<GraphLoginResult> LoginAsync(
+            Func<GraphDeviceCodePrompt, CancellationToken, Task> onDeviceCodeReceived,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphLoginResult(false, "Not implemented."));
+
+        public Task<GraphDeviceLoginStartResult> StartLoginAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphDeviceLoginStartResult(false, "Not implemented.", null));
+
+        public Task<GraphLoginResult> CompleteLoginAsync(
+            GraphDeviceLoginChallenge challenge,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphLoginResult(false, "Not implemented."));
+
+        public Task LogoutAsync(CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<string?>(null);
     }
 }

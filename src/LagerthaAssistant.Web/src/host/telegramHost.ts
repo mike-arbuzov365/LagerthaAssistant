@@ -15,6 +15,7 @@ declare global {
         contentSafeAreaInsets?: { top?: number }
         ready(): void
         expand(): void
+        requestFullscreen?: () => void
       }
     }
   }
@@ -82,6 +83,12 @@ export function createTelegramHost(): HostContext | null {
     ready() {
       webApp.ready()
       webApp.expand()
+
+      try {
+        webApp.requestFullscreen?.()
+      } catch {
+        // Older Telegram clients may not support fullscreen requests.
+      }
     },
   }
 }
