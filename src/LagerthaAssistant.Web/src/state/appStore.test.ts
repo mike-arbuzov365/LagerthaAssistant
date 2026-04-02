@@ -33,6 +33,33 @@ const bootstrapFixture: SessionBootstrapResponse = {
     message: 'ok',
     accessTokenExpiresAtUtc: null,
   },
+  settings: {
+    aiProvider: 'openai',
+    availableProviders: ['openai', 'claude'],
+    aiModel: 'gpt-4.1-mini',
+    availableModels: ['gpt-4.1-mini', 'gpt-4.1'],
+    hasStoredKey: false,
+    apiKeySource: 'missing',
+    notion: {
+      notionVocabulary: {
+        enabled: false,
+        isConfigured: false,
+        workerEnabled: false,
+        message: 'disabled',
+        pendingCards: 0,
+        failedCards: 0,
+      },
+      notionFood: {
+        enabled: false,
+        isConfigured: false,
+        workerEnabled: false,
+        inventoryPendingOrFailed: 0,
+        inventoryPermanentlyFailed: 0,
+        groceryPendingOrFailed: 0,
+        groceryPermanentlyFailed: 0,
+      },
+    },
+  },
 }
 
 const policyFixture: MiniAppPolicyResponse = {

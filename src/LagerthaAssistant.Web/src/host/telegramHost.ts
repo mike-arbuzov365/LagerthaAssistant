@@ -65,14 +65,8 @@ function parseInitDataUser(
   }
 }
 
-function requestBestEffortFullscreen(webApp: NonNullable<NonNullable<typeof window.Telegram>['WebApp']>) {
+function requestPreferredViewport(webApp: NonNullable<NonNullable<typeof window.Telegram>['WebApp']>) {
   webApp.expand()
-
-  try {
-    webApp.requestFullscreen?.()
-  } catch {
-    // Older Telegram clients may not support fullscreen requests.
-  }
 }
 
 export function createTelegramHost(): HostContext | null {
@@ -96,40 +90,7 @@ export function createTelegramHost(): HostContext | null {
     conversationId: userId,
     ready() {
       webApp.ready()
-      requestBestEffortFullscreen(webApp)
-    },
-    enableBestEffortFullscreen() {
-      let disposed = false
-      let fullscreenAttempted = false
-
-      const tryRequest = () => {
-        if (disposed || fullscreenAttempted) {
-          return
-        }
-
-        fullscreenAttempted = true
-        requestBestEffortFullscreen(webApp)
-        cleanup()
-      }
-
-      const cleanup = () => {
-        disposed = true
-        window.removeEventListener('pointerdown', tryRequest, true)
-        window.removeEventListener('touchstart', tryRequest, true)
-        window.removeEventListener('keydown', tryRequest, true)
-        window.removeEventListener('scroll', tryRequest, true)
-        webApp.offEvent?.('fullscreenChanged', tryRequest)
-      }
-
-      window.addEventListener('pointerdown', tryRequest, { capture: true, passive: true })
-      window.addEventListener('touchstart', tryRequest, { capture: true, passive: true })
-      window.addEventListener('keydown', tryRequest, true)
-      window.addEventListener('scroll', tryRequest, { capture: true, passive: true })
-
-      // If Telegram changes viewport state while the app is opening, try to maximize again.
-      webApp.onEvent?.('fullscreenChanged', tryRequest)
-
-      return cleanup
+      requestPreferredViewport(webApp)
     },
   }
 }

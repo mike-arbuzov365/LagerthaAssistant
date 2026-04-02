@@ -11,6 +11,7 @@ public sealed record SessionBootstrapResponse(
     PreferenceSessionResponse Preferences,
     MiniAppPolicyResponse Policy,
     GraphAuthStatusResponse Graph,
+    MiniAppSettingsBootstrapResponse Settings,
     IReadOnlyList<ConversationCommandGroupResponse> CommandGroups,
     IReadOnlyList<VocabularyPartOfSpeechOptionResponse> PartOfSpeechOptions,
     IReadOnlyList<VocabularyDeckInfoResponse>? WritableDecks);

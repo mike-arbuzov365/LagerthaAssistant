@@ -511,7 +511,7 @@ public sealed class TelegramController : ControllerBase
             case NavigationRouteKind.MainSettingsButton:
                 await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
                 _pendingStateStore.ShoppingDeleteSessions.TryRemove(BuildPendingShoppingDeleteKey(scope), out _);
-                return await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken);
+                return await BuildSettingsEntryResponseAsync(scope, locale, cancellationToken);
 
             case NavigationRouteKind.Callback:
                 return await HandleCallbackAsync(route.CallbackData!, inbound, scope, locale, currentSection, cancellationToken);
@@ -566,8 +566,8 @@ public sealed class TelegramController : ControllerBase
                         }
                     }
 
-                await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
-                return await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken);
+                    await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
+                    return await BuildSettingsEntryResponseAsync(scope, locale, cancellationToken);
                 }
 
             case NavigationRouteKind.LanguageOnboardingText:
@@ -812,7 +812,7 @@ public sealed class TelegramController : ControllerBase
             case "assistant.settings.open":
                 return await FinalizeChatActionResponseAsync(
                     scope,
-                    await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken),
+                    await BuildSettingsEntryResponseAsync(scope, locale, cancellationToken),
                     cancellationToken);
 
             case "assistant.settings.save_mode.open":
@@ -1241,6 +1241,7 @@ public sealed class TelegramController : ControllerBase
 
         return callbackData switch
         {
+            CallbackDataConstants.Settings.Legacy => await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken),
             CallbackDataConstants.Settings.Language => new TelegramRouteResponse(
                 "settings.language",
                 _navigationPresenter.GetText("language.current", locale, _navigationPresenter.GetLanguageDisplayName(locale)),
@@ -3163,6 +3164,34 @@ public sealed class TelegramController : ControllerBase
             "settings.section",
             text,
             InlineKeyboard(_navigationPresenter.BuildSettingsKeyboard(locale)),
+            IsHtml: true);
+    }
+
+    private async Task<TelegramRouteResponse> BuildSettingsEntryResponseAsync(
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        await _navigationStateService.SetCurrentSectionAsync(
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
+            NavigationSections.Settings,
+            cancellationToken);
+
+        if (!_navigationPresenter.CanLaunchSettingsMiniApp)
+        {
+            return await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken);
+        }
+
+        var title = _navigationPresenter.GetText("settings.launch.title", locale);
+        var body = WebUtility.HtmlEncode(_navigationPresenter.GetText("settings.launch.body", locale));
+        var text = string.Concat(title, Environment.NewLine, Environment.NewLine, body);
+
+        return new TelegramRouteResponse(
+            "settings.launch",
+            text,
+            InlineKeyboard(_navigationPresenter.BuildSettingsLaunchKeyboard(locale)),
             IsHtml: true);
     }
 

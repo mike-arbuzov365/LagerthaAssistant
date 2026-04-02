@@ -10,11 +10,20 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
 {
     private readonly ILocalizationService _localizationService;
     private readonly string? _miniAppSettingsUrl;
+    private readonly string? _miniAppSettingsDirectUrl;
 
-    public TelegramNavigationPresenter(ILocalizationService localizationService, string? miniAppSettingsUrl = null)
+    public bool CanLaunchSettingsMiniApp
+        => !string.IsNullOrWhiteSpace(_miniAppSettingsDirectUrl)
+           || !string.IsNullOrWhiteSpace(_miniAppSettingsUrl);
+
+    public TelegramNavigationPresenter(
+        ILocalizationService localizationService,
+        string? miniAppSettingsUrl = null,
+        string? miniAppSettingsDirectUrl = null)
     {
         _localizationService = localizationService;
         _miniAppSettingsUrl = NormalizeMiniAppSettingsUrl(miniAppSettingsUrl);
+        _miniAppSettingsDirectUrl = NormalizeMiniAppSettingsDirectUrl(miniAppSettingsDirectUrl);
     }
 
     public MainMenuLabels GetMainMenuLabels(string locale)
@@ -53,7 +62,7 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             [
                 [new TelegramKeyboardButton(labels.Chat), new TelegramKeyboardButton(labels.Vocabulary)],
                 [new TelegramKeyboardButton(labels.Shopping), new TelegramKeyboardButton(labels.WeeklyMenu)],
-                [BuildSettingsMainKeyboardButton(labels.Settings)]
+                [new TelegramKeyboardButton(labels.Settings)]
             ],
             ResizeKeyboard: true,
             IsPersistent: true);
@@ -156,6 +165,35 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             [
                 [LanguageButton(locale, "language.name.uk", CallbackDataConstants.Lang.Ukrainian), LanguageButton(locale, "language.name.en", CallbackDataConstants.Lang.English)]
             ]);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildSettingsLaunchKeyboard(string locale)
+    {
+        var rows = new List<IReadOnlyList<TelegramInlineKeyboardButton>>();
+
+        if (!string.IsNullOrWhiteSpace(_miniAppSettingsDirectUrl))
+        {
+            rows.Add([
+                UrlButton(
+                    locale,
+                    "settings.launch_open_fullscreen",
+                    _miniAppSettingsDirectUrl)
+            ]);
+        }
+        else if (!string.IsNullOrWhiteSpace(_miniAppSettingsUrl))
+        {
+            rows.Add([
+                WebAppButton(
+                    locale,
+                    "settings.launch_open",
+                    _miniAppSettingsUrl)
+            ]);
+        }
+
+        rows.Add([Button("settings.launch_legacy", locale, CallbackDataConstants.Settings.Legacy)]);
+        rows.Add([Button("settings.back", locale, CallbackDataConstants.Nav.Main)]);
+
+        return new TelegramInlineKeyboardMarkup(rows);
     }
 
     public TelegramInlineKeyboardMarkup BuildSettingsKeyboard(string locale)
@@ -403,18 +441,14 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
     private TelegramInlineKeyboardButton Button(string key, string locale, string callbackData)
         => new(_localizationService.Get(key, locale), callbackData);
 
+    private TelegramInlineKeyboardButton UrlButton(string locale, string key, string url)
+        => new(_localizationService.Get(key, locale), Url: url);
+
+    private TelegramInlineKeyboardButton WebAppButton(string locale, string key, string url)
+        => new(_localizationService.Get(key, locale), WebApp: new TelegramWebAppInfo(url));
+
     private TelegramInlineKeyboardButton LanguageButton(string locale, string key, string callbackData)
         => new(_localizationService.Get(key, locale), callbackData);
-
-    private TelegramKeyboardButton BuildSettingsMainKeyboardButton(string text)
-    {
-        if (string.IsNullOrWhiteSpace(_miniAppSettingsUrl))
-        {
-            return new TelegramKeyboardButton(text);
-        }
-
-        return new TelegramKeyboardButton(text, new TelegramWebAppInfo(_miniAppSettingsUrl));
-    }
 
     private static string? NormalizeMiniAppSettingsUrl(string? raw)
     {
@@ -436,4 +470,7 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
 
         return uri.AbsoluteUri;
     }
+
+    private static string? NormalizeMiniAppSettingsDirectUrl(string? raw)
+        => NormalizeMiniAppSettingsUrl(raw);
 }

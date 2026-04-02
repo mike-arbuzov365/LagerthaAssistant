@@ -2,13 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   applyTelegramClosingConfirmation,
   buildUnsavedChangesPrompt,
-  buildTelegramMiniAppSettingsCommitPayload,
-  canUseTelegramMiniAppSettingsBridge,
   closeTelegramMiniApp,
   hasUnsavedSettingsChanges,
   normalizeLocaleFromPreference,
-  sendTelegramMiniAppSettingsCommit,
-  sendTelegramMiniAppSettingsSaved,
   type PersistedSnapshot,
   type SettingsDraftState,
   syncTelegramClosingConfirmation,
@@ -158,88 +154,6 @@ describe('syncTelegramClosingConfirmation', () => {
     expect(webApp.disableClosingConfirmation).toHaveBeenCalledTimes(3)
     expect(webApp.isClosingConfirmationEnabled).toBe(false)
     vi.useRealTimers()
-  })
-})
-
-describe('sendTelegramMiniAppSettingsSaved', () => {
-  it('sends settings_saved payload with locale', () => {
-    const sendData = vi.fn()
-
-    const result = sendTelegramMiniAppSettingsSaved({ sendData }, 'en')
-
-    expect(result).toBe(true)
-    expect(sendData).toHaveBeenCalledOnce()
-    expect(sendData).toHaveBeenCalledWith('{"type":"settings_saved","locale":"en"}')
-  })
-
-  it('returns false when sendData is unavailable', () => {
-    expect(sendTelegramMiniAppSettingsSaved({}, 'uk')).toBe(false)
-  })
-})
-
-describe('buildTelegramMiniAppSettingsCommitPayload', () => {
-  it('builds a single atomic commit payload and omits empty api keys', () => {
-    const payload = buildTelegramMiniAppSettingsCommitPayload({
-      locale: 'en',
-      saveMode: 'auto',
-      storageMode: 'graph',
-      aiProvider: 'claude',
-      aiModel: 'claude-3-7-sonnet',
-      apiKey: '   ',
-      removeStoredKey: true,
-    })
-
-    expect(payload).toBe(
-      '{"type":"settings_commit","locale":"en","saveMode":"auto","storageMode":"graph","aiProvider":"claude","aiModel":"claude-3-7-sonnet","removeStoredKey":true}',
-    )
-  })
-})
-
-describe('sendTelegramMiniAppSettingsCommit', () => {
-  it('sends the full settings_commit payload', () => {
-    const sendData = vi.fn()
-
-    const result = sendTelegramMiniAppSettingsCommit(
-      { sendData },
-      {
-        locale: 'uk',
-        saveMode: 'ask',
-        storageMode: 'graph',
-        aiProvider: 'openai',
-        aiModel: 'gpt-4.1-mini',
-        apiKey: 'secret',
-        removeStoredKey: false,
-      },
-    )
-
-    expect(result).toBe(true)
-    expect(sendData).toHaveBeenCalledWith(
-      '{"type":"settings_commit","locale":"uk","saveMode":"ask","storageMode":"graph","aiProvider":"openai","aiModel":"gpt-4.1-mini","apiKey":"secret"}',
-    )
-  })
-
-  it('returns false when sendData is unavailable', () => {
-    expect(
-      sendTelegramMiniAppSettingsCommit(
-        {},
-        {
-          locale: 'uk',
-          saveMode: 'ask',
-          storageMode: 'graph',
-          aiProvider: 'openai',
-          aiModel: 'gpt-4.1-mini',
-        },
-      ),
-    ).toBe(false)
-  })
-})
-
-describe('canUseTelegramMiniAppSettingsBridge', () => {
-  it('returns true only for telegram channel with sendData bridge', () => {
-    expect(canUseTelegramMiniAppSettingsBridge('telegram', { sendData: vi.fn() })).toBe(true)
-    expect(canUseTelegramMiniAppSettingsBridge('telegram', {})).toBe(false)
-    expect(canUseTelegramMiniAppSettingsBridge('web', { sendData: vi.fn() })).toBe(false)
-    expect(canUseTelegramMiniAppSettingsBridge(null, { sendData: vi.fn() })).toBe(false)
   })
 })
 

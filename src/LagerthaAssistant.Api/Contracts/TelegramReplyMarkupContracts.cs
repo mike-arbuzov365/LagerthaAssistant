@@ -20,4 +20,9 @@ public sealed record TelegramInlineKeyboardMarkup(
 
 public sealed record TelegramInlineKeyboardButton(
     [property: JsonPropertyName("text")] string Text,
-    [property: JsonPropertyName("callback_data")] string CallbackData);
+    [property: JsonPropertyName("callback_data"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? CallbackData = null,
+    [property: JsonPropertyName("url"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Url = null,
+    [property: JsonPropertyName("web_app"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    TelegramWebAppInfo? WebApp = null);

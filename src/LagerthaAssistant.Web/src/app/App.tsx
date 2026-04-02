@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { getSessionBootstrap, verifyMiniAppInitData } from '../api/client'
+import { getSessionBootstrap } from '../api/client'
 import { createHostContext } from '../host/createHost'
 import { resolvePreferredLocale } from '../lib/locale'
 import { DashboardPage } from '../pages/DashboardPage'
@@ -81,18 +81,12 @@ export function App() {
         document.documentElement.style.setProperty('--safe-top', `${host.safeAreaTop}px`)
         document.documentElement.dataset.theme = host.theme
 
-        const verifyTask = host.isTelegram && host.initData
-          ? verifyMiniAppInitData({ initData: host.initData })
-          : Promise.resolve<Awaited<ReturnType<typeof verifyMiniAppInitData>> | null>(null)
-
-        const [verification, bootstrap] = await Promise.all([
-          verifyTask,
-          getSessionBootstrap(host.userId, host.conversationId),
-        ])
-
-        if (verification && !verification.isValid) {
-          throw new Error(`InitData verify failed: ${verification.reason}`)
-        }
+        const bootstrap = await getSessionBootstrap({
+          channel: host.isTelegram ? 'telegram' : 'api',
+          userId: host.userId,
+          conversationId: host.conversationId,
+          initData: host.initData || undefined,
+        })
 
         const normalizedLocale = resolvePreferredLocale(
           bootstrap.locale.locale ?? bootstrap.policy.defaultLocale,
@@ -106,10 +100,6 @@ export function App() {
       }
     })()
   }, [host, setError, setLoading, setReady])
-
-  useEffect(() => {
-    return host.enableBestEffortFullscreen()
-  }, [host])
 
   useEffect(() => {
     document.documentElement.lang = locale

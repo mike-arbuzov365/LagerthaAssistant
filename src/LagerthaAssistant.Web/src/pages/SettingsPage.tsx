@@ -4,7 +4,6 @@ import {
   completeGraphLogin,
   getAiKeyStatus,
   getAiModel,
-  getAiProvider,
   getGraphStatus,
   getIntegrationNotionStatus,
   graphClearCache,
@@ -20,12 +19,10 @@ import { getScopedUserId } from '../lib/settings-utils'
 import {
   applyTelegramClosingConfirmation,
   buildUnsavedChangesPrompt,
-  canUseTelegramMiniAppSettingsBridge,
   closeTelegramMiniApp,
   hasUnsavedSettingsChanges,
   normalizeLocaleFromPreference,
   type PersistedSnapshot,
-  sendTelegramMiniAppSettingsCommit,
   syncTelegramClosingConfirmation,
   type TelegramMiniAppBridgeWebApp,
   type TelegramClosingConfirmationWebApp,
@@ -496,35 +493,46 @@ export function SettingsPage() {
     [bootstrap?.scope.userId],
   )
 
-  const [loading, setLoading] = useState(true)
+  const loading = false
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
 
   const [localeDraft, setLocaleDraft] = useState<AppLocale>(locale)
-  const [saveModeDraft, setSaveModeDraft] = useState('ask')
-  const [storageModeDraft, setStorageModeDraft] = useState('graph')
+  const [saveModeDraft, setSaveModeDraft] = useState(bootstrap?.preferences.saveMode ?? 'ask')
+  const [storageModeDraft, setStorageModeDraft] = useState(bootstrap?.preferences.storageMode ?? 'graph')
 
-  const [aiProviderDraft, setAiProviderDraft] = useState('openai')
-  const [aiProviders, setAiProviders] = useState<string[]>([])
-  const [aiModelDraft, setAiModelDraft] = useState('')
-  const [aiModels, setAiModels] = useState<string[]>([])
+  const [aiProviderDraft, setAiProviderDraft] = useState(bootstrap?.settings.aiProvider ?? 'openai')
+  const [aiProviders, setAiProviders] = useState<string[]>(bootstrap?.settings.availableProviders ?? [])
+  const [aiModelDraft, setAiModelDraft] = useState(bootstrap?.settings.aiModel ?? '')
+  const [aiModels, setAiModels] = useState<string[]>(bootstrap?.settings.availableModels ?? [])
   const [modelsLoading, setModelsLoading] = useState(false)
 
   const [apiKeyDraft, setApiKeyDraft] = useState('')
   const [removeStoredKeyRequested, setRemoveStoredKeyRequested] = useState(false)
 
-  const [integrationStatus, setIntegrationStatus] = useState<Awaited<ReturnType<typeof getIntegrationNotionStatus>> | null>(null)
+  const [integrationStatus, setIntegrationStatus] = useState<Awaited<ReturnType<typeof getIntegrationNotionStatus>> | null>(bootstrap?.settings.notion ?? null)
   const [graphStatus, setGraphStatus] = useState(bootstrap?.graph ?? null)
   const [loginChallenge, setLoginChallenge] = useState<GraphDeviceLoginChallengeResponse | null>(null)
   const [keyStatus, setKeyStatus] = useState<{ hasStoredKey: boolean; source: string }>({
-    hasStoredKey: false,
-    source: 'missing',
+    hasStoredKey: bootstrap?.settings.hasStoredKey ?? false,
+    source: bootstrap?.settings.apiKeySource ?? 'missing',
   })
-  const [snapshot, setSnapshot] = useState<PersistedSnapshot | null>(null)
+  const [snapshot, setSnapshot] = useState<PersistedSnapshot | null>(() => (
+    bootstrap
+      ? {
+        locale,
+        saveMode: bootstrap.preferences.saveMode,
+        storageMode: bootstrap.preferences.storageMode,
+        aiProvider: bootstrap.settings.aiProvider,
+        aiModel: bootstrap.settings.aiModel,
+      }
+      : null
+  ))
 
   const providerRequestVersion = useRef(0)
+  const skipInitialProviderRefreshRef = useRef(true)
 
   useEffect(() => {
     setLocaleDraft(locale)
@@ -564,16 +572,24 @@ export function SettingsPage() {
     setLocaleDraft(normalizedLocale)
     setSaveModeDraft(saveModeFromBootstrap)
     setStorageModeDraft(storageModeFromBootstrap)
-    setGraphStatus((current) => current ?? bootstrap.graph)
-    setSnapshot((current) => (
-      current ?? {
-        locale: normalizedLocale,
-        saveMode: saveModeFromBootstrap,
-        storageMode: storageModeFromBootstrap,
-        aiProvider: 'openai',
-        aiModel: '',
-      }
-    ))
+    setAiProviderDraft(bootstrap.settings.aiProvider)
+    setAiProviders(bootstrap.settings.availableProviders)
+    setAiModelDraft(bootstrap.settings.aiModel)
+    setAiModels(bootstrap.settings.availableModels)
+    setKeyStatus({
+      hasStoredKey: bootstrap.settings.hasStoredKey,
+      source: bootstrap.settings.apiKeySource,
+    })
+    setIntegrationStatus(bootstrap.settings.notion)
+    setGraphStatus(bootstrap.graph)
+    setSnapshot({
+      locale: normalizedLocale,
+      saveMode: saveModeFromBootstrap,
+      storageMode: storageModeFromBootstrap,
+      aiProvider: bootstrap.settings.aiProvider,
+      aiModel: bootstrap.settings.aiModel,
+    })
+    skipInitialProviderRefreshRef.current = true
   }, [bootstrap, locale])
 
   const hasUnsavedChanges = useMemo(() => {
@@ -625,59 +641,6 @@ export function SettingsPage() {
     return syncTelegramClosingConfirmation(webApp, hasUnsavedChanges)
   }, [hasUnsavedChanges])
 
-  const loadSettings = useCallback(async () => {
-    if (!bootstrap) {
-      return
-    }
-
-    setLoading(true)
-    setLoadError(null)
-
-    try {
-      const providerResponse = await getAiProvider(scopedUserId, scopedConversationId)
-      const [modelResponse, keyResponse, notionHubStatus, graphStatusResponse] = await Promise.all([
-        getAiModel(scopedUserId, providerResponse.provider, scopedConversationId),
-        getAiKeyStatus(scopedUserId, providerResponse.provider, scopedConversationId),
-        getIntegrationNotionStatus(),
-        getGraphStatus(),
-      ])
-
-      setAiProviderDraft(providerResponse.provider)
-      setAiProviders(providerResponse.availableProviders)
-      setAiModelDraft(modelResponse.model)
-      setAiModels(modelResponse.availableModels)
-      setKeyStatus({
-        hasStoredKey: keyResponse.hasStoredKey,
-        source: keyResponse.apiKeySource,
-      })
-      setIntegrationStatus(notionHubStatus)
-      setGraphStatus(graphStatusResponse)
-      setLoginChallenge(null)
-      setRemoveStoredKeyRequested(false)
-      setApiKeyDraft('')
-      setSnapshot({
-        locale,
-        saveMode: bootstrap.preferences.saveMode,
-        storageMode: bootstrap.preferences.storageMode,
-        aiProvider: providerResponse.provider,
-        aiModel: modelResponse.model,
-      })
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Load failed')
-    } finally {
-      setLoading(false)
-    }
-  }, [bootstrap, locale, scopedConversationId, scopedUserId])
-
-  useEffect(() => {
-    if (!bootstrap) {
-      return
-    }
-
-    setGraphStatus(bootstrap.graph)
-    void loadSettings()
-  }, [bootstrap, loadSettings])
-
   const applyCommittedSettings = useCallback((response: MiniAppSettingsCommitResponse) => {
     const normalizedLocale = normalizeLocaleFromPreference(response.locale)
     setLocaleInStore(normalizedLocale)
@@ -711,6 +674,11 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (!bootstrap || !aiProviderDraft) {
+      return
+    }
+
+    if (skipInitialProviderRefreshRef.current) {
+      skipInitialProviderRefreshRef.current = false
       return
     }
 
@@ -850,19 +818,6 @@ export function SettingsPage() {
 
     try {
       const webApp = window.Telegram?.WebApp as unknown as TelegramMiniAppBridgeWebApp | undefined
-      const shouldUseTelegramBridge = canUseTelegramMiniAppSettingsBridge(bootstrapChannel, webApp)
-
-      if (shouldUseTelegramBridge) {
-        const sent = sendTelegramMiniAppSettingsCommit(webApp, commitRequest)
-        if (!sent) {
-          throw new Error('Telegram bridge send failed')
-        }
-
-        applyTelegramClosingConfirmation(webApp, false)
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 32))
-        closeTelegramMiniApp(webApp)
-        return
-      }
 
       const response = await commitMiniAppSettings({
         ...commitRequest,
@@ -873,14 +828,16 @@ export function SettingsPage() {
         initData: window.Telegram?.WebApp?.initData || undefined,
       })
       applyCommittedSettings(response)
-      setSaveStatus(copy.saveSuccess)
       if (!webApp) {
+        setSaveStatus(copy.saveSuccess)
         return
       }
 
       applyTelegramClosingConfirmation(webApp, false)
       await new Promise<void>((resolve) => window.setTimeout(resolve, 32))
-      closeTelegramMiniApp(webApp)
+      if (!closeTelegramMiniApp(webApp)) {
+        setSaveStatus(copy.saveSuccess)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Operation failed'
       setSaveStatus(`${copy.errorPrefix}: ${message}`)
@@ -890,14 +847,31 @@ export function SettingsPage() {
   }
 
   async function handleRefreshStatus() {
-    await runAction(async () => {
+    if (!isOnline) {
+      setSaveStatus(copy.offlineError)
+      setLoadError(copy.offlineError)
+      return
+    }
+
+    setSaving(true)
+    setSaveStatus(null)
+    setLoadError(null)
+
+    try {
       const [notionStatus, currentGraphStatus] = await Promise.all([
         getIntegrationNotionStatus(),
         getGraphStatus(),
       ])
       setIntegrationStatus(notionStatus)
       setGraphStatus(currentGraphStatus)
-    }, copy.saveSuccess)
+      setSaveStatus(uiLocale === 'en' ? 'Status refreshed.' : 'Статус оновлено.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Refresh failed'
+      setLoadError(message)
+      setSaveStatus(`${copy.errorPrefix}: ${message}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleStartOneDriveLogin() {
@@ -978,7 +952,7 @@ export function SettingsPage() {
       {loadError && (
         <section className="status-banner status-banner--error" role="alert">
           {copy.loadErrorPrefix}: {loadError}
-          <button type="button" className="btn-secondary" onClick={() => void loadSettings()} disabled={saving}>
+          <button type="button" className="btn-secondary" onClick={() => void handleRefreshStatus()} disabled={saving}>
             {copy.retry}
           </button>
         </section>

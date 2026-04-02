@@ -329,7 +329,10 @@ SyncedAt      TIMESTAMPTZ
     "Enabled": true,
     "BotToken": "ENV:TELEGRAM__BOTTOKEN",
     "WebhookSecret": "ENV:TELEGRAM__WEBHOOKSECRET",
-    "AdminUserId": "ENV:TELEGRAM__ADMINUSERID"
+    "AdminUserId": "ENV:TELEGRAM__ADMINUSERID",
+    "BotUsername": "ENV:TELEGRAM__BOTUSERNAME",
+    "MiniAppSettingsUrl": "ENV:TELEGRAM__MINIAPPSETTINGSURL",
+    "MiniAppSettingsDirectUrl": "ENV:TELEGRAM__MINIAPPSETTINGSDIRECTURL"
   },
   "Claude": {
     "ApiKey": "ENV:CLAUDE__APIKEY",
@@ -375,6 +378,18 @@ SyncedAt      TIMESTAMPTZ
   }
 }
 ```
+
+### Telegram Mini App Settings Launch
+
+- The main `Settings` reply-keyboard button must stay a plain Telegram button.
+- Do not rely on reply-keyboard `web_app` launch for fullscreen behavior.
+- Preferred flow:
+  1. user taps `Settings`
+  2. bot sends a launch-entry message
+  3. launch-entry uses `Telegram__MiniAppSettingsDirectUrl` if configured
+  4. otherwise it falls back to `https://t.me/<bot>?startapp=settings` derived from `Telegram__BotUsername`
+  5. legacy inline settings remain available only as a fallback
+- Bootstrap for `/miniapp/settings` should come from `POST /api/session/bootstrap` so the screen can render without extra blocking round-trips for locale, AI provider, or integration status.
 
 ---
 
