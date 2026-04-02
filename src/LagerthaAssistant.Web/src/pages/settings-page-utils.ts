@@ -75,3 +75,15 @@ export function applyTelegramClosingConfirmation(
   }
 }
 
+export function syncTelegramClosingConfirmation(
+  webApp: TelegramClosingConfirmationWebApp | undefined,
+  enabled: boolean,
+): () => void {
+  applyTelegramClosingConfirmation(webApp, enabled)
+
+  return () => {
+    // Intentionally no-op.
+    // During Telegram Mini App close, React unmount may happen before Telegram processes
+    // closing behavior. Disabling confirmation in cleanup can suppress the close prompt.
+  }
+}

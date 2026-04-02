@@ -24,10 +24,10 @@ import type { GraphDeviceLoginChallengeResponse } from '../api/contracts'
 import type { AppLocale } from '../lib/locale'
 import { getScopedUserId } from '../lib/settings-utils'
 import {
-  applyTelegramClosingConfirmation,
   hasUnsavedSettingsChanges,
   normalizeLocaleFromPreference,
   type PersistedSnapshot,
+  syncTelegramClosingConfirmation,
   type TelegramClosingConfirmationWebApp,
 } from './settings-page-utils'
 import { useAppStore } from '../state/appStore'
@@ -403,11 +403,7 @@ export function SettingsPage() {
       return
     }
 
-    applyTelegramClosingConfirmation(webApp, hasUnsavedChanges)
-
-    return () => {
-      applyTelegramClosingConfirmation(webApp, false)
-    }
+    return syncTelegramClosingConfirmation(webApp, hasUnsavedChanges)
   }, [hasUnsavedChanges])
 
   const loadSettings = useCallback(async () => {
