@@ -24,10 +24,13 @@ import type { GraphDeviceLoginChallengeResponse } from '../api/contracts'
 import type { AppLocale } from '../lib/locale'
 import { getScopedUserId } from '../lib/settings-utils'
 import {
+  closeTelegramMiniApp,
   hasUnsavedSettingsChanges,
   normalizeLocaleFromPreference,
   type PersistedSnapshot,
+  sendTelegramMiniAppSettingsSaved,
   syncTelegramClosingConfirmation,
+  type TelegramMiniAppBridgeWebApp,
   type TelegramClosingConfirmationWebApp,
 } from './settings-page-utils'
 import { useAppStore } from '../state/appStore'
@@ -527,10 +530,10 @@ export function SettingsPage() {
   const oneDriveConnected = activeGraphStatus.isAuthenticated
   const notionEnabled = integrationStatus?.notionVocabulary.enabled || integrationStatus?.notionFood.enabled
 
-  async function runAction(task: () => Promise<void>, successMessage: string) {
+  async function runAction(task: () => Promise<void>, successMessage: string): Promise<boolean> {
     if (!isOnline) {
       setSaveStatus(copy.offlineError)
-      return
+      return false
     }
 
     setSaving(true)
@@ -539,9 +542,11 @@ export function SettingsPage() {
     try {
       await task()
       setSaveStatus(successMessage)
+      return true
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Operation failed'
       setSaveStatus(`${copy.errorPrefix}: ${message}`)
+      return false
     } finally {
       setSaving(false)
     }
@@ -557,7 +562,7 @@ export function SettingsPage() {
       return
     }
 
-    await runAction(async () => {
+    const saved = await runAction(async () => {
       let activeProvider = aiProviderDraft
 
       if (localeDraft !== snapshot.locale) {
@@ -632,6 +637,16 @@ export function SettingsPage() {
 
       await loadSettings()
     }, copy.saveSuccess)
+
+    if (!saved) {
+      return
+    }
+
+    const webApp = window.Telegram?.WebApp as unknown as TelegramMiniAppBridgeWebApp | undefined
+    const sent = sendTelegramMiniAppSettingsSaved(webApp, localeDraft)
+    if (sent) {
+      closeTelegramMiniApp(webApp)
+    }
   }
 
   async function handleRefreshStatus() {

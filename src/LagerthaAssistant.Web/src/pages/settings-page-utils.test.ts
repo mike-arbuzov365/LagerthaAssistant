@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   applyTelegramClosingConfirmation,
+  closeTelegramMiniApp,
   hasUnsavedSettingsChanges,
   normalizeLocaleFromPreference,
+  sendTelegramMiniAppSettingsSaved,
   type PersistedSnapshot,
   type SettingsDraftState,
   syncTelegramClosingConfirmation,
@@ -125,5 +127,34 @@ describe('syncTelegramClosingConfirmation', () => {
 
     expect(webApp.disableClosingConfirmation).toHaveBeenCalledOnce()
     expect(webApp.isClosingConfirmationEnabled).toBe(false)
+  })
+})
+
+describe('sendTelegramMiniAppSettingsSaved', () => {
+  it('sends settings_saved payload with locale', () => {
+    const sendData = vi.fn()
+
+    const result = sendTelegramMiniAppSettingsSaved({ sendData }, 'en')
+
+    expect(result).toBe(true)
+    expect(sendData).toHaveBeenCalledOnce()
+    expect(sendData).toHaveBeenCalledWith('{"type":"settings_saved","locale":"en"}')
+  })
+
+  it('returns false when sendData is unavailable', () => {
+    expect(sendTelegramMiniAppSettingsSaved({}, 'uk')).toBe(false)
+  })
+})
+
+describe('closeTelegramMiniApp', () => {
+  it('closes mini app when close API is available', () => {
+    const close = vi.fn()
+    const result = closeTelegramMiniApp({ close })
+    expect(result).toBe(true)
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('returns false when close API is unavailable', () => {
+    expect(closeTelegramMiniApp({})).toBe(false)
   })
 })

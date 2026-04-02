@@ -2453,6 +2453,58 @@ public sealed class TelegramControllerTests
         Assert.Equal(LocalizationConstants.EnglishLocale, localeState.StoredLocale);
     }
 
+    [Fact]
+    public async Task Webhook_MiniAppSettingsSavedEvent_ShouldRefreshMainKeyboardInSavedLocale()
+    {
+        var localeState = new FakeUserLocaleStateService
+        {
+            StoredLocale = LocalizationConstants.EnglishLocale,
+            NextLocale = LocalizationConstants.EnglishLocale
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Settings };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: localeState,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: new TelegramNavigationPresenter(new LocalizationService()),
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildWebAppDataUpdate(
+                chatId: 1001,
+                userId: 2002,
+                webAppData: "{\"type\":\"settings_saved\",\"locale\":\"en\"}",
+                messageThreadId: null,
+                languageCode: "uk",
+                updateId: 7001),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Processed);
+        Assert.True(payload.Replied);
+        Assert.Equal("miniapp.settings.saved", payload.Intent);
+        Assert.Equal(NavigationSections.Main, navigationState.CurrentSection);
+        Assert.Equal(1, sender.Calls);
+
+        var refreshMessage = sender.SentMessages.Single();
+        var refreshKeyboard = Assert.IsType<TelegramReplyKeyboardMarkup>(refreshMessage.Options?.ReplyMarkup);
+        var labels = refreshKeyboard.Keyboard.SelectMany(row => row).Select(button => button.Text).ToList();
+
+        Assert.Contains(labels, x => x.Contains("Vocabulary", StringComparison.Ordinal));
+        Assert.DoesNotContain(labels, x => x.Contains("Словник", StringComparison.Ordinal));
+    }
+
     private static TelegramController CreateSut(
         FakeConversationOrchestrator orchestrator,
         FakeConversationScopeAccessor scopeAccessor,
@@ -2672,6 +2724,28 @@ public sealed class TelegramControllerTests
                 MessageThreadId: messageThreadId,
                 Document: null,
                 Photo: [new TelegramIncomingPhotoSize(photoFileId, "uniq-photo", 800, 600, 1024)]),
+            EditedMessage: null,
+            CallbackQuery: null);
+    }
+
+    private static TelegramWebhookUpdateRequest BuildWebAppDataUpdate(
+        long chatId,
+        long userId,
+        string webAppData,
+        int? messageThreadId,
+        string? languageCode = "en",
+        long updateId = 1)
+    {
+        return new TelegramWebhookUpdateRequest(
+            UpdateId: updateId,
+            Message: new TelegramIncomingMessage(
+                MessageId: 10,
+                From: new TelegramUserInfo(userId, false, languageCode, "mike", "Mike", null),
+                Chat: new TelegramChatInfo(chatId, "private", "mike", null),
+                Text: null,
+                Caption: null,
+                MessageThreadId: messageThreadId,
+                WebAppData: new TelegramIncomingWebAppData(webAppData, "⚙️ Settings")),
             EditedMessage: null,
             CallbackQuery: null);
     }
