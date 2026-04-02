@@ -5,6 +5,7 @@ using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Agents;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 public sealed class ConversationBootstrapServiceTests
@@ -36,7 +37,8 @@ public sealed class ConversationBootstrapServiceTests
             storageModeProvider,
             deckService,
             graphAuthService,
-            new ConversationCommandCatalogService());
+            new ConversationCommandCatalogService(),
+            NullLogger<ConversationBootstrapService>.Instance);
 
         var scope = ConversationScope.Create("telegram", "mike", "chat-42");
         var snapshot = await sut.BuildAsync(
@@ -76,7 +78,8 @@ public sealed class ConversationBootstrapServiceTests
             storageModeProvider,
             deckService,
             graphAuthService,
-            new ConversationCommandCatalogService());
+            new ConversationCommandCatalogService(),
+            NullLogger<ConversationBootstrapService>.Instance);
 
         var snapshot = await sut.BuildAsync(
             ConversationScope.Default,
@@ -105,7 +108,8 @@ public sealed class ConversationBootstrapServiceTests
             storageModeProvider,
             deckService,
             graphAuthService,
-            new ConversationCommandCatalogService());
+            new ConversationCommandCatalogService(),
+            NullLogger<ConversationBootstrapService>.Instance);
 
         var snapshot = await sut.BuildAsync(
             ConversationScope.Default,
@@ -135,13 +139,33 @@ public sealed class ConversationBootstrapServiceTests
             storageModeProvider,
             deckService,
             graphAuthService,
-            new ConversationCommandCatalogService());
+            new ConversationCommandCatalogService(),
+            NullLogger<ConversationBootstrapService>.Instance);
 
         var snapshot = await sut.BuildAsync(ConversationScope.Default, cancellationToken: CancellationToken.None);
 
         Assert.Equal("ask", snapshot.SaveMode);
         Assert.False(snapshot.Graph.IsAuthenticated);
         Assert.Equal(["session:start", "session:end", "graph:start", "graph:end"], guard.Events);
+    }
+
+    [Fact]
+    public async Task BuildAsync_ShouldDegradeGracefully_WhenGraphStatusThrows()
+    {
+        var sut = new ConversationBootstrapService(
+            new FakeSessionPreferenceService(),
+            new FakeSaveModePreferenceService(),
+            new FakeStorageModeProvider(),
+            new FakeDeckService(),
+            new ThrowingGraphAuthService(),
+            new ConversationCommandCatalogService(),
+            NullLogger<ConversationBootstrapService>.Instance);
+
+        var snapshot = await sut.BuildAsync(ConversationScope.Default, cancellationToken: CancellationToken.None);
+
+        Assert.True(snapshot.Graph.IsConfigured);
+        Assert.False(snapshot.Graph.IsAuthenticated);
+        Assert.Equal("Graph status unavailable. Retry later.", snapshot.Graph.Message);
     }
 
     private sealed class FakeSessionPreferenceService : IVocabularySessionPreferenceService
@@ -357,6 +381,34 @@ public sealed class ConversationBootstrapServiceTests
             _guard.GraphFinished();
             return Task.FromResult(new GraphAuthStatus(true, false, "Not authenticated.", null));
         }
+
+        public Task<GraphLoginResult> LoginAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphLoginResult(false, "Not implemented."));
+
+        public Task<GraphLoginResult> LoginAsync(
+            Func<GraphDeviceCodePrompt, CancellationToken, Task> onDeviceCodeReceived,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphLoginResult(false, "Not implemented."));
+
+        public Task<GraphDeviceLoginStartResult> StartLoginAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphDeviceLoginStartResult(false, "Not implemented.", null));
+
+        public Task<GraphLoginResult> CompleteLoginAsync(
+            GraphDeviceLoginChallenge challenge,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphLoginResult(false, "Not implemented."));
+
+        public Task LogoutAsync(CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<string?>(null);
+    }
+
+    private sealed class ThrowingGraphAuthService : IGraphAuthService
+    {
+        public Task<GraphAuthStatus> GetStatusAsync(CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("temporary Graph failure");
 
         public Task<GraphLoginResult> LoginAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(new GraphLoginResult(false, "Not implemented."));

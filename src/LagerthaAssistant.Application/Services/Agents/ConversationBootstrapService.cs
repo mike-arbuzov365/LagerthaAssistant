@@ -6,6 +6,7 @@ using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Vocabulary;
+using Microsoft.Extensions.Logging;
 
 public sealed class ConversationBootstrapService : IConversationBootstrapService
 {
@@ -15,6 +16,7 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
     private readonly IVocabularyDeckService _deckService;
     private readonly IGraphAuthService _graphAuthService;
     private readonly IConversationCommandCatalogService _commandCatalogService;
+    private readonly ILogger<ConversationBootstrapService> _logger;
 
     public ConversationBootstrapService(
         IVocabularySessionPreferenceService sessionPreferenceService,
@@ -22,7 +24,8 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
         IVocabularyStorageModeProvider storageModeProvider,
         IVocabularyDeckService deckService,
         IGraphAuthService graphAuthService,
-        IConversationCommandCatalogService commandCatalogService)
+        IConversationCommandCatalogService commandCatalogService,
+        ILogger<ConversationBootstrapService> logger)
     {
         _sessionPreferenceService = sessionPreferenceService;
         _saveModePreferenceService = saveModePreferenceService;
@@ -30,6 +33,7 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
         _deckService = deckService;
         _graphAuthService = graphAuthService;
         _commandCatalogService = commandCatalogService;
+        _logger = logger;
     }
 
     public async Task<ConversationBootstrapSnapshot> BuildAsync(
@@ -42,7 +46,7 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
         // Keep these calls sequential. In production they can share the same scoped persistence
         // graph, and running them concurrently risks EF Core "second operation started" failures.
         var session = await _sessionPreferenceService.GetAsync(scope, cancellationToken);
-        var graph = await _graphAuthService.GetStatusAsync(cancellationToken);
+        var graph = await TryGetGraphStatusAsync(cancellationToken);
 
         var saveMode = _saveModePreferenceService.ToText(session.SaveMode);
         var storageMode = _storageModeProvider.ToText(session.StorageMode);
@@ -73,5 +77,21 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
             commandGroups,
             markerOptions,
             writableDecks);
+    }
+
+    private async Task<GraphAuthStatus> TryGetGraphStatusAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _graphAuthService.GetStatusAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Conversation bootstrap: Graph status check failed. Falling back to degraded integration state.");
+            return new GraphAuthStatus(
+                IsConfigured: true,
+                IsAuthenticated: false,
+                Message: "Graph status unavailable. Retry later.");
+        }
     }
 }

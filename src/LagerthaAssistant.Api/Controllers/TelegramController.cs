@@ -311,6 +311,18 @@ public sealed class TelegramController : ControllerBase
                 hasStoredLocale: !string.IsNullOrWhiteSpace(storedLocale),
                 cancellationToken);
 
+            if (response.SuppressChatMessage)
+            {
+                await _processedUpdates.MarkProcessedAsync(update.UpdateId, cancellationToken);
+                await CleanupOldUpdatesAsync(CancellationToken.None);
+
+                return Ok(new TelegramWebhookResponse(
+                    Processed: true,
+                    Replied: false,
+                    Intent: response.Intent,
+                    Error: null));
+            }
+
             var normalizedResponseText = NormalizeMarkerSpacing(response.Text);
             var outboundText = response.IsHtml
                 ? normalizedResponseText
@@ -2387,8 +2399,8 @@ public sealed class TelegramController : ControllerBase
         {
             return new TelegramRouteResponse(
                 "vocab.save.none",
-                _navigationPresenter.GetText("vocab.no_pending_save", locale),
-                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+                string.Empty,
+                SuppressChatMessage: true);
         }
 
         if (!saveRequested)
@@ -2970,8 +2982,8 @@ public sealed class TelegramController : ControllerBase
         {
             return new TelegramRouteResponse(
                 "vocab.save.none",
-                _navigationPresenter.GetText("vocab.no_pending_save", locale),
-                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+                string.Empty,
+                SuppressChatMessage: true);
         }
 
         if (!saveRequested)
@@ -6559,6 +6571,7 @@ public sealed class TelegramController : ControllerBase
         string Text,
         TelegramSendOptions? Options = null,
         bool IsHtml = false,
-        string? FollowUpMainKeyboardLocale = null);
+        string? FollowUpMainKeyboardLocale = null,
+        bool SuppressChatMessage = false);
 }
 
