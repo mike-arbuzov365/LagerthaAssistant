@@ -43,7 +43,10 @@ export async function verifyMiniAppInitData(request: MiniAppVerifyRequest): Prom
   return response.json() as Promise<MiniAppVerifyResponse>
 }
 
-export async function getSessionBootstrap(userId: string | null): Promise<SessionBootstrapResponse> {
+export async function getSessionBootstrap(
+  userId: string | null,
+  conversationId?: string | null,
+): Promise<SessionBootstrapResponse> {
   const params = new URLSearchParams({
     channel: 'telegram',
     includeCommands: 'false',
@@ -53,6 +56,9 @@ export async function getSessionBootstrap(userId: string | null): Promise<Sessio
 
   if (userId) {
     params.set('userId', userId)
+  }
+  if (conversationId) {
+    params.set('conversationId', conversationId)
   }
 
   const response = await fetch(`/api/session/bootstrap?${params.toString()}`)
@@ -88,10 +94,16 @@ export async function commitMiniAppSettings(
   return response.json() as Promise<MiniAppSettingsCommitResponse>
 }
 
-export async function getLocale(userId: string | null): Promise<PreferenceLocaleResponse> {
+export async function getLocale(
+  userId: string | null,
+  conversationId?: string | null,
+): Promise<PreferenceLocaleResponse> {
   const params = new URLSearchParams({ channel: 'telegram' })
   if (userId) {
     params.set('userId', userId)
+  }
+  if (conversationId) {
+    params.set('conversationId', conversationId)
   }
 
   const response = await fetch(`/api/preferences/locale?${params.toString()}`)
@@ -116,10 +128,16 @@ export async function setLocale(request: PreferenceSetLocaleRequest): Promise<Pr
   return response.json() as Promise<PreferenceLocaleResponse>
 }
 
-export async function getAiProvider(userId: string | null): Promise<PreferenceAiProviderResponse> {
+export async function getAiProvider(
+  userId: string | null,
+  conversationId?: string | null,
+): Promise<PreferenceAiProviderResponse> {
   const params = new URLSearchParams({ channel: 'telegram' })
   if (userId) {
     params.set('userId', userId)
+  }
+  if (conversationId) {
+    params.set('conversationId', conversationId)
   }
 
   const response = await fetch(`/api/preferences/ai/provider?${params.toString()}`)
@@ -147,10 +165,14 @@ export async function setAiProvider(request: PreferenceSetAiProviderRequest): Pr
 export async function getAiModel(
   userId: string | null,
   provider?: string,
+  conversationId?: string | null,
 ): Promise<PreferenceAiModelResponse> {
   const params = new URLSearchParams({ channel: 'telegram' })
   if (userId) {
     params.set('userId', userId)
+  }
+  if (conversationId) {
+    params.set('conversationId', conversationId)
   }
   if (provider) {
     params.set('provider', provider)
@@ -181,10 +203,14 @@ export async function setAiModel(request: PreferenceSetAiModelRequest): Promise<
 export async function getAiKeyStatus(
   userId: string | null,
   provider?: string,
+  conversationId?: string | null,
 ): Promise<PreferenceAiKeyStatusResponse> {
   const params = new URLSearchParams({ channel: 'telegram' })
   if (userId) {
     params.set('userId', userId)
+  }
+  if (conversationId) {
+    params.set('conversationId', conversationId)
   }
   if (provider) {
     params.set('provider', provider)

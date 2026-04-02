@@ -19,6 +19,7 @@ export function DashboardPage() {
     () => getScopedUserId(bootstrap?.scope.userId),
     [bootstrap?.scope.userId],
   )
+  const scopedConversationId = bootstrap?.scope.conversationId ?? null
 
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -45,10 +46,10 @@ export function DashboardPage() {
     setLoadError(null)
 
     try {
-      const provider = await getAiProvider(scopedUserId)
+      const provider = await getAiProvider(scopedUserId, scopedConversationId)
       const [model, keyStatus, graph, notion] = await Promise.all([
-        getAiModel(scopedUserId, provider.provider),
-        getAiKeyStatus(scopedUserId, provider.provider),
+        getAiModel(scopedUserId, provider.provider, scopedConversationId),
+        getAiKeyStatus(scopedUserId, provider.provider, scopedConversationId),
         getGraphStatus(),
         getIntegrationNotionStatus(),
       ])
@@ -66,7 +67,7 @@ export function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }, [bootstrap, scopedUserId])
+  }, [bootstrap, scopedConversationId, scopedUserId])
 
   useEffect(() => {
     if (!bootstrap) {

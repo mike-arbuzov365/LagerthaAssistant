@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   commitMiniAppSettings,
   completeGraphLogin,
@@ -16,7 +16,7 @@ import {
   startGraphLogin,
 } from '../api/client'
 import type { ReactNode } from 'react'
-import type { GraphDeviceLoginChallengeResponse } from '../api/contracts'
+import type { GraphDeviceLoginChallengeResponse, MiniAppSettingsCommitResponse } from '../api/contracts'
 import type { AppLocale } from '../lib/locale'
 import { getScopedUserId } from '../lib/settings-utils'
 import {
@@ -25,7 +25,6 @@ import {
   hasUnsavedSettingsChanges,
   normalizeLocaleFromPreference,
   type PersistedSnapshot,
-  sendTelegramMiniAppSettingsCommit,
   syncTelegramClosingConfirmation,
   type TelegramMiniAppBridgeWebApp,
   type TelegramClosingConfirmationWebApp,
@@ -550,6 +549,7 @@ export function SettingsPage() {
 
   const uiLocale = localeDraft
   const copy = copyByLocale[uiLocale]
+  const scopedConversationId = bootstrap?.scope.conversationId ?? null
 
   const hasUnsavedChanges = useMemo(() => {
     return hasUnsavedSettingsChanges(snapshot, {
@@ -589,7 +589,7 @@ export function SettingsPage() {
     }
   }, [hasUnsavedChanges])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const webApp = window.Telegram?.WebApp as unknown as TelegramClosingConfirmationWebApp | undefined
 
     if (!webApp) {
@@ -608,12 +608,12 @@ export function SettingsPage() {
     setLoadError(null)
 
     try {
-      const providerResponse = await getAiProvider(scopedUserId)
+      const providerResponse = await getAiProvider(scopedUserId, scopedConversationId)
       const [sessionBootstrapResponse, localeResponse, modelResponse, keyResponse, notionHubStatus, graphStatusResponse] = await Promise.all([
-        getSessionBootstrap(scopedUserId),
-        getLocale(scopedUserId),
-        getAiModel(scopedUserId, providerResponse.provider),
-        getAiKeyStatus(scopedUserId, providerResponse.provider),
+        getSessionBootstrap(scopedUserId, scopedConversationId),
+        getLocale(scopedUserId, scopedConversationId),
+        getAiModel(scopedUserId, providerResponse.provider, scopedConversationId),
+        getAiKeyStatus(scopedUserId, providerResponse.provider, scopedConversationId),
         getIntegrationNotionStatus(),
         getGraphStatus(),
       ])
@@ -652,7 +652,7 @@ export function SettingsPage() {
     } finally {
       setLoading(false)
     }
-  }, [bootstrap, scopedUserId, setLocaleInStore])
+  }, [bootstrap, scopedConversationId, scopedUserId, setLocaleInStore])
 
   useEffect(() => {
     if (!bootstrap) {
@@ -662,6 +662,37 @@ export function SettingsPage() {
     setGraphStatus(bootstrap.graph)
     void loadSettings()
   }, [bootstrap, loadSettings])
+
+  const applyCommittedSettings = useCallback((response: MiniAppSettingsCommitResponse) => {
+    const normalizedLocale = normalizeLocaleFromPreference(response.locale)
+    setLocaleInStore(normalizedLocale)
+    setLocaleDraft(normalizedLocale)
+    setSaveModeDraft(response.saveMode)
+    setStorageModeDraft(response.storageMode)
+    setAiProviderDraft(response.aiProvider)
+    setAiProviders(response.availableProviders)
+    setAiModelDraft(response.aiModel)
+    setAiModels(response.availableModels)
+    setKeyStatus({
+      hasStoredKey: response.hasStoredKey,
+      source: response.apiKeySource,
+    })
+    setBootstrapPreferences({
+      saveMode: response.saveMode,
+      availableSaveModes: response.availableSaveModes,
+      storageMode: response.storageMode,
+      availableStorageModes: response.availableStorageModes,
+    })
+    setApiKeyDraft('')
+    setRemoveStoredKeyRequested(false)
+    setSnapshot({
+      locale: normalizedLocale,
+      saveMode: response.saveMode,
+      storageMode: response.storageMode,
+      aiProvider: response.aiProvider,
+      aiModel: response.aiModel,
+    })
+  }, [setBootstrapPreferences, setLocaleInStore])
 
   useEffect(() => {
     if (!bootstrap || !aiProviderDraft) {
@@ -674,8 +705,8 @@ export function SettingsPage() {
     void (async () => {
       try {
         const [modelResponse, keyResponse] = await Promise.all([
-          getAiModel(scopedUserId, aiProviderDraft),
-          getAiKeyStatus(scopedUserId, aiProviderDraft),
+          getAiModel(scopedUserId, aiProviderDraft, scopedConversationId),
+          getAiKeyStatus(scopedUserId, aiProviderDraft, scopedConversationId),
         ])
 
         if (requestVersion !== providerRequestVersion.current) {
@@ -705,7 +736,7 @@ export function SettingsPage() {
         }
       }
     })()
-  }, [aiProviderDraft, bootstrap, scopedUserId])
+  }, [aiProviderDraft, bootstrap, scopedConversationId, scopedUserId])
 
   if (!bootstrap || !policy) {
     return <div className="card">{copy.noBootstrap}</div>
@@ -719,7 +750,6 @@ export function SettingsPage() {
   const bootstrapChannel = bootstrap.scope.channel
   const bootstrapConversationId = bootstrap.scope.conversationId
   const availableSaveModes = bootstrap.preferences.availableSaveModes
-  const availableStorageModes = bootstrap.preferences.availableStorageModes
 
   const oneDriveConnected = activeGraphStatus.isAuthenticated
   const languageChoices = buildLanguageChoices(uiLocale)
@@ -800,50 +830,10 @@ export function SettingsPage() {
       apiKey: apiKeyDraft.trim().length > 0 ? apiKeyDraft.trim() : null,
       removeStoredKey: removeStoredKeyRequested && apiKeyDraft.trim().length === 0,
     }
-    const webApp = window.Telegram?.WebApp as unknown as TelegramMiniAppBridgeWebApp | undefined
-    if (webApp?.sendData) {
-      const sentViaTelegram = sendTelegramMiniAppSettingsCommit(webApp, commitRequest)
-      if (!sentViaTelegram) {
-        setSaveStatus(`${copy.errorPrefix}: Telegram Mini App commit failed.`)
-        return
-      }
+    setSaving(true)
+    setSaveStatus(null)
 
-      setSaving(true)
-      setSaveStatus(null)
-      setSnapshot({
-        locale: localeDraft,
-        saveMode: saveModeDraft,
-        storageMode: storageModeDraft,
-        aiProvider: aiProviderDraft,
-        aiModel: aiModelDraft,
-      })
-      setLocaleInStore(localeDraft)
-      setBootstrapPreferences({
-        saveMode: saveModeDraft,
-        availableSaveModes: availableSaveModes,
-        storageMode: storageModeDraft,
-        availableStorageModes: availableStorageModes,
-      })
-      setApiKeyDraft('')
-      setRemoveStoredKeyRequested(false)
-
-      if (commitRequest.apiKey) {
-        setKeyStatus({
-          hasStoredKey: true,
-          source: 'stored',
-        })
-      }
-
-      applyTelegramClosingConfirmation(webApp, false)
-      const closed = closeTelegramMiniApp(webApp)
-      if (!closed) {
-        setSaving(false)
-        setSaveStatus(copy.saveSuccess)
-      }
-      return
-    }
-
-    const saved = await runAction(async () => {
+    try {
       const response = await commitMiniAppSettings({
         ...commitRequest,
         selectedManually: true,
@@ -851,39 +841,22 @@ export function SettingsPage() {
         userId: scopedUserId ?? undefined,
         conversationId: bootstrapConversationId,
       })
+      applyCommittedSettings(response)
+      setSaveStatus(copy.saveSuccess)
 
-      const normalizedLocale = normalizeLocaleFromPreference(response.locale)
-      setLocaleInStore(normalizedLocale)
-      setLocaleDraft(normalizedLocale)
-      setSaveModeDraft(response.saveMode)
-      setStorageModeDraft(response.storageMode)
-      setAiProviderDraft(response.aiProvider)
-      setAiProviders(response.availableProviders)
-      setAiModelDraft(response.aiModel)
-      setAiModels(response.availableModels)
-      setKeyStatus({
-        hasStoredKey: response.hasStoredKey,
-        source: response.apiKeySource,
-      })
-      setBootstrapPreferences({
-        saveMode: response.saveMode,
-        availableSaveModes: response.availableSaveModes,
-        storageMode: response.storageMode,
-        availableStorageModes: response.availableStorageModes,
-      })
-      setApiKeyDraft('')
-      setRemoveStoredKeyRequested(false)
-      setSnapshot({
-        locale: normalizedLocale,
-        saveMode: response.saveMode,
-        storageMode: response.storageMode,
-        aiProvider: response.aiProvider,
-        aiModel: response.aiModel,
-      })
-    }, copy.saveSuccess)
+      const webApp = window.Telegram?.WebApp as unknown as TelegramMiniAppBridgeWebApp | undefined
+      if (!webApp) {
+        return
+      }
 
-    if (!saved) {
-      return
+      applyTelegramClosingConfirmation(webApp, false)
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 32))
+      closeTelegramMiniApp(webApp)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Operation failed'
+      setSaveStatus(`${copy.errorPrefix}: ${message}`)
+    } finally {
+      setSaving(false)
     }
   }
 

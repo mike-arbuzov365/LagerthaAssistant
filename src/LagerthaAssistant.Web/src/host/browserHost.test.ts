@@ -8,5 +8,6 @@ describe('createBrowserHost', () => {
     expect(host.safeAreaTop).toBe(0)
     expect(host.initData).toBe('')
     expect(host.theme).toBe('light')
+    expect(host.conversationId).toBeNull()
   })
 })

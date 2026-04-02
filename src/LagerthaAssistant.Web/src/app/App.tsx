@@ -51,8 +51,8 @@ export function App() {
 
         const [policy, bootstrap, localeResponse] = await Promise.all([
           getMiniAppPolicy(),
-          getSessionBootstrap(host.userId),
-          getLocale(host.userId),
+          getSessionBootstrap(host.userId, host.conversationId),
+          getLocale(host.userId, host.conversationId),
         ])
 
         const normalizedLocale = resolvePreferredLocale(
