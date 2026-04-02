@@ -6,6 +6,8 @@ import {
   getAiProvider,
   getGraphStatus,
   getIntegrationNotionStatus,
+  getLocale,
+  getSessionBootstrap,
   graphClearCache,
   graphLogout,
   graphRebuildIndex,
@@ -21,6 +23,13 @@ import {
 import type { GraphDeviceLoginChallengeResponse } from '../api/contracts'
 import type { AppLocale } from '../lib/locale'
 import { getScopedUserId } from '../lib/settings-utils'
+import {
+  applyTelegramClosingConfirmation,
+  hasUnsavedSettingsChanges,
+  normalizeLocaleFromPreference,
+  type PersistedSnapshot,
+  type TelegramClosingConfirmationWebApp,
+} from './settings-page-utils'
 import { useAppStore } from '../state/appStore'
 
 type BannerTone = 'ok' | 'error' | 'warn'
@@ -81,14 +90,6 @@ interface CopyPack {
   openLoginPage: string
   enterCodeFirst: string
   storageLockedHint: string
-}
-
-interface PersistedSnapshot {
-  locale: AppLocale
-  saveMode: string
-  storageMode: string
-  aiProvider: string
-  aiModel: string
 }
 
 const copyByLocale: Record<AppLocale, CopyPack> = {
@@ -358,19 +359,15 @@ export function SettingsPage() {
   const copy = copyByLocale[uiLocale]
 
   const hasUnsavedChanges = useMemo(() => {
-    if (!snapshot) {
-      return false
-    }
-
-    return (
-      localeDraft !== snapshot.locale
-      || saveModeDraft !== snapshot.saveMode
-      || storageModeDraft !== snapshot.storageMode
-      || aiProviderDraft !== snapshot.aiProvider
-      || aiModelDraft !== snapshot.aiModel
-      || removeStoredKeyRequested
-      || apiKeyDraft.trim().length > 0
-    )
+    return hasUnsavedSettingsChanges(snapshot, {
+      locale: localeDraft,
+      saveMode: saveModeDraft,
+      storageMode: storageModeDraft,
+      aiProvider: aiProviderDraft,
+      aiModel: aiModelDraft,
+      apiKeyDraft,
+      removeStoredKeyRequested,
+    })
   }, [
     aiModelDraft,
     aiProviderDraft,
@@ -400,25 +397,16 @@ export function SettingsPage() {
   }, [hasUnsavedChanges])
 
   useEffect(() => {
-    const webApp = window.Telegram?.WebApp as
-      | {
-        enableClosingConfirmation?: () => void
-        disableClosingConfirmation?: () => void
-      }
-      | undefined
+    const webApp = window.Telegram?.WebApp as unknown as TelegramClosingConfirmationWebApp | undefined
 
     if (!webApp) {
       return
     }
 
-    if (hasUnsavedChanges) {
-      webApp.enableClosingConfirmation?.()
-    } else {
-      webApp.disableClosingConfirmation?.()
-    }
+    applyTelegramClosingConfirmation(webApp, hasUnsavedChanges)
 
     return () => {
-      webApp.disableClosingConfirmation?.()
+      applyTelegramClosingConfirmation(webApp, false)
     }
   }, [hasUnsavedChanges])
 
@@ -432,7 +420,9 @@ export function SettingsPage() {
 
     try {
       const providerResponse = await getAiProvider(scopedUserId)
-      const [modelResponse, keyResponse, notionHubStatus, graphStatusResponse] = await Promise.all([
+      const [sessionBootstrapResponse, localeResponse, modelResponse, keyResponse, notionHubStatus, graphStatusResponse] = await Promise.all([
+        getSessionBootstrap(scopedUserId),
+        getLocale(scopedUserId),
         getAiModel(scopedUserId, providerResponse.provider),
         getAiKeyStatus(scopedUserId, providerResponse.provider),
         getIntegrationNotionStatus(),
@@ -453,14 +443,18 @@ export function SettingsPage() {
       setRemoveStoredKeyRequested(false)
       setApiKeyDraft('')
 
-      const normalizedLocale: AppLocale = locale === 'en' ? 'en' : 'uk'
+      const normalizedLocale = normalizeLocaleFromPreference(localeResponse.locale)
+      const saveModeFromApi = sessionBootstrapResponse.preferences.saveMode
+      const storageModeFromApi = sessionBootstrapResponse.preferences.storageMode
+
+      setLocaleInStore(normalizedLocale)
       setLocaleDraft(normalizedLocale)
-      setSaveModeDraft(bootstrap.preferences.saveMode)
-      setStorageModeDraft(bootstrap.preferences.storageMode)
+      setSaveModeDraft(saveModeFromApi)
+      setStorageModeDraft(storageModeFromApi)
       setSnapshot({
         locale: normalizedLocale,
-        saveMode: bootstrap.preferences.saveMode,
-        storageMode: bootstrap.preferences.storageMode,
+        saveMode: saveModeFromApi,
+        storageMode: storageModeFromApi,
         aiProvider: providerResponse.provider,
         aiModel: modelResponse.model,
       })
@@ -469,7 +463,7 @@ export function SettingsPage() {
     } finally {
       setLoading(false)
     }
-  }, [bootstrap, locale, scopedUserId])
+  }, [bootstrap, scopedUserId, setLocaleInStore])
 
   useEffect(() => {
     if (!bootstrap) {
@@ -578,7 +572,7 @@ export function SettingsPage() {
           userId: scopedUserId ?? undefined,
         })
 
-        const normalizedLocale: AppLocale = localeResponse.locale === 'en' ? 'en' : 'uk'
+        const normalizedLocale = normalizeLocaleFromPreference(localeResponse.locale)
         setLocaleInStore(normalizedLocale)
       }
 
