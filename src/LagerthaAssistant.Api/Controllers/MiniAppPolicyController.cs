@@ -11,7 +11,15 @@ public sealed class MiniAppPolicyController : ControllerBase
     [ProducesResponseType(typeof(MiniAppPolicyResponse), StatusCodes.Status200OK)]
     public ActionResult<MiniAppPolicyResponse> GetPolicy()
     {
-        return Ok(new MiniAppPolicyResponse(
+        return Ok(MiniAppPolicyPayloadFactory.Create());
+    }
+}
+
+internal static class MiniAppPolicyPayloadFactory
+{
+    public static MiniAppPolicyResponse Create()
+    {
+        return new MiniAppPolicyResponse(
             DefaultLocale: "uk",
             SupportedLocales: ["uk", "en"],
             StorageModePolicy: "graph_only_v1",
@@ -23,6 +31,6 @@ public sealed class MiniAppPolicyController : ControllerBase
                 "OneDrive token cache is currently shared by provider and not user-scoped.",
                 "Mini App v1 must use graph storage mode only.",
                 "Client should verify Telegram init data before loading protected data."
-            ]));
+            ]);
     }
 }

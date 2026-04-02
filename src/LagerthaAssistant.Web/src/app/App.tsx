@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { getLocale, getMiniAppPolicy, getSessionBootstrap, verifyMiniAppInitData } from '../api/client'
+import { getSessionBootstrap, verifyMiniAppInitData } from '../api/client'
 import { createHostContext } from '../host/createHost'
 import { resolvePreferredLocale } from '../lib/locale'
 import { DashboardPage } from '../pages/DashboardPage'
@@ -19,6 +19,45 @@ function AppShellHeader() {
         <p className="shell-subtitle">{subtitle}</p>
       </div>
     </header>
+  )
+}
+
+function SettingsBootSkeleton({ title }: { title: string }) {
+  return (
+    <div className="settings-page settings-page--skeleton" aria-hidden="true">
+      <section className="tg-profile-card settings-hero settings-hero--skeleton">
+        <div className="tg-profile-main">
+          <div className="tg-avatar skeleton-block skeleton-block--avatar" />
+          <div className="settings-skeleton__copy">
+            <div className="skeleton-block skeleton-block--title" />
+            <div className="skeleton-block skeleton-block--subtitle" />
+          </div>
+        </div>
+        <div className="skeleton-block skeleton-block--chip" />
+      </section>
+
+      <section className="tg-card settings-section">
+        <div className="settings-section__intro">
+          <p className="settings-section__eyebrow">{title}</p>
+          <div className="skeleton-block skeleton-block--section" />
+          <div className="skeleton-block skeleton-block--body" />
+        </div>
+        <div className="settings-subsection">
+          <div className="skeleton-block skeleton-block--field" />
+          <div className="skeleton-block skeleton-block--choice" />
+          <div className="skeleton-block skeleton-block--choice" />
+        </div>
+        <div className="settings-subsection">
+          <div className="skeleton-block skeleton-block--field" />
+          <div className="skeleton-block skeleton-block--choice" />
+        </div>
+      </section>
+
+      <div className="settings-savebar settings-savebar--skeleton">
+        <div className="skeleton-block skeleton-block--savebar-meta" />
+        <div className="skeleton-block skeleton-block--savebar-button" />
+      </div>
+    </div>
   )
 }
 
@@ -42,25 +81,25 @@ export function App() {
         document.documentElement.style.setProperty('--safe-top', `${host.safeAreaTop}px`)
         document.documentElement.dataset.theme = host.theme
 
-        if (host.isTelegram && host.initData) {
-          const verification = await verifyMiniAppInitData({ initData: host.initData })
-          if (!verification.isValid) {
-            throw new Error(`InitData verify failed: ${verification.reason}`)
-          }
-        }
+        const verifyTask = host.isTelegram && host.initData
+          ? verifyMiniAppInitData({ initData: host.initData })
+          : Promise.resolve<Awaited<ReturnType<typeof verifyMiniAppInitData>> | null>(null)
 
-        const [policy, bootstrap, localeResponse] = await Promise.all([
-          getMiniAppPolicy(),
+        const [verification, bootstrap] = await Promise.all([
+          verifyTask,
           getSessionBootstrap(host.userId, host.conversationId),
-          getLocale(host.userId, host.conversationId),
         ])
 
+        if (verification && !verification.isValid) {
+          throw new Error(`InitData verify failed: ${verification.reason}`)
+        }
+
         const normalizedLocale = resolvePreferredLocale(
-          localeResponse.locale ?? policy.defaultLocale,
+          bootstrap.locale.locale ?? bootstrap.policy.defaultLocale,
           host.userLanguageCode,
         )
 
-        setReady({ locale: normalizedLocale, bootstrap, policy })
+        setReady({ locale: normalizedLocale, bootstrap, policy: bootstrap.policy })
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Помилка ініціалізації'
         setError(message)
@@ -77,9 +116,13 @@ export function App() {
       {!isSettingsRoute && <AppShellHeader />}
 
       {status === 'loading' && (
-        <div className="card" role="status" aria-live="polite">
-          {locale === 'en' ? 'Loading Mini App…' : 'Завантаження Mini App…'}
-        </div>
+        isSettingsRoute
+          ? <SettingsBootSkeleton title={locale === 'en' ? 'General' : 'Загальні'} />
+          : (
+            <div className="card" role="status" aria-live="polite">
+              {locale === 'en' ? 'Loading Mini App…' : 'Завантаження Mini App…'}
+            </div>
+          )
       )}
       {status === 'error' && (
         <div className="card status-error" role="alert">

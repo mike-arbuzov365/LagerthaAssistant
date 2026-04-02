@@ -7,7 +7,9 @@ public sealed record SessionScopeResponse(
 
 public sealed record SessionBootstrapResponse(
     SessionScopeResponse Scope,
+    PreferenceLocaleResponse Locale,
     PreferenceSessionResponse Preferences,
+    MiniAppPolicyResponse Policy,
     GraphAuthStatusResponse Graph,
     IReadOnlyList<ConversationCommandGroupResponse> CommandGroups,
     IReadOnlyList<VocabularyPartOfSpeechOptionResponse> PartOfSpeechOptions,
