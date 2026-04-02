@@ -160,6 +160,14 @@ export function sendTelegramMiniAppSettingsCommit(
     return false
   }
 }
+
+export function canUseTelegramMiniAppSettingsBridge(
+  channel: string | null | undefined,
+  webApp: TelegramMiniAppBridgeWebApp | undefined,
+): boolean {
+  return channel?.trim().toLowerCase() === 'telegram' && typeof webApp?.sendData === 'function'
+}
+
 export function closeTelegramMiniApp(webApp: TelegramMiniAppBridgeWebApp | undefined): boolean {
   if (!webApp?.close) {
     return false

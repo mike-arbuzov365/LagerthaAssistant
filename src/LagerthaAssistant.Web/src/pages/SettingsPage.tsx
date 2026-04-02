@@ -21,10 +21,12 @@ import type { AppLocale } from '../lib/locale'
 import { getScopedUserId } from '../lib/settings-utils'
 import {
   applyTelegramClosingConfirmation,
+  canUseTelegramMiniAppSettingsBridge,
   closeTelegramMiniApp,
   hasUnsavedSettingsChanges,
   normalizeLocaleFromPreference,
   type PersistedSnapshot,
+  sendTelegramMiniAppSettingsCommit,
   syncTelegramClosingConfirmation,
   type TelegramMiniAppBridgeWebApp,
   type TelegramClosingConfirmationWebApp,
@@ -834,6 +836,21 @@ export function SettingsPage() {
     setSaveStatus(null)
 
     try {
+      const webApp = window.Telegram?.WebApp as unknown as TelegramMiniAppBridgeWebApp | undefined
+      const shouldUseTelegramBridge = canUseTelegramMiniAppSettingsBridge(bootstrapChannel, webApp)
+
+      if (shouldUseTelegramBridge) {
+        const sent = sendTelegramMiniAppSettingsCommit(webApp, commitRequest)
+        if (!sent) {
+          throw new Error('Telegram bridge send failed')
+        }
+
+        applyTelegramClosingConfirmation(webApp, false)
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 32))
+        closeTelegramMiniApp(webApp)
+        return
+      }
+
       const response = await commitMiniAppSettings({
         ...commitRequest,
         selectedManually: true,
@@ -844,8 +861,6 @@ export function SettingsPage() {
       })
       applyCommittedSettings(response)
       setSaveStatus(copy.saveSuccess)
-
-      const webApp = window.Telegram?.WebApp as unknown as TelegramMiniAppBridgeWebApp | undefined
       if (!webApp) {
         return
       }
