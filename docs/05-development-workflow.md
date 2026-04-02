@@ -20,6 +20,8 @@
 - Before updating a PR, check that its state is still `OPEN`
 - If the previous `dev` -> `master` PR is `MERGED` or `CLOSED`, open a new PR for later commits
 - Sync `dev` with `origin/master` before opening the next PR if `master` moved
+- After each review-intended push, verify that an `OPEN` `dev` -> `master` PR still exists; if not, create a new PR immediately
+- Never report "PR updated" until that post-push check confirms the PR is still `OPEN`
 - PR authoring/formatting rules: `docs/shared/01-pr-authoring-guide.md`
 
 **Commit convention:** `feat` / `fix` / `refactor` / `test` / `docs` / `chore`

@@ -108,6 +108,10 @@ export function App() {
   }, [host, setError, setLoading, setReady])
 
   useEffect(() => {
+    return host.enableBestEffortFullscreen()
+  }, [host])
+
+  useEffect(() => {
     document.documentElement.lang = locale
   }, [locale])
 
