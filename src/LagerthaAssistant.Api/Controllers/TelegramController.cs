@@ -122,6 +122,7 @@ public sealed class TelegramController : ControllerBase
     private readonly ITelegramConversationResponseFormatter _responseFormatter;
     private readonly ITelegramBotSender _telegramBotSender;
     private readonly ITelegramProcessedUpdateRepository _processedUpdates;
+    private readonly MiniAppSettingsCommitService _miniAppSettingsCommitService;
     private readonly IFoodTrackingService? _foodTrackingService;
     private readonly IUserMemoryRepository? _userMemoryRepository;
     private readonly IUnitOfWork? _unitOfWork;
@@ -157,6 +158,7 @@ public sealed class TelegramController : ControllerBase
         ITelegramConversationResponseFormatter responseFormatter,
         ITelegramBotSender telegramBotSender,
         ITelegramProcessedUpdateRepository processedUpdates,
+        MiniAppSettingsCommitService miniAppSettingsCommitService,
         IOptions<TelegramOptions> options,
         ILogger<TelegramController> logger,
         IUserMemoryRepository? userMemoryRepository = null,
@@ -193,6 +195,7 @@ public sealed class TelegramController : ControllerBase
         _responseFormatter = responseFormatter;
         _telegramBotSender = telegramBotSender;
         _processedUpdates = processedUpdates;
+        _miniAppSettingsCommitService = miniAppSettingsCommitService;
         _userMemoryRepository = userMemoryRepository;
         _unitOfWork = unitOfWork;
         _foodTrackingService = foodTrackingService;
@@ -3675,6 +3678,51 @@ public sealed class TelegramController : ControllerBase
         long updateId,
         CancellationToken cancellationToken)
     {
+        if (TryParseMiniAppSettingsCommitEvent(inbound.WebAppData, out var commitRequest))
+        {
+            var commitLocale = LocalizationConstants.NormalizeLocaleCode(commitRequest.Locale);
+            var commitResult = await _miniAppSettingsCommitService.CommitAsync(
+                scope,
+                commitRequest with
+                {
+                    Channel = scope.Channel,
+                    UserId = scope.UserId,
+                    ConversationId = scope.ConversationId
+                },
+                cancellationToken);
+
+            if (!commitResult.Succeeded || commitResult.Response is null)
+            {
+                await SendMiniAppCommitFailureMessageAsync(
+                    inbound.ChatId,
+                    commitLocale,
+                    inbound.MessageThreadId,
+                    commitResult.ErrorMessage,
+                    CancellationToken.None);
+
+                await _processedUpdates.MarkProcessedAsync(updateId, cancellationToken);
+                await CleanupOldUpdatesAsync(CancellationToken.None);
+                return true;
+            }
+
+            await _navigationStateService.SetCurrentSectionAsync(
+                scope.Channel,
+                scope.UserId,
+                scope.ConversationId,
+                NavigationSections.Main,
+                cancellationToken);
+
+            await SendMainKeyboardRefreshMessageAsync(
+                inbound.ChatId,
+                commitResult.Response.Locale,
+                inbound.MessageThreadId,
+                "menu.main.title",
+                CancellationToken.None);
+
+            await _processedUpdates.MarkProcessedAsync(updateId, cancellationToken);
+            await CleanupOldUpdatesAsync(CancellationToken.None);
+            return true;
+        }
         if (!TryParseMiniAppSettingsSavedEvent(inbound.WebAppData, out var requestedLocale))
         {
             return false;
@@ -3705,6 +3753,45 @@ public sealed class TelegramController : ControllerBase
         return true;
     }
 
+    private async Task SendMiniAppCommitFailureMessageAsync(
+        long chatId,
+        string locale,
+        int? messageThreadId,
+        string? errorMessage,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var prefix = locale == LocalizationConstants.UkrainianLocale
+                ? "Не вдалося застосувати налаштування Mini App."
+                : "Failed to apply Mini App settings.";
+
+            var text = string.IsNullOrWhiteSpace(errorMessage)
+                ? prefix
+                : string.Concat(prefix, Environment.NewLine, Environment.NewLine, errorMessage.Trim());
+
+            var options = ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale));
+            var sendResult = await _telegramBotSender.SendTextAsync(
+                chatId,
+                WebUtility.HtmlEncode(text),
+                options,
+                messageThreadId,
+                cancellationToken);
+
+            if (!sendResult.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Telegram Mini App commit failure message send failed. ChatId={ChatId}; Locale={Locale}; Error={Error}",
+                    chatId,
+                    locale,
+                    sendResult.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Telegram Mini App commit failure message threw exception. ChatId={ChatId}; Locale={Locale}", chatId, locale);
+        }
+    }
     private static bool TryParseMiniAppSettingsSavedEvent(string? rawData, out string? locale)
     {
         locale = null;
@@ -3749,6 +3836,86 @@ public sealed class TelegramController : ControllerBase
         }
     }
 
+    private static bool TryParseMiniAppSettingsCommitEvent(
+        string? rawData,
+        out MiniAppSettingsCommitRequest request)
+    {
+        request = default!;
+
+        if (string.IsNullOrWhiteSpace(rawData))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(rawData);
+            var root = document.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (!root.TryGetProperty("type", out var typeElement)
+                || typeElement.ValueKind != JsonValueKind.String
+                || !string.Equals(typeElement.GetString(), "settings_commit", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (!TryReadRequiredString(root, "locale", out var locale)
+                || !TryReadRequiredString(root, "saveMode", out var saveMode)
+                || !TryReadRequiredString(root, "storageMode", out var storageMode)
+                || !TryReadRequiredString(root, "aiProvider", out var aiProvider)
+                || !TryReadRequiredString(root, "aiModel", out var aiModel))
+            {
+                return false;
+            }
+
+            var apiKey = root.TryGetProperty("apiKey", out var apiKeyElement) && apiKeyElement.ValueKind == JsonValueKind.String
+                ? apiKeyElement.GetString()
+                : null;
+
+            var removeStoredKey = root.TryGetProperty("removeStoredKey", out var removeStoredKeyElement)
+                && removeStoredKeyElement.ValueKind == JsonValueKind.True;
+
+            request = new MiniAppSettingsCommitRequest(
+                Locale: locale,
+                SaveMode: saveMode,
+                StorageMode: storageMode,
+                AiProvider: aiProvider,
+                AiModel: aiModel,
+                ApiKey: apiKey,
+                RemoveStoredKey: removeStoredKey);
+
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryReadRequiredString(JsonElement root, string propertyName, out string value)
+    {
+        value = string.Empty;
+
+        if (!root.TryGetProperty(propertyName, out var element)
+            || element.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        var raw = element.GetString();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+
+        value = raw.Trim();
+        return true;
+    }
     private async Task TryAnswerCallbackQueryAsync(string? callbackQueryId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(callbackQueryId))

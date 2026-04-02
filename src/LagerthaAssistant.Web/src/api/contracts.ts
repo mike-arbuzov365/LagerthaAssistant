@@ -53,6 +53,35 @@ export interface MiniAppPolicyResponse {
   notes: string[]
 }
 
+export interface MiniAppSettingsCommitRequest {
+  locale: string
+  saveMode: string
+  storageMode: string
+  aiProvider: string
+  aiModel: string
+  apiKey?: string | null
+  removeStoredKey?: boolean
+  selectedManually?: boolean
+  channel?: string
+  userId?: string
+  conversationId?: string
+}
+
+export interface MiniAppSettingsCommitResponse {
+  locale: string
+  availableLocales: string[]
+  saveMode: string
+  availableSaveModes: string[]
+  storageMode: string
+  availableStorageModes: string[]
+  aiProvider: string
+  availableProviders: string[]
+  aiModel: string
+  availableModels: string[]
+  hasStoredKey: boolean
+  apiKeySource: string
+}
+
 export interface IntegrationNotionHubStatusResponse {
   notionVocabulary: {
     enabled: boolean

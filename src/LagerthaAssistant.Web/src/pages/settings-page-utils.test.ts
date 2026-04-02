@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   applyTelegramClosingConfirmation,
+  buildTelegramMiniAppSettingsCommitPayload,
   closeTelegramMiniApp,
   hasUnsavedSettingsChanges,
   normalizeLocaleFromPreference,
+  sendTelegramMiniAppSettingsCommit,
   sendTelegramMiniAppSettingsSaved,
   type PersistedSnapshot,
   type SettingsDraftState,
@@ -146,6 +148,62 @@ describe('sendTelegramMiniAppSettingsSaved', () => {
   })
 })
 
+describe('buildTelegramMiniAppSettingsCommitPayload', () => {
+  it('builds a single atomic commit payload and omits empty api keys', () => {
+    const payload = buildTelegramMiniAppSettingsCommitPayload({
+      locale: 'en',
+      saveMode: 'auto',
+      storageMode: 'graph',
+      aiProvider: 'claude',
+      aiModel: 'claude-3-7-sonnet',
+      apiKey: '   ',
+      removeStoredKey: true,
+    })
+
+    expect(payload).toBe(
+      '{"type":"settings_commit","locale":"en","saveMode":"auto","storageMode":"graph","aiProvider":"claude","aiModel":"claude-3-7-sonnet","removeStoredKey":true}',
+    )
+  })
+})
+
+describe('sendTelegramMiniAppSettingsCommit', () => {
+  it('sends the full settings_commit payload', () => {
+    const sendData = vi.fn()
+
+    const result = sendTelegramMiniAppSettingsCommit(
+      { sendData },
+      {
+        locale: 'uk',
+        saveMode: 'ask',
+        storageMode: 'graph',
+        aiProvider: 'openai',
+        aiModel: 'gpt-4.1-mini',
+        apiKey: 'secret',
+        removeStoredKey: false,
+      },
+    )
+
+    expect(result).toBe(true)
+    expect(sendData).toHaveBeenCalledWith(
+      '{"type":"settings_commit","locale":"uk","saveMode":"ask","storageMode":"graph","aiProvider":"openai","aiModel":"gpt-4.1-mini","apiKey":"secret"}',
+    )
+  })
+
+  it('returns false when sendData is unavailable', () => {
+    expect(
+      sendTelegramMiniAppSettingsCommit(
+        {},
+        {
+          locale: 'uk',
+          saveMode: 'ask',
+          storageMode: 'graph',
+          aiProvider: 'openai',
+          aiModel: 'gpt-4.1-mini',
+        },
+      ),
+    ).toBe(false)
+  })
+})
 describe('closeTelegramMiniApp', () => {
   it('closes mini app when close API is available', () => {
     const close = vi.fn()

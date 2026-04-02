@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  commitMiniAppSettings,
   completeGraphLogin,
   getAiKeyStatus,
   getAiModel,
@@ -12,27 +13,36 @@ import {
   graphLogout,
   graphRebuildIndex,
   graphSyncNow,
-  removeAiKey,
-  setAiKey,
-  setAiModel,
-  setAiProvider,
-  setLocale,
-  setPreferenceSession,
   startGraphLogin,
 } from '../api/client'
+import type { ReactNode } from 'react'
 import type { GraphDeviceLoginChallengeResponse } from '../api/contracts'
 import type { AppLocale } from '../lib/locale'
 import { getScopedUserId } from '../lib/settings-utils'
 import {
+  applyTelegramClosingConfirmation,
   closeTelegramMiniApp,
   hasUnsavedSettingsChanges,
   normalizeLocaleFromPreference,
   type PersistedSnapshot,
-  sendTelegramMiniAppSettingsSaved,
+  sendTelegramMiniAppSettingsCommit,
   syncTelegramClosingConfirmation,
   type TelegramMiniAppBridgeWebApp,
   type TelegramClosingConfirmationWebApp,
 } from './settings-page-utils'
+import {
+  buildLanguageChoices,
+  buildSaveModeChoices,
+  buildStorageModeChoices,
+  formatModelLabel,
+  formatProviderLabel,
+  mapAiKeySource,
+  mapStorageMode,
+  resolveNotionVisual,
+  resolveOneDriveVisual,
+  type IntegrationTone,
+  type SettingChoiceOption,
+} from './settings-page-presenter'
 import { useAppStore } from '../state/appStore'
 
 type BannerTone = 'ok' | 'error' | 'warn'
@@ -50,6 +60,9 @@ interface CopyPack {
   generalSection: string
   aiSection: string
   integrationsSection: string
+  generalIntro: string
+  aiIntro: string
+  integrationsIntro: string
   languageLabel: string
   saveModeLabel: string
   storageModeLabel: string
@@ -57,6 +70,12 @@ interface CopyPack {
   modelLabel: string
   apiKeyLabel: string
   apiKeyPlaceholder: string
+  languageHint: string
+  saveModeHint: string
+  storageModeHint: string
+  providerHint: string
+  modelHint: string
+  apiKeyHint: string
   removeStoredKeyLabel: string
   keySourceLabel: string
   keyStoredLabel: string
@@ -64,6 +83,10 @@ interface CopyPack {
   oneDriveStatusLabel: string
   oneDriveTokenLabel: string
   notionLabel: string
+  notionVocabularyLabel: string
+  notionFoodLabel: string
+  oneDriveSubtitle: string
+  notionSubtitle: string
   connected: string
   disconnected: string
   enabled: string
@@ -86,6 +109,7 @@ interface CopyPack {
   finishLogin: string
   logout: string
   serviceActions: string
+  serviceActionsHint: string
   syncNow: string
   rebuildIndex: string
   clearCache: string
@@ -93,6 +117,13 @@ interface CopyPack {
   openLoginPage: string
   enterCodeFirst: string
   storageLockedHint: string
+  refreshHint: string
+  startLoginHint: string
+  finishLoginHint: string
+  logoutHint: string
+  syncNowHint: string
+  rebuildIndexHint: string
+  clearCacheHint: string
 }
 
 const copyByLocale: Record<AppLocale, CopyPack> = {
@@ -109,6 +140,9 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     generalSection: 'Загальні',
     aiSection: 'AI',
     integrationsSection: 'Інтеграції',
+    generalIntro: 'Базові правила інтерфейсу та збереження для поточної сесії.',
+    aiIntro: 'Провайдер, модель та секрети доступу для AI-частини Lagertha.',
+    integrationsIntro: 'Статуси підключень і сервісні дії без втрати Telegram-функціоналу.',
     languageLabel: 'Мова інтерфейсу',
     saveModeLabel: 'Режим збереження',
     storageModeLabel: 'Режим сховища',
@@ -116,6 +150,12 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     modelLabel: 'Модель',
     apiKeyLabel: 'API ключ',
     apiKeyPlaceholder: 'Введіть новий ключ (необовʼязково)',
+    languageHint: 'Виберіть мову, якою Lagertha покаже Mini App та основні Telegram-меню.',
+    saveModeHint: 'Визначає, коли бот записує дані у сховище.',
+    storageModeHint: 'Де зберігається робочий контекст цієї хвилі налаштувань.',
+    providerHint: 'Основний AI-провайдер для відповідей і допоміжних сценаріїв.',
+    modelHint: 'Список моделей підлаштовується під вибраного провайдера.',
+    apiKeyHint: 'Критичне поле. Новий ключ застосовується тільки після збереження.',
     removeStoredKeyLabel: 'Видалити збережений ключ при збереженні',
     keySourceLabel: 'Джерело ключа',
     keyStoredLabel: 'Ключ у сховищі',
@@ -123,6 +163,10 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     oneDriveStatusLabel: 'OneDrive / Graph',
     oneDriveTokenLabel: 'Токен до',
     notionLabel: 'Notion',
+    notionVocabularyLabel: 'Словник',
+    notionFoodLabel: 'Food',
+    oneDriveSubtitle: 'Синхронізація файлів, черг та індексу знань.',
+    notionSubtitle: 'Майбутній центр інтеграцій для кількох просторів і ботів.',
     connected: 'Підключено',
     disconnected: 'Не підключено',
     enabled: 'Увімкнено',
@@ -145,6 +189,7 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     finishLogin: 'Завершити вхід',
     logout: 'Вийти',
     serviceActions: 'Сервісні дії',
+    serviceActionsHint: 'Обережні операції для синхронізації, індексу та кешу.',
     syncNow: 'Синхронізувати зараз',
     rebuildIndex: 'Перебудувати індекс',
     clearCache: 'Очистити кеш',
@@ -152,6 +197,13 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     openLoginPage: 'Відкрити сторінку входу',
     enterCodeFirst: 'Спочатку ініціюйте вхід у OneDrive.',
     storageLockedHint: 'Режим сховища обмежено policy Wave 1.',
+    refreshHint: 'Перечитати актуальний стан інтеграцій.',
+    startLoginHint: 'Запустити device-code flow для OneDrive.',
+    finishLoginHint: 'Завершити вхід після підтвердження в браузері.',
+    logoutHint: 'Відв’язати OneDrive від поточної сесії.',
+    syncNowHint: 'Форсувати синхронізацію без очікування воркера.',
+    rebuildIndexHint: 'Повністю перебудувати індекс OneDrive-даних.',
+    clearCacheHint: 'Скинути локальний кеш сервісу й перечитати стан заново.',
   },
   en: {
     screenTitle: 'Lagertha Settings',
@@ -166,6 +218,9 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     generalSection: 'General',
     aiSection: 'AI',
     integrationsSection: 'Integrations',
+    generalIntro: 'Base interface and persistence rules for the current session.',
+    aiIntro: 'Provider, model, and secret management for the AI layer of Lagertha.',
+    integrationsIntro: 'Connection health and service actions without losing Telegram functionality.',
     languageLabel: 'Interface language',
     saveModeLabel: 'Save mode',
     storageModeLabel: 'Storage mode',
@@ -173,6 +228,12 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     modelLabel: 'Model',
     apiKeyLabel: 'API key',
     apiKeyPlaceholder: 'Enter a new key (optional)',
+    languageHint: 'Choose the language used by the Mini App and the main Telegram menus.',
+    saveModeHint: 'Defines when the bot writes data into persistent storage.',
+    storageModeHint: 'Controls where the current Wave 1 context is stored.',
+    providerHint: 'Primary AI provider used by assistant flows and completions.',
+    modelHint: 'The model list updates automatically for the selected provider.',
+    apiKeyHint: 'Critical field. A new key is applied only after saving.',
     removeStoredKeyLabel: 'Remove stored key on save',
     keySourceLabel: 'Key source',
     keyStoredLabel: 'Key in storage',
@@ -180,6 +241,10 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     oneDriveStatusLabel: 'OneDrive / Graph',
     oneDriveTokenLabel: 'Token valid until',
     notionLabel: 'Notion',
+    notionVocabularyLabel: 'Vocabulary',
+    notionFoodLabel: 'Food',
+    oneDriveSubtitle: 'File sync, queue processing, and knowledge index maintenance.',
+    notionSubtitle: 'Future-ready integration hub for multiple workspaces and bots.',
     connected: 'Connected',
     disconnected: 'Disconnected',
     enabled: 'Enabled',
@@ -202,6 +267,7 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     finishLogin: 'Complete login',
     logout: 'Sign out',
     serviceActions: 'Service actions',
+    serviceActionsHint: 'Careful operations for sync, index, and cache maintenance.',
     syncNow: 'Sync now',
     rebuildIndex: 'Rebuild index',
     clearCache: 'Clear cache',
@@ -209,56 +275,14 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     openLoginPage: 'Open login page',
     enterCodeFirst: 'Start OneDrive login first.',
     storageLockedHint: 'Storage mode is locked by Wave 1 policy.',
+    refreshHint: 'Reload the latest integration health and status.',
+    startLoginHint: 'Start the OneDrive device-code authorization flow.',
+    finishLoginHint: 'Complete sign-in after confirming it in the browser.',
+    logoutHint: 'Disconnect OneDrive from the current session.',
+    syncNowHint: 'Force sync immediately instead of waiting for the worker.',
+    rebuildIndexHint: 'Fully rebuild the OneDrive data index.',
+    clearCacheHint: 'Reset the local service cache and fetch fresh state again.',
   },
-}
-
-function mapSaveMode(mode: string, locale: AppLocale): string {
-  const labels = {
-    uk: {
-      auto: 'Автоматично',
-      ask: 'Запитувати перед збереженням',
-      off: 'Вимкнено',
-    },
-    en: {
-      auto: 'Automatic',
-      ask: 'Ask before save',
-      off: 'Disabled',
-    },
-  }
-
-  return labels[locale][mode as keyof typeof labels.uk] ?? mode
-}
-
-function mapStorageMode(mode: string, locale: AppLocale): string {
-  const labels = {
-    uk: {
-      graph: 'Graph (OneDrive)',
-      local: 'Локальне',
-    },
-    en: {
-      graph: 'Graph (OneDrive)',
-      local: 'Local',
-    },
-  }
-
-  return labels[locale][mode as keyof typeof labels.uk] ?? mode
-}
-
-function mapAiKeySource(source: string, locale: AppLocale): string {
-  const labels = {
-    uk: {
-      stored: 'Збережений ключ',
-      environment: 'Ключ із середовища',
-      missing: 'Ключ відсутній',
-    },
-    en: {
-      stored: 'Stored key',
-      environment: 'Environment key',
-      missing: 'Key missing',
-    },
-  }
-
-  return labels[locale][source as keyof typeof labels.uk] ?? source
 }
 
 function formatDateTime(value: string | null, locale: AppLocale, emptyLabel: string): string {
@@ -292,6 +316,172 @@ function resolveBannerTone(value: string): BannerTone {
 
 function StatusChip({ tone, children }: { tone: BannerTone; children: string }) {
   return <span className={`chip chip--${tone}`}>{children}</span>
+}
+
+interface ChoiceGridProps {
+  options: SettingChoiceOption[]
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+  columns?: 'compact' | 'stack'
+}
+
+function ChoiceGrid({
+  options,
+  value,
+  onChange,
+  disabled = false,
+  columns = 'stack',
+}: ChoiceGridProps) {
+  return (
+    <div className={`choice-grid choice-grid--${columns}`} role="list">
+      {options.map((option) => {
+        const selected = option.value === value
+
+        return (
+          <button
+            key={option.value}
+            type="button"
+            className={`choice-card ${selected ? 'choice-card--selected' : ''}`}
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+            aria-pressed={selected}
+          >
+            <span className="choice-card__title">{option.title}</span>
+            <span className="choice-card__description">{option.description}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+interface ChoiceChipOption {
+  value: string
+  label: string
+}
+
+interface ChoiceChipGroupProps {
+  options: ChoiceChipOption[]
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+}
+
+function ChoiceChipGroup({
+  options,
+  value,
+  onChange,
+  disabled = false,
+}: ChoiceChipGroupProps) {
+  return (
+    <div className="choice-chip-group" role="list">
+      {options.map((option) => {
+        const selected = option.value === value
+
+        return (
+          <button
+            key={option.value}
+            type="button"
+            className={`choice-chip ${selected ? 'choice-chip--selected' : ''}`}
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+            aria-pressed={selected}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+interface ActionTileProps {
+  title: string
+  hint: string
+  tone?: 'secondary' | 'danger'
+  onClick: () => void
+  disabled?: boolean
+}
+
+function ActionTile({
+  title,
+  hint,
+  tone = 'secondary',
+  onClick,
+  disabled = false,
+}: ActionTileProps) {
+  return (
+    <button
+      type="button"
+      className={`action-tile action-tile--${tone}`}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <span className="action-tile__title">{title}</span>
+      <span className="action-tile__hint">{hint}</span>
+    </button>
+  )
+}
+
+interface IntegrationFactProps {
+  label: string
+  value: string
+}
+
+function IntegrationFact({ label, value }: IntegrationFactProps) {
+  return (
+    <div className="integration-fact">
+      <span className="integration-fact__label">{label}</span>
+      <strong className="integration-fact__value">{value}</strong>
+    </div>
+  )
+}
+
+interface IntegrationCardProps {
+  icon: string
+  title: string
+  subtitle: string
+  tone: IntegrationTone
+  status: string
+  facts: IntegrationFactProps[]
+  actions?: ReactNode
+  children?: ReactNode
+}
+
+function IntegrationCard({
+  icon,
+  title,
+  subtitle,
+  tone,
+  status,
+  facts,
+  actions,
+  children,
+}: IntegrationCardProps) {
+  return (
+    <article className="integration-card">
+      <div className="integration-card__header">
+        <div className="integration-card__icon" aria-hidden="true">{icon}</div>
+        <div className="integration-card__title-wrap">
+          <div className="integration-card__title-row">
+            <h4 className="integration-card__title">{title}</h4>
+            <StatusChip tone={tone}>{status}</StatusChip>
+          </div>
+          <p className="integration-card__subtitle">{subtitle}</p>
+        </div>
+      </div>
+
+      <div className="integration-facts">
+        {facts.map((fact) => (
+          <IntegrationFact key={`${fact.label}-${fact.value}`} label={fact.label} value={fact.value} />
+        ))}
+      </div>
+
+      {children}
+      {actions ? <div className="integration-actions">{actions}</div> : null}
+    </article>
+  )
 }
 
 export function SettingsPage() {
@@ -526,9 +716,48 @@ export function SettingsPage() {
   const storageOptions = storageLocked
     ? policy.allowedStorageModes
     : bootstrap.preferences.availableStorageModes
+  const bootstrapChannel = bootstrap.scope.channel
+  const bootstrapConversationId = bootstrap.scope.conversationId
+  const availableSaveModes = bootstrap.preferences.availableSaveModes
+  const availableStorageModes = bootstrap.preferences.availableStorageModes
 
   const oneDriveConnected = activeGraphStatus.isAuthenticated
-  const notionEnabled = integrationStatus?.notionVocabulary.enabled || integrationStatus?.notionFood.enabled
+  const languageChoices = buildLanguageChoices(uiLocale)
+  const saveModeChoices = buildSaveModeChoices(uiLocale, availableSaveModes)
+  const storageChoices = buildStorageModeChoices(uiLocale, storageOptions)
+  const providerChoices = aiProviders.map((provider) => ({
+    value: provider,
+    label: formatProviderLabel(provider),
+  }))
+  const modelChoices = aiModels.map((model) => ({
+    value: model,
+    title: formatModelLabel(model),
+    description: model,
+  }))
+  const oneDriveVisual = resolveOneDriveVisual(
+    {
+      isConfigured: activeGraphStatus.isConfigured,
+      isAuthenticated: activeGraphStatus.isAuthenticated,
+    },
+    uiLocale,
+  )
+  const notionVisual = resolveNotionVisual(
+    {
+      vocabularyEnabled: integrationStatus?.notionVocabulary.enabled ?? false,
+      vocabularyConfigured: integrationStatus?.notionVocabulary.isConfigured ?? false,
+      foodEnabled: integrationStatus?.notionFood.enabled ?? false,
+      foodConfigured: integrationStatus?.notionFood.isConfigured ?? false,
+    },
+    uiLocale,
+  )
+  const keyMetaItems = [
+    `${copy.keySourceLabel}: ${mapAiKeySource(keyStatus.source, uiLocale)}`,
+    `${copy.keyStoredLabel}: ${keyStatus.hasStoredKey ? copy.yes : copy.no}`,
+    `${copy.modelCountLabel}: ${aiModels.length}${modelsLoading ? ` (${copy.loadingModels})` : ''}`,
+  ]
+  const generalHeadline = uiLocale === 'uk' ? 'Мова та збереження' : 'Language and persistence'
+  const aiHeadline = uiLocale === 'uk' ? 'AI конфігурація' : 'AI configuration'
+  const integrationsHeadline = uiLocale === 'uk' ? 'Підключені сервіси' : 'Connected services'
 
   async function runAction(task: () => Promise<void>, successMessage: string): Promise<boolean> {
     if (!isOnline) {
@@ -562,90 +791,99 @@ export function SettingsPage() {
       return
     }
 
+    const commitRequest = {
+      locale: localeDraft,
+      saveMode: saveModeDraft,
+      storageMode: storageModeDraft,
+      aiProvider: aiProviderDraft,
+      aiModel: aiModelDraft,
+      apiKey: apiKeyDraft.trim().length > 0 ? apiKeyDraft.trim() : null,
+      removeStoredKey: removeStoredKeyRequested && apiKeyDraft.trim().length === 0,
+    }
+    const webApp = window.Telegram?.WebApp as unknown as TelegramMiniAppBridgeWebApp | undefined
+    if (webApp?.sendData) {
+      const sentViaTelegram = sendTelegramMiniAppSettingsCommit(webApp, commitRequest)
+      if (!sentViaTelegram) {
+        setSaveStatus(`${copy.errorPrefix}: Telegram Mini App commit failed.`)
+        return
+      }
+
+      setSaving(true)
+      setSaveStatus(null)
+      setSnapshot({
+        locale: localeDraft,
+        saveMode: saveModeDraft,
+        storageMode: storageModeDraft,
+        aiProvider: aiProviderDraft,
+        aiModel: aiModelDraft,
+      })
+      setLocaleInStore(localeDraft)
+      setBootstrapPreferences({
+        saveMode: saveModeDraft,
+        availableSaveModes: availableSaveModes,
+        storageMode: storageModeDraft,
+        availableStorageModes: availableStorageModes,
+      })
+      setApiKeyDraft('')
+      setRemoveStoredKeyRequested(false)
+
+      if (commitRequest.apiKey) {
+        setKeyStatus({
+          hasStoredKey: true,
+          source: 'stored',
+        })
+      }
+
+      applyTelegramClosingConfirmation(webApp, false)
+      const closed = closeTelegramMiniApp(webApp)
+      if (!closed) {
+        setSaving(false)
+        setSaveStatus(copy.saveSuccess)
+      }
+      return
+    }
+
     const saved = await runAction(async () => {
-      let activeProvider = aiProviderDraft
+      const response = await commitMiniAppSettings({
+        ...commitRequest,
+        selectedManually: true,
+        channel: bootstrapChannel,
+        userId: scopedUserId ?? undefined,
+        conversationId: bootstrapConversationId,
+      })
 
-      if (localeDraft !== snapshot.locale) {
-        const localeResponse = await setLocale({
-          locale: localeDraft,
-          selectedManually: true,
-          channel: 'telegram',
-          userId: scopedUserId ?? undefined,
-        })
-
-        const normalizedLocale = normalizeLocaleFromPreference(localeResponse.locale)
-        setLocaleInStore(normalizedLocale)
-      }
-
-      if (
-        saveModeDraft !== snapshot.saveMode
-        || storageModeDraft !== snapshot.storageMode
-      ) {
-        const sessionResponse = await setPreferenceSession({
-          saveMode: saveModeDraft,
-          storageMode: storageModeDraft,
-          channel: 'telegram',
-          userId: scopedUserId ?? undefined,
-        })
-
-        setBootstrapPreferences(sessionResponse)
-      }
-
-      if (aiProviderDraft !== snapshot.aiProvider) {
-        const providerResponse = await setAiProvider({
-          provider: aiProviderDraft,
-          channel: 'telegram',
-          userId: scopedUserId ?? undefined,
-        })
-
-        activeProvider = providerResponse.provider
-        setAiProviders(providerResponse.availableProviders)
-      }
-
-      if (aiProviderDraft !== snapshot.aiProvider || aiModelDraft !== snapshot.aiModel) {
-        const modelResponse = await setAiModel({
-          provider: activeProvider,
-          model: aiModelDraft,
-          channel: 'telegram',
-          userId: scopedUserId ?? undefined,
-        })
-
-        activeProvider = modelResponse.provider
-        setAiModelDraft(modelResponse.model)
-        setAiModels(modelResponse.availableModels)
-      }
-
-      if (removeStoredKeyRequested) {
-        const keyResponse = await removeAiKey(scopedUserId, activeProvider)
-        setKeyStatus({
-          hasStoredKey: keyResponse.hasStoredKey,
-          source: keyResponse.apiKeySource,
-        })
-      } else if (apiKeyDraft.trim().length > 0) {
-        const keyResponse = await setAiKey({
-          provider: activeProvider,
-          apiKey: apiKeyDraft.trim(),
-          channel: 'telegram',
-          userId: scopedUserId ?? undefined,
-        })
-
-        setKeyStatus({
-          hasStoredKey: keyResponse.hasStoredKey,
-          source: keyResponse.apiKeySource,
-        })
-      }
-
-      await loadSettings()
+      const normalizedLocale = normalizeLocaleFromPreference(response.locale)
+      setLocaleInStore(normalizedLocale)
+      setLocaleDraft(normalizedLocale)
+      setSaveModeDraft(response.saveMode)
+      setStorageModeDraft(response.storageMode)
+      setAiProviderDraft(response.aiProvider)
+      setAiProviders(response.availableProviders)
+      setAiModelDraft(response.aiModel)
+      setAiModels(response.availableModels)
+      setKeyStatus({
+        hasStoredKey: response.hasStoredKey,
+        source: response.apiKeySource,
+      })
+      setBootstrapPreferences({
+        saveMode: response.saveMode,
+        availableSaveModes: response.availableSaveModes,
+        storageMode: response.storageMode,
+        availableStorageModes: response.availableStorageModes,
+      })
+      setApiKeyDraft('')
+      setRemoveStoredKeyRequested(false)
+      setSnapshot({
+        locale: normalizedLocale,
+        saveMode: response.saveMode,
+        storageMode: response.storageMode,
+        aiProvider: response.aiProvider,
+        aiModel: response.aiModel,
+      })
     }, copy.saveSuccess)
 
     if (!saved) {
       return
-    }
-
-    const webApp = window.Telegram?.WebApp as unknown as TelegramMiniAppBridgeWebApp | undefined
-    const sent = sendTelegramMiniAppSettingsSaved(webApp, localeDraft)
-    if (sent) {
-      closeTelegramMiniApp(webApp)
     }
   }
 
@@ -714,7 +952,7 @@ export function SettingsPage() {
 
   return (
     <div className="settings-page" aria-busy={saving || loading}>
-      <section className="tg-profile-card">
+      <section className="tg-profile-card settings-hero">
         <div className="tg-profile-main">
           <div className="tg-avatar" aria-hidden="true">⚙️</div>
           <div>
@@ -744,103 +982,116 @@ export function SettingsPage() {
         </section>
       )}
 
-      <section className="tg-card">
-        <h3 className="tg-section-title">{copy.generalSection}</h3>
-        <div className="tg-list">
-          <label className="tg-row" htmlFor="locale-select">
-            <span className="tg-row-label">{copy.languageLabel}</span>
-            <select
-              id="locale-select"
-              className="tg-select"
-              value={localeDraft}
-              onChange={(event) => setLocaleDraft(event.target.value === 'en' ? 'en' : 'uk')}
-              disabled={saving || !isOnline}
-            >
-              <option value="uk">Українська</option>
-              <option value="en">English</option>
-            </select>
-          </label>
-
-          <label className="tg-row" htmlFor="save-mode-select">
-            <span className="tg-row-label">{copy.saveModeLabel}</span>
-            <select
-              id="save-mode-select"
-              className="tg-select"
-              value={saveModeDraft}
-              onChange={(event) => setSaveModeDraft(event.target.value)}
-              disabled={saving || !isOnline}
-            >
-              {bootstrap.preferences.availableSaveModes.map((mode) => (
-                <option key={mode} value={mode}>
-                  {mapSaveMode(mode, uiLocale)}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="tg-row" htmlFor="storage-mode-select">
-            <span className="tg-row-label">{copy.storageModeLabel}</span>
-            <select
-              id="storage-mode-select"
-              className="tg-select"
-              value={storageModeDraft}
-              onChange={(event) => setStorageModeDraft(event.target.value)}
-              disabled={saving || !isOnline || storageLocked}
-            >
-              {storageOptions.map((mode) => (
-                <option key={mode} value={mode}>
-                  {mapStorageMode(mode, uiLocale)}
-                </option>
-              ))}
-            </select>
-          </label>
+      <section className="tg-card settings-section">
+        <div className="settings-section__intro">
+          <p className="settings-section__eyebrow">{copy.generalSection}</p>
+          <h3 className="tg-section-title">{generalHeadline}</h3>
+          <p className="settings-section__description">{copy.generalIntro}</p>
         </div>
-        {storageLocked && <p className="tg-helper">{copy.storageLockedHint}</p>}
+
+        <div className="settings-subsection">
+          <div className="settings-subsection__header">
+            <div>
+              <h4 className="settings-subsection__title">{copy.languageLabel}</h4>
+              <p className="settings-subsection__hint">{copy.languageHint}</p>
+            </div>
+          </div>
+          <ChoiceGrid
+            options={languageChoices}
+            value={localeDraft}
+            onChange={(value) => setLocaleDraft(value === 'en' ? 'en' : 'uk')}
+            disabled={saving || !isOnline}
+            columns="compact"
+          />
+        </div>
+
+        <div className="settings-subsection">
+          <div className="settings-subsection__header">
+            <div>
+              <h4 className="settings-subsection__title">{copy.saveModeLabel}</h4>
+              <p className="settings-subsection__hint">{copy.saveModeHint}</p>
+            </div>
+          </div>
+          <ChoiceGrid
+            options={saveModeChoices}
+            value={saveModeDraft}
+            onChange={setSaveModeDraft}
+            disabled={saving || !isOnline}
+          />
+        </div>
+
+        <div className="settings-subsection">
+          <div className="settings-subsection__header">
+            <div>
+              <h4 className="settings-subsection__title">{copy.storageModeLabel}</h4>
+              <p className="settings-subsection__hint">{copy.storageModeHint}</p>
+            </div>
+            {storageLocked && <StatusChip tone="warn">{mapStorageMode(storageModeDraft, uiLocale)}</StatusChip>}
+          </div>
+          <ChoiceGrid
+            options={storageChoices}
+            value={storageModeDraft}
+            onChange={setStorageModeDraft}
+            disabled={saving || !isOnline || storageLocked}
+            columns="compact"
+          />
+          {storageLocked && <p className="tg-helper">{copy.storageLockedHint}</p>}
+        </div>
       </section>
 
-      <section className="tg-card">
-        <h3 className="tg-section-title">{copy.aiSection}</h3>
+      <section className="tg-card settings-section">
+        <div className="settings-section__intro">
+          <p className="settings-section__eyebrow">{copy.aiSection}</p>
+          <h3 className="tg-section-title">{aiHeadline}</h3>
+          <p className="settings-section__description">{copy.aiIntro}</p>
+        </div>
+
         {loading && <p className="tg-helper">{copy.loadingAi}</p>}
 
         {!loading && (
           <>
-            <div className="tg-list">
-              <label className="tg-row" htmlFor="provider-select">
-                <span className="tg-row-label">{copy.providerLabel}</span>
-                <select
-                  id="provider-select"
-                  className="tg-select"
-                  value={aiProviderDraft}
-                  onChange={(event) => setAiProviderDraft(event.target.value)}
-                  disabled={saving || !isOnline}
-                >
-                  {aiProviders.map((provider) => (
-                    <option key={provider} value={provider}>
-                      {provider}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="settings-subsection">
+              <div className="settings-subsection__header">
+                <div>
+                  <h4 className="settings-subsection__title">{copy.providerLabel}</h4>
+                  <p className="settings-subsection__hint">{copy.providerHint}</p>
+                </div>
+              </div>
+              <ChoiceChipGroup
+                options={providerChoices}
+                value={aiProviderDraft}
+                onChange={setAiProviderDraft}
+                disabled={saving || !isOnline}
+              />
+            </div>
 
-              <label className="tg-row" htmlFor="model-select">
-                <span className="tg-row-label">{copy.modelLabel}</span>
-                <select
-                  id="model-select"
-                  className="tg-select"
-                  value={aiModelDraft}
-                  onChange={(event) => setAiModelDraft(event.target.value)}
-                  disabled={saving || !isOnline || modelsLoading}
-                >
-                  {aiModels.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="settings-subsection">
+              <div className="settings-subsection__header">
+                <div>
+                  <h4 className="settings-subsection__title">{copy.modelLabel}</h4>
+                  <p className="settings-subsection__hint">{copy.modelHint}</p>
+                </div>
+                <StatusChip tone={modelsLoading ? 'warn' : 'ok'}>
+                  {modelsLoading ? copy.loadingModels : `${aiModels.length}`}
+                </StatusChip>
+              </div>
+              <ChoiceGrid
+                options={modelChoices}
+                value={aiModelDraft}
+                onChange={setAiModelDraft}
+                disabled={saving || !isOnline || modelsLoading}
+              />
+            </div>
 
-              <label className="tg-row" htmlFor="api-key-input">
-                <span className="tg-row-label">{copy.apiKeyLabel}</span>
+            <div className="settings-subsection">
+              <div className="settings-subsection__header">
+                <div>
+                  <h4 className="settings-subsection__title">{copy.apiKeyLabel}</h4>
+                  <p className="settings-subsection__hint">{copy.apiKeyHint}</p>
+                </div>
+              </div>
+
+              <label className="field-shell" htmlFor="api-key-input">
                 <input
                   id="api-key-input"
                   className="tg-input"
@@ -856,113 +1107,166 @@ export function SettingsPage() {
                   disabled={saving || !isOnline}
                 />
               </label>
-            </div>
 
-            <label className="tg-check">
-              <input
-                type="checkbox"
-                checked={removeStoredKeyRequested}
-                onChange={(event) => {
-                  setRemoveStoredKeyRequested(event.target.checked)
-                  if (event.target.checked) {
-                    setApiKeyDraft('')
-                  }
-                }}
-                disabled={saving || !isOnline || !keyStatus.hasStoredKey}
-              />
-              <span>{copy.removeStoredKeyLabel}</span>
-            </label>
+              <label className="tg-check tg-check--boxed">
+                <input
+                  type="checkbox"
+                  checked={removeStoredKeyRequested}
+                  onChange={(event) => {
+                    setRemoveStoredKeyRequested(event.target.checked)
+                    if (event.target.checked) {
+                      setApiKeyDraft('')
+                    }
+                  }}
+                  disabled={saving || !isOnline || !keyStatus.hasStoredKey}
+                />
+                <span>{copy.removeStoredKeyLabel}</span>
+              </label>
 
-            <div className="tg-inline-meta">
-              <span>{copy.keySourceLabel}: {mapAiKeySource(keyStatus.source, uiLocale)}</span>
-              <span>{copy.keyStoredLabel}: {keyStatus.hasStoredKey ? copy.yes : copy.no}</span>
-              <span>
-                {copy.modelCountLabel}: {aiModels.length}
-                {modelsLoading ? ` (${copy.loadingModels})` : ''}
-              </span>
+              <div className="info-pill-row">
+                {keyMetaItems.map((item) => (
+                  <span className="info-pill" key={item}>{item}</span>
+                ))}
+              </div>
             </div>
           </>
         )}
       </section>
 
-      <section className="tg-card">
-        <h3 className="tg-section-title">{copy.integrationsSection}</h3>
+      <section className="tg-card settings-section">
+        <div className="settings-section__split">
+          <div className="settings-section__intro settings-section__intro--tight">
+            <p className="settings-section__eyebrow">{copy.integrationsSection}</p>
+            <h3 className="tg-section-title">{integrationsHeadline}</h3>
+            <p className="settings-section__description">{copy.integrationsIntro}</p>
+          </div>
 
-        <div className="kv">
-          <span>{copy.oneDriveStatusLabel}</span>
-          <span className={oneDriveConnected ? 'status-ok' : 'status-error'}>
-            {activeGraphStatus.isConfigured
-              ? (oneDriveConnected ? copy.connected : copy.disconnected)
-              : copy.notConfigured}
-          </span>
-        </div>
-        <div className="kv">
-          <span>{copy.oneDriveTokenLabel}</span>
-          <span>{formatDateTime(activeGraphStatus.accessTokenExpiresAtUtc, uiLocale, copy.noData)}</span>
-        </div>
-        <div className="kv">
-          <span>{copy.notionLabel}</span>
-          <span className={notionEnabled ? 'status-ok' : 'status-warn'}>
-            {notionEnabled ? copy.enabled : copy.disabled}
-          </span>
+          <button
+            type="button"
+            className="btn-secondary btn-secondary--quiet"
+            onClick={handleRefreshStatus}
+            disabled={saving || !isOnline}
+          >
+            {copy.refreshStatus}
+          </button>
         </div>
 
         {!integrationStatus && <p className="tg-helper">{copy.loadingIntegrations}</p>}
 
-        {loginChallenge && (
-          <div className="challenge-block">
-            <div className="challenge-grid">
-              <span>{copy.loginCodeLabel}</span>
-              <strong className="mono">{loginChallenge.userCode}</strong>
-            </div>
-            <a href={loginChallenge.verificationUri} target="_blank" rel="noreferrer">
-              {copy.openLoginPage}
-            </a>
-          </div>
-        )}
+        <div className="integration-stack">
+          <IntegrationCard
+            icon="☁"
+            title={copy.oneDriveStatusLabel}
+            subtitle={`${copy.oneDriveSubtitle} ${oneDriveVisual.description}`}
+            tone={oneDriveVisual.tone}
+            status={oneDriveVisual.label}
+            facts={[
+              {
+                label: copy.oneDriveTokenLabel,
+                value: formatDateTime(activeGraphStatus.accessTokenExpiresAtUtc, uiLocale, copy.noData),
+              },
+              {
+                label: copy.storageModeLabel,
+                value: mapStorageMode(storageModeDraft, uiLocale),
+              },
+            ]}
+            actions={(
+              <>
+                {!oneDriveConnected && (
+                  <>
+                    <ActionTile
+                      title={copy.startLogin}
+                      hint={copy.startLoginHint}
+                      onClick={handleStartOneDriveLogin}
+                      disabled={saving || !isOnline}
+                    />
+                    <ActionTile
+                      title={copy.finishLogin}
+                      hint={copy.finishLoginHint}
+                      onClick={handleCompleteOneDriveLogin}
+                      disabled={saving || !isOnline || !loginChallenge}
+                    />
+                  </>
+                )}
+                {oneDriveConnected && (
+                  <ActionTile
+                    title={copy.logout}
+                    hint={copy.logoutHint}
+                    tone="danger"
+                    onClick={handleLogoutOneDrive}
+                    disabled={saving || !isOnline}
+                  />
+                )}
+              </>
+            )}
+          >
+            {loginChallenge && (
+              <div className="challenge-block">
+                <div className="challenge-grid">
+                  <span>{copy.loginCodeLabel}</span>
+                  <strong className="mono">{loginChallenge.userCode}</strong>
+                </div>
+                <a href={loginChallenge.verificationUri} target="_blank" rel="noreferrer">
+                  {copy.openLoginPage}
+                </a>
+              </div>
+            )}
 
-        <div className="actions-row">
-          <button type="button" className="btn-secondary" onClick={handleRefreshStatus} disabled={saving || !isOnline}>
-            {copy.refreshStatus}
-          </button>
-          {!oneDriveConnected && (
-            <>
-              <button type="button" className="btn-secondary" onClick={handleStartOneDriveLogin} disabled={saving || !isOnline}>
-                {copy.startLogin}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={handleCompleteOneDriveLogin}
-                disabled={saving || !isOnline || !loginChallenge}
-              >
-                {copy.finishLogin}
-              </button>
-            </>
-          )}
-          {oneDriveConnected && (
-            <button type="button" className="btn-danger" onClick={handleLogoutOneDrive} disabled={saving || !isOnline}>
-              {copy.logout}
-            </button>
-          )}
+            <details className="details-block details-block--soft">
+              <summary>{copy.serviceActions}</summary>
+              <div className="details-content">
+                <p className="tg-helper tg-helper--compact">{copy.serviceActionsHint}</p>
+                <div className="integration-actions integration-actions--maintenance">
+                  <ActionTile
+                    title={copy.syncNow}
+                    hint={copy.syncNowHint}
+                    onClick={handleSyncNow}
+                    disabled={saving || !isOnline}
+                  />
+                  <ActionTile
+                    title={copy.rebuildIndex}
+                    hint={copy.rebuildIndexHint}
+                    onClick={handleRebuildIndex}
+                    disabled={saving || !isOnline}
+                  />
+                  <ActionTile
+                    title={copy.clearCache}
+                    hint={copy.clearCacheHint}
+                    tone="danger"
+                    onClick={handleClearCache}
+                    disabled={saving || !isOnline}
+                  />
+                </div>
+              </div>
+            </details>
+          </IntegrationCard>
+
+          <IntegrationCard
+            icon="N"
+            title={copy.notionLabel}
+            subtitle={`${copy.notionSubtitle} ${notionVisual.description}`}
+            tone={notionVisual.tone}
+            status={notionVisual.label}
+            facts={[
+              {
+                label: copy.notionVocabularyLabel,
+                value: integrationStatus?.notionVocabulary.enabled
+                  ? copy.enabled
+                  : integrationStatus?.notionVocabulary.isConfigured
+                    ? copy.disabled
+                    : copy.notConfigured,
+              },
+              {
+                label: copy.notionFoodLabel,
+                value: integrationStatus?.notionFood.enabled
+                  ? copy.enabled
+                  : integrationStatus?.notionFood.isConfigured
+                    ? copy.disabled
+                    : copy.notConfigured,
+              },
+            ]}
+          />
         </div>
-
-        <details className="details-block">
-          <summary>{copy.serviceActions}</summary>
-          <div className="details-content">
-            <div className="actions-row">
-              <button type="button" className="btn-secondary" onClick={handleSyncNow} disabled={saving || !isOnline}>
-                {copy.syncNow}
-              </button>
-              <button type="button" className="btn-secondary" onClick={handleRebuildIndex} disabled={saving || !isOnline}>
-                {copy.rebuildIndex}
-              </button>
-              <button type="button" className="btn-danger" onClick={handleClearCache} disabled={saving || !isOnline}>
-                {copy.clearCache}
-              </button>
-            </div>
-          </div>
-        </details>
       </section>
 
       <div className="settings-savebar">
