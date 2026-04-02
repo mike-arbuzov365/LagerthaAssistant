@@ -29,6 +29,16 @@ export type TelegramMiniAppBridgeWebApp = TelegramClosingConfirmationWebApp & {
   close?: () => void
 }
 
+export interface MiniAppSettingsCommitDraft {
+  locale: AppLocale
+  saveMode: string
+  storageMode: string
+  aiProvider: string
+  aiModel: string
+  apiKey?: string | null
+  removeStoredKey?: boolean
+}
+
 export function normalizeLocaleFromPreference(value: string | null | undefined): AppLocale {
   const normalized = value?.trim().toLowerCase() ?? ''
 
@@ -106,6 +116,46 @@ export function sendTelegramMiniAppSettingsSaved(
       type: 'settings_saved',
       locale,
     }))
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function buildTelegramMiniAppSettingsCommitPayload(
+  draft: MiniAppSettingsCommitDraft,
+): string {
+  const payload: Record<string, unknown> = {
+    type: 'settings_commit',
+    locale: draft.locale,
+    saveMode: draft.saveMode,
+    storageMode: draft.storageMode,
+    aiProvider: draft.aiProvider,
+    aiModel: draft.aiModel,
+  }
+
+  const apiKey = draft.apiKey?.trim()
+  if (apiKey) {
+    payload.apiKey = apiKey
+  }
+
+  if (draft.removeStoredKey) {
+    payload.removeStoredKey = true
+  }
+
+  return JSON.stringify(payload)
+}
+
+export function sendTelegramMiniAppSettingsCommit(
+  webApp: TelegramMiniAppBridgeWebApp | undefined,
+  draft: MiniAppSettingsCommitDraft,
+): boolean {
+  if (!webApp?.sendData) {
+    return false
+  }
+
+  try {
+    webApp.sendData(buildTelegramMiniAppSettingsCommitPayload(draft))
     return true
   } catch {
     return false

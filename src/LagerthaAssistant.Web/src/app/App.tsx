@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { getLocale, getMiniAppPolicy, getSessionBootstrap, verifyMiniAppInitData } from '../api/client'
 import { createHostContext } from '../host/createHost'
 import { resolvePreferredLocale } from '../lib/locale'
@@ -24,12 +24,14 @@ function AppShellHeader() {
 
 export function App() {
   const host = useMemo(() => createHostContext(), [])
+  const location = useLocation()
   const status = useAppStore((s) => s.status)
   const locale = useAppStore((s) => s.locale)
   const error = useAppStore((s) => s.error)
   const setLoading = useAppStore((s) => s.setLoading)
   const setReady = useAppStore((s) => s.setReady)
   const setError = useAppStore((s) => s.setError)
+  const isSettingsRoute = location.pathname === '/settings' || location.pathname === '/miniapp/settings'
 
   useEffect(() => {
     void (async () => {
@@ -72,7 +74,7 @@ export function App() {
 
   return (
     <div className="shell">
-      <AppShellHeader />
+      {!isSettingsRoute && <AppShellHeader />}
 
       {status === 'loading' && (
         <div className="card" role="status" aria-live="polite">

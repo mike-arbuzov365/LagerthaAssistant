@@ -2611,10 +2611,22 @@ public sealed class TelegramControllerTests
         FakeTelegramImportSourceReader? importSourceReader = null,
         FakeUserMemoryRepository? userMemoryRepository = null,
         FakeUnitOfWork? unitOfWork = null,
-        FakeFoodTrackingService? foodTrackingService = null)
+        FakeFoodTrackingService? foodTrackingService = null,
+        FakeVocabularySaveModePreferenceService? saveModePreferenceService = null,
+        FakeAiRuntimeSettingsService? aiRuntimeSettingsService = null)
     {
         // Auto-populate webhook secret so IsSecretValid() passes (fail-secure).
         options.WebhookSecret ??= TestWebhookSecret;
+
+        var effectiveLocaleStateService = localeStateService ?? new FakeUserLocaleStateService();
+        var effectiveSaveModePreferenceService = saveModePreferenceService ?? new FakeVocabularySaveModePreferenceService();
+        var effectiveAiRuntimeSettingsService = aiRuntimeSettingsService ?? new FakeAiRuntimeSettingsService();
+        var miniAppSettingsCommitService = new MiniAppSettingsCommitService(
+            effectiveLocaleStateService,
+            effectiveSaveModePreferenceService,
+            storagePreferenceService,
+            storageModeProvider,
+            effectiveAiRuntimeSettingsService);
 
         var controller = new TelegramController(
             orchestrator,
@@ -2622,18 +2634,18 @@ public sealed class TelegramControllerTests
             scopeAccessor,
             storageModeProvider,
             storagePreferenceService,
-            localeStateService ?? new FakeUserLocaleStateService(),
+            effectiveLocaleStateService,
             navigationStateService ?? new FakeNavigationStateService(),
             new NavigationRouter(),
             vocabularyCardRepository ?? new FakeVocabularyCardRepository(),
-            new FakeVocabularySaveModePreferenceService(),
+            effectiveSaveModePreferenceService,
             vocabularyPersistenceService ?? new FakeVocabularyPersistenceService(),
             vocabularySyncProcessor ?? new FakeVocabularySyncProcessor(),
             vocabularyIndexService ?? new FakeVocabularyIndexService(),
             vocabularyDeckService ?? new FakeVocabularyDeckService(),
             new VocabularyReplyParser(),
             vocabularyDiscoveryService ?? new FakeVocabularyDiscoveryService(),
-            new FakeAiRuntimeSettingsService(),
+            effectiveAiRuntimeSettingsService,
             importSourceReader ?? new FakeTelegramImportSourceReader(),
             new VocabularyDeckOptions(),
             graphAuthService ?? new FakeGraphAuthService(),
@@ -2641,6 +2653,7 @@ public sealed class TelegramControllerTests
             formatter,
             sender,
             processedUpdates ?? new FakeTelegramProcessedUpdateRepository(),
+            miniAppSettingsCommitService,
             Options.Create(options),
             NullLogger<TelegramController>.Instance,
             userMemoryRepository,
@@ -3048,6 +3061,19 @@ public sealed class TelegramControllerTests
     {
         public IReadOnlyList<string> SupportedProviders => ["openai", "claude"];
 
+        public string CurrentProvider { get; private set; } = "openai";
+
+        public Dictionary<string, string> CurrentModels { get; } = new(StringComparer.Ordinal)
+        {
+            ["openai"] = "gpt-4.1-mini",
+            ["claude"] = "claude-3-5-sonnet-latest"
+        };
+
+        public HashSet<string> ProvidersWithStoredKey { get; } = new(StringComparer.Ordinal)
+        {
+            "openai"
+        };
+
         public bool TryNormalizeProvider(string? value, out string provider)
         {
             provider = "openai";
@@ -3067,31 +3093,51 @@ public sealed class TelegramControllerTests
         }
 
         public IReadOnlyList<string> GetSupportedModels(string provider)
-            => ["gpt-4.1-mini"];
+            => provider switch
+            {
+                "claude" => ["claude-3-5-sonnet-latest", "claude-3-7-sonnet"],
+                _ => ["gpt-4.1-mini", "gpt-4.1"]
+            };
 
         public Task<string> GetProviderAsync(ConversationScope scope, CancellationToken cancellationToken = default)
-            => Task.FromResult("openai");
+            => Task.FromResult(CurrentProvider);
 
         public Task<string> SetProviderAsync(ConversationScope scope, string provider, CancellationToken cancellationToken = default)
-            => Task.FromResult(provider);
+        {
+            CurrentProvider = provider;
+            return Task.FromResult(provider);
+        }
 
         public Task<string> GetModelAsync(ConversationScope scope, string provider, CancellationToken cancellationToken = default)
-            => Task.FromResult("gpt-4.1-mini");
+            => Task.FromResult(CurrentModels.TryGetValue(provider, out var model) ? model : GetSupportedModels(provider)[0]);
 
         public Task<string> SetModelAsync(ConversationScope scope, string provider, string model, CancellationToken cancellationToken = default)
-            => Task.FromResult(model);
+        {
+            CurrentModels[provider] = model;
+            return Task.FromResult(model);
+        }
 
         public Task<bool> HasStoredApiKeyAsync(ConversationScope scope, string provider, CancellationToken cancellationToken = default)
-            => Task.FromResult(false);
+            => Task.FromResult(ProvidersWithStoredKey.Contains(provider));
 
         public Task SetApiKeyAsync(ConversationScope scope, string provider, string apiKey, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+        {
+            ProvidersWithStoredKey.Add(provider);
+            return Task.CompletedTask;
+        }
 
         public Task RemoveApiKeyAsync(ConversationScope scope, string provider, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+        {
+            ProvidersWithStoredKey.Remove(provider);
+            return Task.CompletedTask;
+        }
 
         public Task<AiRuntimeSettings> ResolveAsync(ConversationScope scope, CancellationToken cancellationToken = default)
-            => Task.FromResult(new AiRuntimeSettings("openai", "gpt-4.1-mini", string.Empty, AiApiKeySource.Environment));
+            => Task.FromResult(new AiRuntimeSettings(
+                CurrentProvider,
+                CurrentModels.TryGetValue(CurrentProvider, out var model) ? model : GetSupportedModels(CurrentProvider)[0],
+                string.Empty,
+                ProvidersWithStoredKey.Contains(CurrentProvider) ? AiApiKeySource.Stored : AiApiKeySource.Environment));
     }
 
     private static ConversationAgentResult BuildVocabularyUnrecognizedResult()

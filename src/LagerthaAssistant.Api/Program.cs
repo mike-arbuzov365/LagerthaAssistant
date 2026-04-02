@@ -60,6 +60,7 @@ builder.Services.AddSingleton<ITelegramNavigationPresenter>(sp =>
 builder.Services.AddSingleton<TelegramPendingStateStore>();
 builder.Services.AddScoped<ITelegramImportSourceReader, TelegramImportSourceReader>();
 builder.Services.AddScoped<IVocabularyDiscoveryService, VocabularyDiscoveryService>();
+builder.Services.AddScoped<MiniAppSettingsCommitService>();
 builder.Services.AddRateLimiter(opts =>
 {
     opts.AddFixedWindowLimiter("telegram-webhook", o =>

@@ -8,6 +8,8 @@ import type {
   GraphSyncNowResponse,
   IntegrationNotionHubStatusResponse,
   MiniAppPolicyResponse,
+  MiniAppSettingsCommitRequest,
+  MiniAppSettingsCommitResponse,
   PreferenceSessionResponse,
   PreferenceSetSessionRequest,
   PreferenceAiKeyStatusResponse,
@@ -68,6 +70,22 @@ export async function getMiniAppPolicy(): Promise<MiniAppPolicyResponse> {
   }
 
   return response.json() as Promise<MiniAppPolicyResponse>
+}
+
+export async function commitMiniAppSettings(
+  request: MiniAppSettingsCommitRequest,
+): Promise<MiniAppSettingsCommitResponse> {
+  const response = await fetch('/api/miniapp/settings/commit', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(request),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Mini App settings commit failed: ${response.status}`)
+  }
+
+  return response.json() as Promise<MiniAppSettingsCommitResponse>
 }
 
 export async function getLocale(userId: string | null): Promise<PreferenceLocaleResponse> {
