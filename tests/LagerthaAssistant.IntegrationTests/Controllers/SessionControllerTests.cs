@@ -1,21 +1,33 @@
-﻿namespace LagerthaAssistant.IntegrationTests.Controllers;
+namespace LagerthaAssistant.IntegrationTests.Controllers;
 
+using System.Security.Cryptography;
+using System.Text;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Controllers;
+using LagerthaAssistant.Api.Options;
+using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
-using LagerthaAssistant.Application.Interfaces;
+using LagerthaAssistant.Application.Interfaces.Food;
+using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
+using LagerthaAssistant.Application.Models.Food;
 using LagerthaAssistant.Application.Models.Localization;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Vocabulary;
+using LagerthaAssistant.Infrastructure.Options;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using SharedBotKernel.Infrastructure.AI;
+using SharedBotKernel.Models.AI;
 using Xunit;
 
 public sealed class SessionControllerTests
 {
+    private const string BotToken = "123456:ABCDEF_fake_token_for_tests";
+
     [Fact]
-    public async Task GetBootstrap_ShouldReturnCombinedSessionPayload_WithDefaults()
+    public async Task GetBootstrap_ShouldReturnCombinedSessionPayload_WithSettingsSnapshot()
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
         var bootstrapService = new FakeConversationBootstrapService
@@ -35,8 +47,17 @@ public sealed class SessionControllerTests
             ]
         };
         var localeStateService = new FakeUserLocaleStateService();
+        var aiRuntimeSettings = new FakeAiRuntimeSettingsService();
+        var notionSyncProcessor = new FakeNotionSyncProcessor();
+        var foodSyncService = new FakeFoodSyncService();
 
-        var sut = new SessionController(scopeAccessor, bootstrapService, localeStateService);
+        var sut = CreateSut(
+            scopeAccessor,
+            bootstrapService,
+            localeStateService,
+            aiRuntimeSettings,
+            notionSyncProcessor,
+            foodSyncService);
 
         var response = await sut.GetBootstrap(cancellationToken: CancellationToken.None);
 
@@ -60,6 +81,15 @@ public sealed class SessionControllerTests
         Assert.Equal("graph_only_v1", payload.Policy.StorageModePolicy);
         Assert.True(payload.Policy.RequiresInitDataVerification);
 
+        Assert.Equal("openai", payload.Settings.AiProvider);
+        Assert.Equal("gpt-4.1-mini", payload.Settings.AiModel);
+        Assert.Equal(["openai", "claude"], payload.Settings.AvailableProviders);
+        Assert.Equal(["gpt-4.1-mini", "gpt-4.1"], payload.Settings.AvailableModels);
+        Assert.False(payload.Settings.HasStoredKey);
+        Assert.Equal("missing", payload.Settings.ApiKeySource);
+        Assert.False(payload.Settings.Notion.NotionVocabulary.Enabled);
+        Assert.False(payload.Settings.Notion.NotionFood.Enabled);
+
         Assert.NotEmpty(payload.CommandGroups);
         Assert.Contains(payload.CommandGroups, g => g.Category == "Session");
         Assert.NotEmpty(payload.PartOfSpeechOptions);
@@ -72,9 +102,14 @@ public sealed class SessionControllerTests
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
         var bootstrapService = new FakeConversationBootstrapService();
-        var localeStateService = new FakeUserLocaleStateService();
 
-        var sut = new SessionController(scopeAccessor, bootstrapService, localeStateService);
+        var sut = CreateSut(
+            scopeAccessor,
+            bootstrapService,
+            new FakeUserLocaleStateService(),
+            new FakeAiRuntimeSettingsService(),
+            new FakeNotionSyncProcessor(),
+            new FakeFoodSyncService());
 
         var response = await sut.GetBootstrap(
             " TeLeGrAm ",
@@ -113,9 +148,14 @@ public sealed class SessionControllerTests
                 new VocabularyPartOfSpeechOption(1, "n", "noun", ["n", "noun"])
             ]
         };
-        var localeStateService = new FakeUserLocaleStateService();
 
-        var sut = new SessionController(scopeAccessor, bootstrapService, localeStateService);
+        var sut = CreateSut(
+            scopeAccessor,
+            bootstrapService,
+            new FakeUserLocaleStateService(),
+            new FakeAiRuntimeSettingsService(),
+            new FakeNotionSyncProcessor(),
+            new FakeFoodSyncService());
 
         var response = await sut.GetBootstrap(
             includeCommands: false,
@@ -151,7 +191,13 @@ public sealed class SessionControllerTests
             StoredLocale = "en-US",
         };
 
-        var sut = new SessionController(scopeAccessor, bootstrapService, localeStateService);
+        var sut = CreateSut(
+            scopeAccessor,
+            bootstrapService,
+            localeStateService,
+            new FakeAiRuntimeSettingsService(),
+            new FakeNotionSyncProcessor(),
+            new FakeFoodSyncService());
 
         var response = await sut.GetBootstrap(
             includeDecks: true,
@@ -180,7 +226,13 @@ public sealed class SessionControllerTests
             StoredLocale = "uk"
         };
 
-        var sut = new SessionController(scopeAccessor, bootstrapService, localeStateService);
+        var sut = CreateSut(
+            scopeAccessor,
+            bootstrapService,
+            localeStateService,
+            new FakeAiRuntimeSettingsService(),
+            new FakeNotionSyncProcessor(),
+            new FakeFoodSyncService());
 
         var response = await sut.GetBootstrap(cancellationToken: CancellationToken.None);
 
@@ -189,6 +241,122 @@ public sealed class SessionControllerTests
 
         Assert.Equal("uk", payload.Locale.Locale);
         Assert.Equal(["bootstrap:start", "bootstrap:end", "locale:start", "locale:end"], guard.Events);
+    }
+
+    [Fact]
+    public async Task PostBootstrap_ShouldResolveVerifiedTelegramScopeFromInitData()
+    {
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var bootstrapService = new FakeConversationBootstrapService();
+        var initData = BuildInitData(
+            BotToken,
+            DateTimeOffset.UtcNow.AddMinutes(-1),
+            ("query_id", "AAHx"),
+            ("user", "{\"id\":2002,\"first_name\":\"Mike\"}"));
+
+        var sut = CreateSut(
+            scopeAccessor,
+            bootstrapService,
+            new FakeUserLocaleStateService(),
+            new FakeAiRuntimeSettingsService(),
+            new FakeNotionSyncProcessor(),
+            new FakeFoodSyncService(),
+            telegramOptions: new TelegramOptions { BotToken = BotToken });
+
+        var response = await sut.PostBootstrap(
+            new SessionBootstrapRequest(
+                Channel: "telegram",
+                UserId: "9999",
+                ConversationId: "2002:17",
+                InitData: initData),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<SessionBootstrapResponse>(ok.Value);
+
+        Assert.Equal("telegram", payload.Scope.Channel);
+        Assert.Equal("2002", payload.Scope.UserId);
+        Assert.Equal("2002:17", payload.Scope.ConversationId);
+        Assert.Equal("2002", bootstrapService.LastScope?.UserId);
+        Assert.Equal("2002:17", bootstrapService.LastScope?.ConversationId);
+    }
+
+    [Fact]
+    public async Task GetBootstrap_ShouldFallbackToSafeSettingsSnapshot_WhenSettingsEnrichmentFails()
+    {
+        var sut = CreateSut(
+            new FakeConversationScopeAccessor(),
+            new FakeConversationBootstrapService(),
+            new FakeUserLocaleStateService(),
+            new ThrowingAiRuntimeSettingsService(),
+            new ThrowingNotionSyncProcessor(),
+            new ThrowingFoodSyncService(),
+            notionFoodOptions: new NotionFoodOptions { Enabled = true },
+            notionSyncWorkerOptions: new NotionSyncWorkerOptions { Enabled = true },
+            foodSyncWorkerOptions: new FoodSyncWorkerOptions { Enabled = true });
+
+        var response = await sut.GetBootstrap(cancellationToken: CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<SessionBootstrapResponse>(ok.Value);
+
+        Assert.Equal("openai", payload.Settings.AiProvider);
+        Assert.Equal("gpt-4.1-mini", payload.Settings.AiModel);
+        Assert.False(payload.Settings.HasStoredKey);
+        Assert.Equal("missing", payload.Settings.ApiKeySource);
+        Assert.Equal("Unavailable", payload.Settings.Notion.NotionVocabulary.Message);
+        Assert.True(payload.Settings.Notion.NotionVocabulary.WorkerEnabled);
+        Assert.True(payload.Settings.Notion.NotionFood.WorkerEnabled);
+    }
+
+    private static SessionController CreateSut(
+        IConversationScopeAccessor scopeAccessor,
+        IConversationBootstrapService bootstrapService,
+        IUserLocaleStateService localeStateService,
+        IAiRuntimeSettingsService aiRuntimeSettingsService,
+        INotionSyncProcessor notionSyncProcessor,
+        IFoodSyncService foodSyncService,
+        TelegramOptions? telegramOptions = null,
+        NotionFoodOptions? notionFoodOptions = null,
+        NotionSyncWorkerOptions? notionSyncWorkerOptions = null,
+        FoodSyncWorkerOptions? foodSyncWorkerOptions = null)
+    {
+        return new SessionController(
+            scopeAccessor,
+            bootstrapService,
+            localeStateService,
+            aiRuntimeSettingsService,
+            notionSyncProcessor,
+            foodSyncService,
+            Options.Create(telegramOptions ?? new TelegramOptions()),
+            notionFoodOptions ?? new NotionFoodOptions(),
+            Options.Create(notionSyncWorkerOptions ?? new NotionSyncWorkerOptions()),
+            Options.Create(foodSyncWorkerOptions ?? new FoodSyncWorkerOptions()));
+    }
+
+    private static string BuildInitData(
+        string botToken,
+        DateTimeOffset authDateUtc,
+        params (string Key, string Value)[] fields)
+    {
+        var parameters = fields.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
+        parameters["auth_date"] = authDateUtc.ToUnixTimeSeconds().ToString();
+
+        var dataCheckString = string.Join(
+            '\n',
+            parameters
+                .OrderBy(x => x.Key, StringComparer.Ordinal)
+                .Select(x => $"{x.Key}={x.Value}"));
+
+        var secret = HMACSHA256.HashData(
+            Encoding.UTF8.GetBytes("WebAppData"),
+            Encoding.UTF8.GetBytes(botToken));
+        var hash = HMACSHA256.HashData(secret, Encoding.UTF8.GetBytes(dataCheckString));
+        parameters["hash"] = Convert.ToHexStringLower(hash);
+
+        return string.Join(
+            "&",
+            parameters.Select(x => $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"));
     }
 
     private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
@@ -287,6 +455,135 @@ public sealed class SessionControllerTests
             var locale = StoredLocale ?? "uk";
             return Task.FromResult(new UserLocaleStateResult(locale, IsInitialized: true, IsSwitched: false));
         }
+    }
+
+    private class FakeAiRuntimeSettingsService : IAiRuntimeSettingsService
+    {
+        public IReadOnlyList<string> SupportedProviders => ["openai", "claude"];
+
+        public bool TryNormalizeProvider(string? value, out string provider)
+        {
+            var normalized = value?.Trim().ToLowerInvariant();
+            if (normalized is "openai" or "claude")
+            {
+                provider = normalized;
+                return true;
+            }
+
+            provider = "openai";
+            return false;
+        }
+
+        public IReadOnlyList<string> GetSupportedModels(string provider)
+            => string.Equals(provider, "claude", StringComparison.Ordinal)
+                ? ["claude-3-7-sonnet"]
+                : ["gpt-4.1-mini", "gpt-4.1"];
+
+        public virtual Task<string> GetProviderAsync(ConversationScope scope, CancellationToken cancellationToken = default)
+            => Task.FromResult("openai");
+
+        public Task<string> SetProviderAsync(
+            ConversationScope scope,
+            string provider,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(provider);
+
+        public virtual Task<string> GetModelAsync(
+            ConversationScope scope,
+            string provider,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(GetSupportedModels(provider).First());
+
+        public Task<string> SetModelAsync(
+            ConversationScope scope,
+            string provider,
+            string model,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(model);
+
+        public virtual Task<bool> HasStoredApiKeyAsync(
+            ConversationScope scope,
+            string provider,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
+
+        public Task SetApiKeyAsync(
+            ConversationScope scope,
+            string provider,
+            string apiKey,
+            CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task RemoveApiKeyAsync(
+            ConversationScope scope,
+            string provider,
+            CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<AiRuntimeSettings> ResolveAsync(
+            ConversationScope scope,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new AiRuntimeSettings("openai", "gpt-4.1-mini", string.Empty, AiApiKeySource.Missing));
+    }
+
+    private sealed class ThrowingAiRuntimeSettingsService : FakeAiRuntimeSettingsService
+    {
+        public override Task<string> GetProviderAsync(ConversationScope scope, CancellationToken cancellationToken = default)
+            => Task.FromException<string>(new InvalidOperationException("AI provider unavailable."));
+
+        public override Task<string> GetModelAsync(ConversationScope scope, string provider, CancellationToken cancellationToken = default)
+            => Task.FromException<string>(new InvalidOperationException("AI model unavailable."));
+
+        public override Task<bool> HasStoredApiKeyAsync(ConversationScope scope, string provider, CancellationToken cancellationToken = default)
+            => Task.FromException<bool>(new InvalidOperationException("AI key unavailable."));
+    }
+
+    private class FakeNotionSyncProcessor : INotionSyncProcessor
+    {
+        public virtual Task<NotionSyncStatusSummary> GetStatusAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new NotionSyncStatusSummary(false, false, "disabled", 0, 0));
+
+        public Task<NotionSyncRunSummary> ProcessPendingAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult(new NotionSyncRunSummary(take, 0, 0, 0, 0, 0));
+
+        public Task<IReadOnlyList<NotionSyncFailedCard>> GetFailedCardsAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<NotionSyncFailedCard>>([]);
+
+        public Task<int> RequeueFailedAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+    }
+
+    private sealed class ThrowingNotionSyncProcessor : FakeNotionSyncProcessor
+    {
+        public override Task<NotionSyncStatusSummary> GetStatusAsync(CancellationToken cancellationToken = default)
+            => Task.FromException<NotionSyncStatusSummary>(new InvalidOperationException("Notion unavailable."));
+    }
+
+    private class FakeFoodSyncService : IFoodSyncService
+    {
+        public Task<FoodSyncSummary> SyncFromNotionAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new FoodSyncSummary(0, 0, 0, 0, false, null));
+
+        public Task<int> SyncGroceryChangesToNotionAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<int> SyncInventoryChangesToNotionAsync(int take, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<int> ReconcileNotionGroceryOrphansAsync(TimeSpan? gracePeriod = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public virtual Task<FoodSyncStatusSummary> GetSyncStatusAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new FoodSyncStatusSummary(0, 0, 0, 0));
+
+        public Task<int> PurgeArchivedGroceryAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+    }
+
+    private sealed class ThrowingFoodSyncService : FakeFoodSyncService
+    {
+        public override Task<FoodSyncStatusSummary> GetSyncStatusAsync(CancellationToken cancellationToken = default)
+            => Task.FromException<FoodSyncStatusSummary>(new InvalidOperationException("Food sync unavailable."));
     }
 
     private sealed class SessionBootstrapGuard
@@ -390,4 +687,3 @@ public sealed class SessionControllerTests
         }
     }
 }
-

@@ -20,7 +20,7 @@ public sealed class TelegramNavigationPresenterTests
     }
 
     [Fact]
-    public void BuildMainReplyKeyboard_ShouldUseWebAppForSettings_WhenMiniAppUrlConfigured()
+    public void BuildMainReplyKeyboard_ShouldKeepSettingsAsPlainText_WhenMiniAppUrlConfigured()
     {
         var sut = new TelegramNavigationPresenter(
             new LocalizationService(),
@@ -29,8 +29,37 @@ public sealed class TelegramNavigationPresenterTests
         var keyboard = sut.BuildMainReplyKeyboard("uk");
         var settingsButton = keyboard.Keyboard[2][0];
 
-        Assert.NotNull(settingsButton.WebApp);
-        Assert.Equal("https://lagertha.example.com/miniapp/settings", settingsButton.WebApp!.Url);
+        Assert.Null(settingsButton.WebApp);
+        Assert.Equal("⚙️ Налаштування", settingsButton.Text);
+    }
+
+    [Fact]
+    public void BuildSettingsLaunchKeyboard_ShouldPreferDirectUrl_WhenConfigured()
+    {
+        var sut = new TelegramNavigationPresenter(
+            new LocalizationService(),
+            "https://lagertha.example.com/miniapp/settings",
+            "https://t.me/LagerthaAssistantBot?startapp=settings");
+
+        var keyboard = sut.BuildSettingsLaunchKeyboard("en");
+
+        Assert.Equal("https://t.me/LagerthaAssistantBot?startapp=settings", keyboard.InlineKeyboard[0][0].Url);
+        Assert.Null(keyboard.InlineKeyboard[0][0].WebApp);
+        Assert.Equal(CallbackDataConstants.Settings.Legacy, keyboard.InlineKeyboard[1][0].CallbackData);
+    }
+
+    [Fact]
+    public void BuildSettingsLaunchKeyboard_ShouldFallbackToWebApp_WhenDirectUrlMissing()
+    {
+        var sut = new TelegramNavigationPresenter(
+            new LocalizationService(),
+            "https://lagertha.example.com/miniapp/settings");
+
+        var keyboard = sut.BuildSettingsLaunchKeyboard("en");
+
+        Assert.NotNull(keyboard.InlineKeyboard[0][0].WebApp);
+        Assert.Equal("https://lagertha.example.com/miniapp/settings", keyboard.InlineKeyboard[0][0].WebApp!.Url);
+        Assert.Equal(CallbackDataConstants.Settings.Legacy, keyboard.InlineKeyboard[1][0].CallbackData);
     }
 
     [Fact]

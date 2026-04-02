@@ -22,7 +22,7 @@ describe('createTelegramHost', () => {
     expect(createTelegramHost()).toBeNull()
   })
 
-  it('uses initDataUnsafe user when present', () => {
+  it('uses initDataUnsafe user when present and expands on ready', () => {
     const ready = vi.fn()
     const expand = vi.fn()
     const requestFullscreen = vi.fn()
@@ -54,13 +54,7 @@ describe('createTelegramHost', () => {
     host?.ready()
     expect(ready).toHaveBeenCalledOnce()
     expect(expand).toHaveBeenCalledOnce()
-    expect(requestFullscreen).toHaveBeenCalledOnce()
-
-    const cleanup = host?.enableBestEffortFullscreen()
-    window.dispatchEvent(new Event('pointerdown'))
-    expect(expand).toHaveBeenCalledTimes(2)
-    expect(requestFullscreen).toHaveBeenCalledTimes(2)
-    cleanup?.()
+    expect(requestFullscreen).not.toHaveBeenCalled()
   })
 
   it('falls back to parsing initData user payload when initDataUnsafe user is missing', () => {
@@ -84,71 +78,5 @@ describe('createTelegramHost', () => {
     expect(host?.conversationId).toBe('98765')
     expect(host?.userLanguageCode).toBe('en')
     expect(host?.theme).toBe('light')
-  })
-
-  it('ignores fullscreen errors from older Telegram clients', () => {
-    const ready = vi.fn()
-    const expand = vi.fn()
-    const requestFullscreen = vi.fn(() => {
-      throw new Error('unsupported')
-    })
-
-    window.Telegram = {
-      WebApp: {
-        initData: 'auth_date=1',
-        initDataUnsafe: {
-          user: {
-            id: 123456,
-            language_code: 'uk',
-          },
-        },
-        colorScheme: 'light',
-        contentSafeAreaInsets: { top: 0 },
-        ready,
-        expand,
-        requestFullscreen,
-      },
-    }
-
-    const host = createTelegramHost()
-
-    expect(() => host?.ready()).not.toThrow()
-    expect(ready).toHaveBeenCalledOnce()
-    expect(expand).toHaveBeenCalledOnce()
-    expect(requestFullscreen).toHaveBeenCalledOnce()
-  })
-
-  it('cleans up best-effort fullscreen listeners after first interaction', () => {
-    const ready = vi.fn()
-    const expand = vi.fn()
-    const requestFullscreen = vi.fn()
-
-    window.Telegram = {
-      WebApp: {
-        initData: 'auth_date=1',
-        initDataUnsafe: {
-          user: {
-            id: 123456,
-            language_code: 'uk',
-          },
-        },
-        colorScheme: 'light',
-        contentSafeAreaInsets: { top: 0 },
-        ready,
-        expand,
-        requestFullscreen,
-      },
-    }
-
-    const host = createTelegramHost()
-    const cleanup = host?.enableBestEffortFullscreen()
-
-    window.dispatchEvent(new Event('pointerdown'))
-    window.dispatchEvent(new Event('pointerdown'))
-
-    expect(expand).toHaveBeenCalledOnce()
-    expect(requestFullscreen).toHaveBeenCalledOnce()
-
-    cleanup?.()
   })
 })

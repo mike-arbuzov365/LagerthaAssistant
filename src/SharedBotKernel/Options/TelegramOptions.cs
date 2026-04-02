@@ -14,5 +14,9 @@ public sealed class TelegramOptions
 
     public string? MiniAppSettingsUrl { get; set; }
 
+    public string? BotUsername { get; set; }
+
+    public string? MiniAppSettingsDirectUrl { get; set; }
+
     public int TextLengthLimit { get; set; } = 3900;
 }

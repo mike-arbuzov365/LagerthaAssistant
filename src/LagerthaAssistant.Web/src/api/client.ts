@@ -22,6 +22,7 @@ import type {
   PreferenceSetLocaleRequest,
   MiniAppVerifyRequest,
   MiniAppVerifyResponse,
+  SessionBootstrapRequest,
   SessionBootstrapResponse,
 } from './contracts'
 
@@ -44,24 +45,19 @@ export async function verifyMiniAppInitData(request: MiniAppVerifyRequest): Prom
 }
 
 export async function getSessionBootstrap(
-  userId: string | null,
-  conversationId?: string | null,
+  request: SessionBootstrapRequest,
 ): Promise<SessionBootstrapResponse> {
-  const params = new URLSearchParams({
-    channel: 'telegram',
-    includeCommands: 'false',
-    includePartOfSpeechOptions: 'false',
-    includeDecks: 'false',
+  const response = await fetch('/api/session/bootstrap', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      channel: 'telegram',
+      includeCommands: false,
+      includePartOfSpeechOptions: false,
+      includeDecks: false,
+      ...request,
+    }),
   })
-
-  if (userId) {
-    params.set('userId', userId)
-  }
-  if (conversationId) {
-    params.set('conversationId', conversationId)
-  }
-
-  const response = await fetch(`/api/session/bootstrap?${params.toString()}`)
   if (!response.ok) {
     throw new Error(`Bootstrap failed: ${response.status}`)
   }

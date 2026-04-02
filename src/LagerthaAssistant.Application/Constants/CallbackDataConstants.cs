@@ -24,6 +24,7 @@ public static class CallbackDataConstants
         public const string Ai = "settings:ai";
         public const string OneDrive = "settings:onedrive";
         public const string Notion = "settings:notion";
+        public const string Legacy = "settings:legacy";
         public const string Back = "settings:back";
     }
 

@@ -475,7 +475,7 @@ public sealed class TelegramControllerTests
         var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
 
         Assert.True(payload.Replied);
-        Assert.Equal("settings.section", payload.Intent);
+        Assert.Equal("settings.launch", payload.Intent);
         Assert.Equal(NavigationSections.Chat, navigationState.CurrentSection);
         Assert.Contains("Settings", sender.LastText, StringComparison.OrdinalIgnoreCase);
     }
@@ -1371,12 +1371,11 @@ public sealed class TelegramControllerTests
         var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
 
         Assert.True(payload.Replied);
-        Assert.Equal("settings.section", payload.Intent);
+        Assert.Equal("settings.launch", payload.Intent);
         Assert.Equal("settings", navigationState.CurrentSection);
         Assert.IsType<TelegramInlineKeyboardMarkup>(sender.LastOptions?.ReplyMarkup);
-        Assert.Contains("• <b>Language:</b> en", sender.LastText, StringComparison.Ordinal);
-        Assert.Contains("• <b>OneDrive / Graph:</b> disconnected", sender.LastText, StringComparison.Ordinal);
-        Assert.DoesNotContain("OneDrive / Graph: Status:", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Settings", sender.LastText, StringComparison.Ordinal);
+        Assert.Contains("Open modern settings.", sender.LastText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2556,6 +2555,59 @@ public sealed class TelegramControllerTests
         Assert.DoesNotContain(labels, x => x.Contains("Словник", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Webhook_MiniAppSettingsCommitEvent_ShouldPersistLocaleAndRefreshMainKeyboard()
+    {
+        var localeState = new FakeUserLocaleStateService
+        {
+            StoredLocale = LocalizationConstants.UkrainianLocale,
+            NextLocale = LocalizationConstants.UkrainianLocale,
+            SetLocaleResult = LocalizationConstants.EnglishLocale
+        };
+        var sender = new FakeTelegramBotSender();
+        var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.Settings };
+
+        var sut = CreateSut(
+            new FakeConversationOrchestrator(),
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: localeState,
+            navigationStateService: navigationState,
+            vocabularyCardRepository: null,
+            navigationPresenter: new TelegramNavigationPresenter(new LocalizationService()),
+            new FakeTelegramFormatter("ignored"),
+            sender,
+            new TelegramOptions { Enabled = true });
+
+        var response = await sut.Webhook(
+            BuildWebAppDataUpdate(
+                chatId: 1001,
+                userId: 2002,
+                webAppData: "{\"type\":\"settings_commit\",\"locale\":\"en\",\"saveMode\":\"ask\",\"storageMode\":\"graph\",\"aiProvider\":\"openai\",\"aiModel\":\"gpt-4.1-mini\"}",
+                messageThreadId: null,
+                languageCode: "uk",
+                updateId: 7002),
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
+
+        Assert.True(payload.Processed);
+        Assert.True(payload.Replied);
+        Assert.Equal("miniapp.settings.saved", payload.Intent);
+        Assert.Equal(NavigationSections.Main, navigationState.CurrentSection);
+        Assert.Equal(1, sender.Calls);
+
+        var refreshMessage = sender.SentMessages.Single();
+        var refreshKeyboard = Assert.IsType<TelegramReplyKeyboardMarkup>(refreshMessage.Options?.ReplyMarkup);
+        var labels = refreshKeyboard.Keyboard.SelectMany(row => row).Select(button => button.Text).ToList();
+
+        Assert.Contains(labels, x => x.Contains("Vocabulary", StringComparison.Ordinal));
+        Assert.DoesNotContain(labels, x => x.Contains("Ð¡Ð»Ð¾Ð²Ð½Ð¸Ðº", StringComparison.Ordinal));
+    }
+
     private static TelegramController CreateSut(
         FakeConversationOrchestrator orchestrator,
         FakeConversationScopeAccessor scopeAccessor,
@@ -3584,6 +3636,7 @@ public sealed class TelegramControllerTests
     {
         public string NextLocale { get; set; } = "en";
         public string? StoredLocale { get; set; } = "en";
+        public string? SetLocaleResult { get; set; }
         public string? LastEnsureTelegramLanguageCode { get; private set; }
         public bool StoreLocaleOnEnsureWhenMissing { get; set; }
 
@@ -3600,9 +3653,10 @@ public sealed class TelegramControllerTests
             bool selectedManually,
             CancellationToken cancellationToken = default)
         {
-            StoredLocale = locale;
-            NextLocale = locale;
-            return Task.FromResult(locale);
+            var persistedLocale = string.IsNullOrWhiteSpace(SetLocaleResult) ? locale : SetLocaleResult!;
+            StoredLocale = persistedLocale;
+            NextLocale = persistedLocale;
+            return Task.FromResult(persistedLocale);
         }
 
         public Task<UserLocaleStateResult> EnsureLocaleAsync(
@@ -3795,6 +3849,8 @@ public sealed class TelegramControllerTests
 
     private sealed class FakeTelegramNavigationPresenter : ITelegramNavigationPresenter
     {
+        public bool CanLaunchSettingsMiniApp { get; set; } = true;
+
         public string LastMainReplyKeyboardLocale { get; private set; } = LocalizationConstants.EnglishLocale;
 
         public MainMenuLabels GetMainMenuLabels(string locale)
@@ -3872,6 +3928,11 @@ public sealed class TelegramControllerTests
                 "vocab.stats.deck_item" => "{0}) {1} — {2}",
                 "vocab.stats.and_more_decks" => "... and {0} more deck(s).",
                 "settings.title" => "Settings",
+                "settings.launch.title" => "Settings",
+                "settings.launch.body" => "Open modern settings.",
+                "settings.launch_open" => "Open settings",
+                "settings.launch_open_fullscreen" => "Open full-screen settings",
+                "settings.launch_legacy" => "Open legacy settings",
                 "settings.language" => "Language",
                 "settings.save_mode" => "Save mode",
                 "settings.storage_mode" => "Storage mode",
@@ -4051,6 +4112,13 @@ public sealed class TelegramControllerTests
 
         public TelegramInlineKeyboardMarkup BuildOnboardingLanguageKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("EN", "lang:en")]]);
+
+        public TelegramInlineKeyboardMarkup BuildSettingsLaunchKeyboard(string locale)
+            => new(
+            [
+                [new TelegramInlineKeyboardButton("Open settings", Url: "https://t.me/LagerthaAssistantBot?startapp=settings")],
+                [new TelegramInlineKeyboardButton("Legacy", CallbackDataConstants.Settings.Legacy)]
+            ]);
 
         public TelegramInlineKeyboardMarkup BuildSettingsKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Language", "settings:language")]]);
@@ -6066,3 +6134,5 @@ public sealed class TelegramControllerTests
             => Task.FromResult<PortionCalculationDto?>(new PortionCalculationDto("Test Meal", 2, targetServings, (decimal)targetServings / 2, []));
     }
 }
+
+

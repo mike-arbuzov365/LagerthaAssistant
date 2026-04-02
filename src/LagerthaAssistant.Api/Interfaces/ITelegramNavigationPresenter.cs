@@ -5,6 +5,8 @@ namespace LagerthaAssistant.Api.Interfaces;
 
 public interface ITelegramNavigationPresenter
 {
+    bool CanLaunchSettingsMiniApp { get; }
+
     MainMenuLabels GetMainMenuLabels(string locale);
 
     string GetText(string key, string locale, params object[] args);
@@ -30,6 +32,8 @@ public interface ITelegramNavigationPresenter
     TelegramInlineKeyboardMarkup BuildWeeklyAnalyticsKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildOnboardingLanguageKeyboard(string locale);
+
+    TelegramInlineKeyboardMarkup BuildSettingsLaunchKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildSettingsKeyboard(string locale);
 

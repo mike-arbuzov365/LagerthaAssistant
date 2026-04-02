@@ -1,3 +1,13 @@
+export interface SessionBootstrapRequest {
+  channel?: string
+  userId?: string | null
+  conversationId?: string | null
+  includeCommands?: boolean
+  includePartOfSpeechOptions?: boolean
+  includeDecks?: boolean
+  initData?: string
+}
+
 export interface SessionBootstrapResponse {
   scope: {
     channel: string
@@ -20,6 +30,15 @@ export interface SessionBootstrapResponse {
     isAuthenticated: boolean
     message: string
     accessTokenExpiresAtUtc: string | null
+  }
+  settings: {
+    aiProvider: string
+    availableProviders: string[]
+    aiModel: string
+    availableModels: string[]
+    hasStoredKey: boolean
+    apiKeySource: string
+    notion: IntegrationNotionHubStatusResponse
   }
 }
 

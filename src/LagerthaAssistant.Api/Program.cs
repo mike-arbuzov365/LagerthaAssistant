@@ -55,7 +55,8 @@ builder.Services.AddSingleton<ITelegramNavigationPresenter>(sp =>
 {
     var localizationService = sp.GetRequiredService<ILocalizationService>();
     var settingsUrl = ResolveMiniAppSettingsUrl(builder.Configuration);
-    return new TelegramNavigationPresenter(localizationService, settingsUrl);
+    var settingsDirectUrl = ResolveMiniAppSettingsDirectUrl(builder.Configuration);
+    return new TelegramNavigationPresenter(localizationService, settingsUrl, settingsDirectUrl);
 });
 builder.Services.AddSingleton<TelegramPendingStateStore>();
 builder.Services.AddScoped<ITelegramImportSourceReader, TelegramImportSourceReader>();
@@ -177,6 +178,23 @@ static string? ResolveMiniAppSettingsUrl(IConfiguration configuration)
     return builder.Uri.AbsoluteUri;
 }
 
+static string? ResolveMiniAppSettingsDirectUrl(IConfiguration configuration)
+{
+    var explicitDirectUrl = configuration[$"{TelegramOptions.SectionName}:MiniAppSettingsDirectUrl"];
+    if (TryNormalizeHttpsUrl(explicitDirectUrl, out var resolvedExplicitUrl))
+    {
+        return resolvedExplicitUrl;
+    }
+
+    var configuredBotUsername = configuration[$"{TelegramOptions.SectionName}:BotUsername"];
+    if (!TryNormalizeTelegramBotUsername(configuredBotUsername, out var botUsername))
+    {
+        return null;
+    }
+
+    return $"https://t.me/{botUsername}?startapp=settings";
+}
+
 static bool TryNormalizeHttpsUrl(string? raw, out string value)
 {
     value = string.Empty;
@@ -196,5 +214,23 @@ static bool TryNormalizeHttpsUrl(string? raw, out string value)
     }
 
     value = parsed.AbsoluteUri;
+    return true;
+}
+
+static bool TryNormalizeTelegramBotUsername(string? raw, out string value)
+{
+    value = string.Empty;
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    var trimmed = raw.Trim().TrimStart('@');
+    if (trimmed.Length == 0)
+    {
+        return false;
+    }
+
+    value = trimmed;
     return true;
 }
