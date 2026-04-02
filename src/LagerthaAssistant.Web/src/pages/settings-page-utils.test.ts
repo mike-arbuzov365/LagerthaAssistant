@@ -5,6 +5,7 @@ import {
   normalizeLocaleFromPreference,
   type PersistedSnapshot,
   type SettingsDraftState,
+  syncTelegramClosingConfirmation,
 } from './settings-page-utils'
 
 describe('normalizeLocaleFromPreference', () => {
@@ -97,3 +98,32 @@ describe('applyTelegramClosingConfirmation', () => {
   })
 })
 
+describe('syncTelegramClosingConfirmation', () => {
+  it('does not disable confirmation during cleanup after enabling', () => {
+    const webApp = {
+      enableClosingConfirmation: vi.fn(),
+      disableClosingConfirmation: vi.fn(),
+      isClosingConfirmationEnabled: false,
+    }
+
+    const cleanup = syncTelegramClosingConfirmation(webApp, true)
+    cleanup()
+
+    expect(webApp.enableClosingConfirmation).toHaveBeenCalledOnce()
+    expect(webApp.disableClosingConfirmation).not.toHaveBeenCalled()
+    expect(webApp.isClosingConfirmationEnabled).toBe(true)
+  })
+
+  it('applies disabled state when enabled=false', () => {
+    const webApp = {
+      enableClosingConfirmation: vi.fn(),
+      disableClosingConfirmation: vi.fn(),
+      isClosingConfirmationEnabled: true,
+    }
+
+    syncTelegramClosingConfirmation(webApp, false)
+
+    expect(webApp.disableClosingConfirmation).toHaveBeenCalledOnce()
+    expect(webApp.isClosingConfirmationEnabled).toBe(false)
+  })
+})
