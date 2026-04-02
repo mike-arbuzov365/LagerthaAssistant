@@ -78,6 +78,7 @@ export function createTelegramHost(): HostContext | null {
     initData: webApp.initData ?? '',
     userLanguageCode,
     userId,
+    conversationId: userId,
     ready() {
       webApp.ready()
       webApp.expand()

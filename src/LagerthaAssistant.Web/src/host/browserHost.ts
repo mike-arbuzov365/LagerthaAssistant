@@ -8,6 +8,7 @@ export function createBrowserHost(): HostContext {
     initData: '',
     userLanguageCode: navigator.language ?? null,
     userId: null,
+    conversationId: null,
     ready() {
       // no-op
     },

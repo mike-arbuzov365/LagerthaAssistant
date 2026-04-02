@@ -45,6 +45,7 @@ describe('createTelegramHost', () => {
     const host = createTelegramHost()
     expect(host).not.toBeNull()
     expect(host?.userId).toBe('123456')
+    expect(host?.conversationId).toBe('123456')
     expect(host?.userLanguageCode).toBe('uk')
     expect(host?.theme).toBe('dark')
 
@@ -70,8 +71,8 @@ describe('createTelegramHost', () => {
     const host = createTelegramHost()
     expect(host).not.toBeNull()
     expect(host?.userId).toBe('98765')
+    expect(host?.conversationId).toBe('98765')
     expect(host?.userLanguageCode).toBe('en')
     expect(host?.theme).toBe('light')
   })
 })
-

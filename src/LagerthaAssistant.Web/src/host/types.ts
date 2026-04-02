@@ -7,5 +7,6 @@ export interface HostContext {
   initData: string
   userLanguageCode: string | null
   userId: string | null
+  conversationId: string | null
   ready(): void
 }
