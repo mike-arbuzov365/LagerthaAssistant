@@ -204,7 +204,6 @@ describe('sendTelegramMiniAppSettingsCommit', () => {
     ).toBe(false)
   })
 })
-
 describe('closeTelegramMiniApp', () => {
   it('closes mini app when close API is available', () => {
     const close = vi.fn()

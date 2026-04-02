@@ -38,7 +38,6 @@ export interface MiniAppSettingsCommitDraft {
   apiKey?: string | null
   removeStoredKey?: boolean
 }
-
 export function normalizeLocaleFromPreference(value: string | null | undefined): AppLocale {
   const normalized = value?.trim().toLowerCase() ?? ''
 
@@ -161,7 +160,6 @@ export function sendTelegramMiniAppSettingsCommit(
     return false
   }
 }
-
 export function closeTelegramMiniApp(webApp: TelegramMiniAppBridgeWebApp | undefined): boolean {
   if (!webApp?.close) {
     return false

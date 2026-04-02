@@ -3723,7 +3723,6 @@ public sealed class TelegramController : ControllerBase
             await CleanupOldUpdatesAsync(CancellationToken.None);
             return true;
         }
-
         if (!TryParseMiniAppSettingsSavedEvent(inbound.WebAppData, out var requestedLocale))
         {
             return false;
@@ -3793,7 +3792,6 @@ public sealed class TelegramController : ControllerBase
             _logger.LogWarning(ex, "Telegram Mini App commit failure message threw exception. ChatId={ChatId}; Locale={Locale}", chatId, locale);
         }
     }
-
     private static bool TryParseMiniAppSettingsSavedEvent(string? rawData, out string? locale)
     {
         locale = null;
@@ -3918,7 +3916,6 @@ public sealed class TelegramController : ControllerBase
         value = raw.Trim();
         return true;
     }
-
     private async Task TryAnswerCallbackQueryAsync(string? callbackQueryId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(callbackQueryId))
