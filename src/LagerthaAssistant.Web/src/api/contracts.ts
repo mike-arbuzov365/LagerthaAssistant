@@ -4,12 +4,17 @@ export interface SessionBootstrapResponse {
     userId: string
     conversationId: string
   }
+  locale: {
+    locale: string
+    availableLocales: string[]
+  }
   preferences: {
     saveMode: string
     availableSaveModes: string[]
     storageMode: string
     availableStorageModes: string[]
   }
+  policy: MiniAppPolicyResponse
   graph: {
     isConfigured: boolean
     isAuthenticated: boolean

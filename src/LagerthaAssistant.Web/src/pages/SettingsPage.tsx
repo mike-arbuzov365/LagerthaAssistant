@@ -7,8 +7,6 @@ import {
   getAiProvider,
   getGraphStatus,
   getIntegrationNotionStatus,
-  getLocale,
-  getSessionBootstrap,
   graphClearCache,
   graphLogout,
   graphRebuildIndex,
@@ -21,6 +19,7 @@ import type { AppLocale } from '../lib/locale'
 import { getScopedUserId } from '../lib/settings-utils'
 import {
   applyTelegramClosingConfirmation,
+  buildUnsavedChangesPrompt,
   canUseTelegramMiniAppSettingsBridge,
   closeTelegramMiniApp,
   hasUnsavedSettingsChanges,
@@ -553,6 +552,30 @@ export function SettingsPage() {
   const copy = copyByLocale[uiLocale]
   const scopedConversationId = bootstrap?.scope.conversationId ?? null
 
+  useEffect(() => {
+    if (!bootstrap) {
+      return
+    }
+
+    const normalizedLocale = locale
+    const saveModeFromBootstrap = bootstrap.preferences.saveMode
+    const storageModeFromBootstrap = bootstrap.preferences.storageMode
+
+    setLocaleDraft(normalizedLocale)
+    setSaveModeDraft(saveModeFromBootstrap)
+    setStorageModeDraft(storageModeFromBootstrap)
+    setGraphStatus((current) => current ?? bootstrap.graph)
+    setSnapshot((current) => (
+      current ?? {
+        locale: normalizedLocale,
+        saveMode: saveModeFromBootstrap,
+        storageMode: storageModeFromBootstrap,
+        aiProvider: 'openai',
+        aiModel: '',
+      }
+    ))
+  }, [bootstrap, locale])
+
   const hasUnsavedChanges = useMemo(() => {
     return hasUnsavedSettingsChanges(snapshot, {
       locale: localeDraft,
@@ -580,8 +603,9 @@ export function SettingsPage() {
     }
 
     function beforeUnloadHandler(event: BeforeUnloadEvent) {
+      const prompt = buildUnsavedChangesPrompt(uiLocale)
       event.preventDefault()
-      event.returnValue = ''
+      event.returnValue = prompt
     }
 
     window.addEventListener('beforeunload', beforeUnloadHandler)
@@ -589,7 +613,7 @@ export function SettingsPage() {
     return () => {
       window.removeEventListener('beforeunload', beforeUnloadHandler)
     }
-  }, [hasUnsavedChanges])
+  }, [hasUnsavedChanges, uiLocale])
 
   useLayoutEffect(() => {
     const webApp = window.Telegram?.WebApp as unknown as TelegramClosingConfirmationWebApp | undefined
@@ -611,9 +635,7 @@ export function SettingsPage() {
 
     try {
       const providerResponse = await getAiProvider(scopedUserId, scopedConversationId)
-      const [sessionBootstrapResponse, localeResponse, modelResponse, keyResponse, notionHubStatus, graphStatusResponse] = await Promise.all([
-        getSessionBootstrap(scopedUserId, scopedConversationId),
-        getLocale(scopedUserId, scopedConversationId),
+      const [modelResponse, keyResponse, notionHubStatus, graphStatusResponse] = await Promise.all([
         getAiModel(scopedUserId, providerResponse.provider, scopedConversationId),
         getAiKeyStatus(scopedUserId, providerResponse.provider, scopedConversationId),
         getIntegrationNotionStatus(),
@@ -633,19 +655,10 @@ export function SettingsPage() {
       setLoginChallenge(null)
       setRemoveStoredKeyRequested(false)
       setApiKeyDraft('')
-
-      const normalizedLocale = normalizeLocaleFromPreference(localeResponse.locale)
-      const saveModeFromApi = sessionBootstrapResponse.preferences.saveMode
-      const storageModeFromApi = sessionBootstrapResponse.preferences.storageMode
-
-      setLocaleInStore(normalizedLocale)
-      setLocaleDraft(normalizedLocale)
-      setSaveModeDraft(saveModeFromApi)
-      setStorageModeDraft(storageModeFromApi)
       setSnapshot({
-        locale: normalizedLocale,
-        saveMode: saveModeFromApi,
-        storageMode: storageModeFromApi,
+        locale,
+        saveMode: bootstrap.preferences.saveMode,
+        storageMode: bootstrap.preferences.storageMode,
         aiProvider: providerResponse.provider,
         aiModel: modelResponse.model,
       })
@@ -654,7 +667,7 @@ export function SettingsPage() {
     } finally {
       setLoading(false)
     }
-  }, [bootstrap, scopedConversationId, scopedUserId, setLocaleInStore])
+  }, [bootstrap, locale, scopedConversationId, scopedUserId])
 
   useEffect(() => {
     if (!bootstrap) {
@@ -1275,3 +1288,4 @@ export function SettingsPage() {
     </div>
   )
 }
+

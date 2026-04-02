@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   applyTelegramClosingConfirmation,
+  buildUnsavedChangesPrompt,
   buildTelegramMiniAppSettingsCommitPayload,
   canUseTelegramMiniAppSettingsBridge,
   closeTelegramMiniApp,
@@ -103,8 +104,31 @@ describe('applyTelegramClosingConfirmation', () => {
   })
 })
 
+describe('buildUnsavedChangesPrompt', () => {
+  it('returns localized unsaved prompt copy', () => {
+    expect(buildUnsavedChangesPrompt('en')).toContain('unsaved changes')
+    expect(buildUnsavedChangesPrompt('uk')).toContain('незбережені зміни')
+  })
+})
+
 describe('syncTelegramClosingConfirmation', () => {
+  it('reapplies confirmation state after a short delay', () => {
+    vi.useFakeTimers()
+    const webApp = {
+      enableClosingConfirmation: vi.fn(),
+      disableClosingConfirmation: vi.fn(),
+      isClosingConfirmationEnabled: false,
+    }
+
+    syncTelegramClosingConfirmation(webApp, true)
+    vi.runAllTimers()
+
+    expect(webApp.enableClosingConfirmation).toHaveBeenCalledTimes(3)
+    vi.useRealTimers()
+  })
+
   it('does not disable confirmation during cleanup after enabling', () => {
+    vi.useFakeTimers()
     const webApp = {
       enableClosingConfirmation: vi.fn(),
       disableClosingConfirmation: vi.fn(),
@@ -117,9 +141,11 @@ describe('syncTelegramClosingConfirmation', () => {
     expect(webApp.enableClosingConfirmation).toHaveBeenCalledOnce()
     expect(webApp.disableClosingConfirmation).not.toHaveBeenCalled()
     expect(webApp.isClosingConfirmationEnabled).toBe(true)
+    vi.useRealTimers()
   })
 
   it('applies disabled state when enabled=false', () => {
+    vi.useFakeTimers()
     const webApp = {
       enableClosingConfirmation: vi.fn(),
       disableClosingConfirmation: vi.fn(),
@@ -127,9 +153,11 @@ describe('syncTelegramClosingConfirmation', () => {
     }
 
     syncTelegramClosingConfirmation(webApp, false)
+    vi.runAllTimers()
 
-    expect(webApp.disableClosingConfirmation).toHaveBeenCalledOnce()
+    expect(webApp.disableClosingConfirmation).toHaveBeenCalledTimes(3)
     expect(webApp.isClosingConfirmationEnabled).toBe(false)
+    vi.useRealTimers()
   })
 })
 

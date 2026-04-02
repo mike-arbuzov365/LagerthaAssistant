@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using LagerthaAssistant.Api.Contracts;
+using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
+using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Models.Agents;
 
 namespace LagerthaAssistant.Api.Controllers;
@@ -12,13 +14,16 @@ public sealed class SessionController : ControllerBase
 {
     private readonly IConversationScopeAccessor _scopeAccessor;
     private readonly IConversationBootstrapService _conversationBootstrapService;
+    private readonly IUserLocaleStateService _localeStateService;
 
     public SessionController(
         IConversationScopeAccessor scopeAccessor,
-        IConversationBootstrapService conversationBootstrapService)
+        IConversationBootstrapService conversationBootstrapService,
+        IUserLocaleStateService localeStateService)
     {
         _scopeAccessor = scopeAccessor;
         _conversationBootstrapService = conversationBootstrapService;
+        _localeStateService = localeStateService;
     }
 
     [HttpGet("bootstrap")]
@@ -39,7 +44,15 @@ public sealed class SessionController : ControllerBase
             IncludePartOfSpeechOptions: includePartOfSpeechOptions,
             IncludeWritableDecks: includeDecks);
 
-        var bootstrap = await _conversationBootstrapService.BuildAsync(scope, options, cancellationToken);
+        var bootstrapTask = _conversationBootstrapService.BuildAsync(scope, options, cancellationToken);
+        var storedLocaleTask = _localeStateService.GetStoredLocaleAsync(scope.Channel, scope.UserId, cancellationToken);
+        await Task.WhenAll(bootstrapTask, storedLocaleTask);
+
+        var bootstrap = await bootstrapTask;
+        var storedLocale = await storedLocaleTask;
+        var locale = string.IsNullOrWhiteSpace(storedLocale)
+            ? LocalizationConstants.UkrainianLocale
+            : LocalizationConstants.NormalizeLocaleCode(storedLocale);
 
         var preferences = new PreferenceSessionResponse(
             bootstrap.SaveMode,
@@ -49,7 +62,9 @@ public sealed class SessionController : ControllerBase
 
         return Ok(new SessionBootstrapResponse(
             new SessionScopeResponse(bootstrap.Scope.Channel, bootstrap.Scope.UserId, bootstrap.Scope.ConversationId),
+            new PreferenceLocaleResponse(locale, [LocalizationConstants.UkrainianLocale, LocalizationConstants.EnglishLocale]),
             preferences,
+            MiniAppPolicyPayloadFactory.Create(),
             new GraphAuthStatusResponse(
                 bootstrap.Graph.IsConfigured,
                 bootstrap.Graph.IsAuthenticated,

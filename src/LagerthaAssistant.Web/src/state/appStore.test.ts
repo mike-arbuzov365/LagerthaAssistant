@@ -8,11 +8,24 @@ const bootstrapFixture: SessionBootstrapResponse = {
     userId: '123',
     conversationId: '123',
   },
+  locale: {
+    locale: 'uk',
+    availableLocales: ['uk', 'en'],
+  },
   preferences: {
     saveMode: 'ask',
     availableSaveModes: ['ask', 'auto', 'off'],
     storageMode: 'graph',
     availableStorageModes: ['local', 'graph'],
+  },
+  policy: {
+    defaultLocale: 'uk',
+    supportedLocales: ['uk', 'en'],
+    storageModePolicy: 'graph_only_v1',
+    allowedStorageModes: ['graph'],
+    oneDriveAuthScope: 'shared_provider_token_v1',
+    requiresInitDataVerification: true,
+    notes: ['n1'],
   },
   graph: {
     isConfigured: true,

@@ -89,13 +89,24 @@ export function applyTelegramClosingConfirmation(
   }
 }
 
+export function buildUnsavedChangesPrompt(locale: AppLocale): string {
+  return locale === 'en'
+    ? 'You have unsaved changes. Save or discard them before leaving settings.'
+    : 'У вас є незбережені зміни. Збережіть або скасуйте їх перед виходом із налаштувань.'
+}
+
 export function syncTelegramClosingConfirmation(
   webApp: TelegramClosingConfirmationWebApp | undefined,
   enabled: boolean,
 ): () => void {
   applyTelegramClosingConfirmation(webApp, enabled)
 
+  const timerIds = [0, 120].map((delay) => window.setTimeout(() => {
+    applyTelegramClosingConfirmation(webApp, enabled)
+  }, delay))
+
   return () => {
+    timerIds.forEach((timerId) => window.clearTimeout(timerId))
     // Intentionally no-op.
     // During Telegram Mini App close, React unmount may happen before Telegram processes
     // closing behavior. Disabling confirmation in cleanup can suppress the close prompt.

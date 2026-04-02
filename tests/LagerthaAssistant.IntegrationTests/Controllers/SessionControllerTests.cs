@@ -4,7 +4,9 @@ using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Controllers;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
+using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Models.Agents;
+using LagerthaAssistant.Application.Models.Localization;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Vocabulary;
 using Microsoft.AspNetCore.Mvc;
@@ -32,8 +34,9 @@ public sealed class SessionControllerTests
                 new VocabularyPartOfSpeechOption(1, "n", "noun", ["n", "noun"])
             ]
         };
+        var localeStateService = new FakeUserLocaleStateService();
 
-        var sut = new SessionController(scopeAccessor, bootstrapService);
+        var sut = new SessionController(scopeAccessor, bootstrapService, localeStateService);
 
         var response = await sut.GetBootstrap(cancellationToken: CancellationToken.None);
 
@@ -43,6 +46,8 @@ public sealed class SessionControllerTests
         Assert.Equal("api", payload.Scope.Channel);
         Assert.Equal("anonymous", payload.Scope.UserId);
         Assert.Equal("default", payload.Scope.ConversationId);
+        Assert.Equal("uk", payload.Locale.Locale);
+        Assert.Equal(["uk", "en"], payload.Locale.AvailableLocales);
 
         Assert.Equal("auto", payload.Preferences.SaveMode);
         Assert.Equal("local", payload.Preferences.StorageMode);
@@ -52,6 +57,8 @@ public sealed class SessionControllerTests
         Assert.True(payload.Graph.IsConfigured);
         Assert.False(payload.Graph.IsAuthenticated);
         Assert.Equal("Not authenticated.", payload.Graph.Message);
+        Assert.Equal("graph_only_v1", payload.Policy.StorageModePolicy);
+        Assert.True(payload.Policy.RequiresInitDataVerification);
 
         Assert.NotEmpty(payload.CommandGroups);
         Assert.Contains(payload.CommandGroups, g => g.Category == "Session");
@@ -65,8 +72,9 @@ public sealed class SessionControllerTests
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
         var bootstrapService = new FakeConversationBootstrapService();
+        var localeStateService = new FakeUserLocaleStateService();
 
-        var sut = new SessionController(scopeAccessor, bootstrapService);
+        var sut = new SessionController(scopeAccessor, bootstrapService, localeStateService);
 
         var response = await sut.GetBootstrap(
             " TeLeGrAm ",
@@ -105,8 +113,9 @@ public sealed class SessionControllerTests
                 new VocabularyPartOfSpeechOption(1, "n", "noun", ["n", "noun"])
             ]
         };
+        var localeStateService = new FakeUserLocaleStateService();
 
-        var sut = new SessionController(scopeAccessor, bootstrapService);
+        var sut = new SessionController(scopeAccessor, bootstrapService, localeStateService);
 
         var response = await sut.GetBootstrap(
             includeCommands: false,
@@ -137,8 +146,12 @@ public sealed class SessionControllerTests
                 new VocabularyDeckFile("wm-nouns-ua-en.xlsx", "C:\\Decks\\wm-nouns-ua-en.xlsx")
             ]
         };
+        var localeStateService = new FakeUserLocaleStateService
+        {
+            StoredLocale = "en-US",
+        };
 
-        var sut = new SessionController(scopeAccessor, bootstrapService);
+        var sut = new SessionController(scopeAccessor, bootstrapService, localeStateService);
 
         var response = await sut.GetBootstrap(
             includeDecks: true,
@@ -153,6 +166,7 @@ public sealed class SessionControllerTests
         Assert.Equal("n", decks[0].SuggestedPartOfSpeech);
         Assert.Equal("wm-verbs-us-en.xlsx", decks[1].FileName);
         Assert.Equal("v", decks[1].SuggestedPartOfSpeech);
+        Assert.Equal("en", payload.Locale.Locale);
     }
 
     private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
@@ -215,6 +229,41 @@ public sealed class SessionControllerTests
                 options.IncludeWritableDecks
                     ? WritableDecks
                     : null));
+        }
+    }
+
+    private sealed class FakeUserLocaleStateService : IUserLocaleStateService
+    {
+        public string? StoredLocale { get; set; }
+
+        public Task<string?> GetStoredLocaleAsync(
+            string channel,
+            string userId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(StoredLocale);
+        }
+
+        public Task<string> SetLocaleAsync(
+            string channel,
+            string userId,
+            string locale,
+            bool selectedManually = true,
+            CancellationToken cancellationToken = default)
+        {
+            StoredLocale = locale;
+            return Task.FromResult(locale);
+        }
+
+        public Task<UserLocaleStateResult> EnsureLocaleAsync(
+            string channel,
+            string userId,
+            string? telegramLanguageCode,
+            string? incomingText,
+            CancellationToken cancellationToken = default)
+        {
+            var locale = StoredLocale ?? "uk";
+            return Task.FromResult(new UserLocaleStateResult(locale, IsInitialized: true, IsSwitched: false));
         }
     }
 }
