@@ -258,10 +258,16 @@ public sealed class SessionController : ControllerBase
         scope = ConversationScope.Default;
         errorMessage = null;
 
-        if (!string.Equals(channel, "telegram", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(initData))
+        if (!string.Equals(channel, "telegram", StringComparison.OrdinalIgnoreCase))
         {
             scope = ApiConversationScopeApplier.Apply(_scopeAccessor, channel, userId, conversationId);
             return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(initData))
+        {
+            errorMessage = "initData is required for Telegram Mini App bootstrap.";
+            return false;
         }
 
         var verification = TelegramMiniAppInitDataVerifier.Verify(

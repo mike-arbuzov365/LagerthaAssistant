@@ -1,4 +1,6 @@
-﻿using System.Threading.RateLimiting;
+using System.Net.Http.Headers;
+using System.Text.Json;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -187,12 +189,13 @@ static string? ResolveMiniAppSettingsDirectUrl(IConfiguration configuration)
     }
 
     var configuredBotUsername = configuration[$"{TelegramOptions.SectionName}:BotUsername"];
-    if (!TryNormalizeTelegramBotUsername(configuredBotUsername, out var botUsername))
+    if (!TryNormalizeTelegramBotUsername(configuredBotUsername, out var botUsername)
+        && !TryResolveTelegramBotUsernameFromApi(configuration, out botUsername))
     {
         return null;
     }
 
-    return $"https://t.me/{botUsername}?startapp=settings";
+    return $"https://t.me/{botUsername}?startapp=settings&mode=fullscreen";
 }
 
 static bool TryNormalizeHttpsUrl(string? raw, out string value)
@@ -234,3 +237,60 @@ static bool TryNormalizeTelegramBotUsername(string? raw, out string value)
     value = trimmed;
     return true;
 }
+static bool TryResolveTelegramBotUsernameFromApi(IConfiguration configuration, out string value)
+{
+    value = string.Empty;
+
+    var botToken = configuration[$"{TelegramOptions.SectionName}:BotToken"];
+    if (string.IsNullOrWhiteSpace(botToken))
+    {
+        return false;
+    }
+
+    var apiBaseUrl = configuration[$"{TelegramOptions.SectionName}:ApiBaseUrl"];
+    var normalizedApiBaseUrl = string.IsNullOrWhiteSpace(apiBaseUrl)
+        ? "https://api.telegram.org"
+        : apiBaseUrl.Trim().TrimEnd('/');
+
+    var requestUri = $"{normalizedApiBaseUrl}/bot{botToken.Trim()}/getMe";
+
+    try
+    {
+        using var client = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(5)
+        };
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        using var response = client.Send(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            return false;
+        }
+
+        using var stream = response.Content.ReadAsStream();
+        using var document = JsonDocument.Parse(stream);
+
+        if (!document.RootElement.TryGetProperty("ok", out var okElement)
+            || okElement.ValueKind != JsonValueKind.True)
+        {
+            return false;
+        }
+
+        if (!document.RootElement.TryGetProperty("result", out var resultElement)
+            || resultElement.ValueKind != JsonValueKind.Object
+            || !resultElement.TryGetProperty("username", out var usernameElement)
+            || usernameElement.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        return TryNormalizeTelegramBotUsername(usernameElement.GetString(), out value);
+    }
+    catch
+    {
+        return false;
+    }
+}
+
+

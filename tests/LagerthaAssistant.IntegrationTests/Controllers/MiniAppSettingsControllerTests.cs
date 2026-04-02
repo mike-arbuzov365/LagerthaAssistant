@@ -180,7 +180,7 @@ public sealed class MiniAppSettingsControllerTests
     }
 
     [Fact]
-    public async Task Commit_ShouldAllowAnonymousDevFallback_WhenTelegramInitDataMissing()
+    public async Task Commit_ShouldRejectTelegramWrite_WhenInitDataMissing()
     {
         var scopeAccessor = new FakeConversationScopeAccessor();
         var localeService = new FakeUserLocaleStateService { SetLocaleResult = "en" };
@@ -200,14 +200,10 @@ public sealed class MiniAppSettingsControllerTests
                 Channel: "telegram"),
             CancellationToken.None);
 
-        var ok = Assert.IsType<OkObjectResult>(response.Result);
-        var payload = Assert.IsType<MiniAppSettingsCommitResponse>(ok.Value);
-
-        Assert.Equal("en", payload.Locale);
-        Assert.Equal("telegram", scopeAccessor.Current.Channel);
-        Assert.Equal(ConversationScope.DefaultUserId, scopeAccessor.Current.UserId);
-        Assert.Equal(ConversationScope.DefaultConversationId, scopeAccessor.Current.ConversationId);
+        var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal("initData is required for Telegram-scoped writes.", badRequest.Value);
         Assert.Empty(sender.SentMessages);
+        Assert.Equal(ConversationScope.Default, scopeAccessor.Current);
     }
 
     [Fact]

@@ -387,7 +387,7 @@ SyncedAt      TIMESTAMPTZ
   1. user taps `Settings`
   2. bot sends a launch-entry message
   3. launch-entry uses `Telegram__MiniAppSettingsDirectUrl` if configured
-  4. otherwise it falls back to `https://t.me/<bot>?startapp=settings` derived from `Telegram__BotUsername`
+  4. otherwise it falls back to `https://t.me/<bot>?startapp=settings&mode=fullscreen` derived from `Telegram__BotUsername`
   5. legacy inline settings remain available only as a fallback
 - Bootstrap for `/miniapp/settings` should come from `POST /api/session/bootstrap` so the screen can render without extra blocking round-trips for locale, AI provider, or integration status.
 
