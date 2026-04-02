@@ -36,6 +36,8 @@ Each command in `Local validation` must be in backticks.
 5. Before adding more commits to an existing PR, verify the PR state with `gh pr view <number> --json state`.
 6. Never continue work on a PR whose state is not `OPEN`. If the previous `dev` -> `master` PR is `MERGED` or `CLOSED`, create a new PR for the next batch of commits.
 7. If `master` moved since the last PR, sync `dev` with `origin/master` before creating the new PR.
+8. After every push intended for review, run `gh pr list --state open --base master --head dev --json number,state,url`. If the result is empty, create a new PR immediately.
+9. Never say "PR updated" unless an explicit post-push check confirms that the target PR is still `OPEN`.
 
 ---
 
@@ -46,6 +48,7 @@ Run:
 ```bash
 gh pr view <number> --json body,mergeable,mergeStateStatus
 gh pr checks <number>
+gh pr list --state open --base master --head dev --json number,state,url
 ```
 
 Expected:
@@ -54,6 +57,7 @@ Expected:
 - required checks green (or explicitly approved exception)
 - PR body is formatted as Markdown (real line breaks, no escaped junk)
 - PR state is `OPEN` before editing/updating that PR
+- an `OPEN` `dev` -> `master` PR exists after the last push; otherwise create a new one
 
 ---
 
