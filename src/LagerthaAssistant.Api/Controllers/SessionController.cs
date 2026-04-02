@@ -269,7 +269,6 @@ public sealed class SessionController : ControllerBase
             errorMessage = "initData is required for Telegram Mini App bootstrap.";
             return false;
         }
-
         var verification = TelegramMiniAppInitDataVerifier.Verify(
             initData,
             _telegramOptions.BotToken,

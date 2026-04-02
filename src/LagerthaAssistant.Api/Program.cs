@@ -292,5 +292,3 @@ static bool TryResolveTelegramBotUsernameFromApi(IConfiguration configuration, o
         return false;
     }
 }
-
-
