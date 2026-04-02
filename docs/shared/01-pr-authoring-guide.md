@@ -38,6 +38,8 @@ Each command in `Local validation` must be in backticks.
 7. If `master` moved since the last PR, sync `dev` with `origin/master` before creating the new PR.
 8. After every push intended for review, run `gh pr list --state open --base master --head dev --json number,state,url`. If the result is empty, create a new PR immediately.
 9. Never say "PR updated" unless an explicit post-push check confirms that the target PR is still `OPEN`.
+10. In this repo shell environment (`PowerShell`), do not use `&&` in terminal commands. Use separate commands, or a PowerShell-safe sequence with `;` and `$LASTEXITCODE` checks.
+11. For `git` operations that write to the index (`add`, `commit`, `merge`, `rebase`), do not run parallel git commands in the same repo. Finish one write operation before starting the next to avoid `.git/index.lock` races.
 
 ---
 
