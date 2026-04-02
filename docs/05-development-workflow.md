@@ -17,6 +17,9 @@
 - Create PRs from `dev` → `master`
 - One PR = one logical milestone (not one commit)
 - No new branches without explicit instruction
+- Before updating a PR, check that its state is still `OPEN`
+- If the previous `dev` -> `master` PR is `MERGED` or `CLOSED`, open a new PR for later commits
+- Sync `dev` with `origin/master` before opening the next PR if `master` moved
 - PR authoring/formatting rules: `docs/shared/01-pr-authoring-guide.md`
 
 **Commit convention:** `feat` / `fix` / `refactor` / `test` / `docs` / `chore`

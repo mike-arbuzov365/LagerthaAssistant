@@ -2188,6 +2188,7 @@ public sealed class TelegramControllerTests
         Assert.Equal("vocab.save.done", firstPayload.Intent);
         Assert.Contains("missing", sender.LastText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("wm-adjectives-ua-en.xlsx", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        var sentMessagesAfterFirstSave = sender.Calls;
 
         var secondSave = await sut.Webhook(
             BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.SaveYes, null, languageCode: "en", updateId: 901),
@@ -2195,8 +2196,58 @@ public sealed class TelegramControllerTests
 
         var secondOk = Assert.IsType<OkObjectResult>(secondSave.Result);
         var secondPayload = Assert.IsType<TelegramWebhookResponse>(secondOk.Value);
-        Assert.True(secondPayload.Replied);
+        Assert.False(secondPayload.Replied);
         Assert.Equal("vocab.save.none", secondPayload.Intent);
+        Assert.Equal(sentMessagesAfterFirstSave, sender.Calls);
+    }
+
+    [Fact]
+    public async Task Webhook_ShouldIgnoreRepeatedBatchSaveCallback_WhenPendingBatchWasAlreadyConsumed()
+    {
+        var orchestrator = new FakeConversationOrchestrator
+        {
+            NextResult = BuildVocabularyBatchSavableResult()
+        };
+        var persistence = new FakeVocabularyPersistenceService();
+        var sender = new FakeTelegramBotSender();
+
+        var sut = CreateSut(
+            orchestrator,
+            new FakeConversationScopeAccessor(),
+            new FakeVocabularyStorageModeProvider(),
+            new FakeVocabularyStoragePreferenceService(),
+            assistantSessionService: null,
+            localeStateService: new FakeUserLocaleStateService { StoredLocale = "en", NextLocale = "en" },
+            navigationStateService: new FakeNavigationStateService { CurrentSection = NavigationSections.Vocabulary },
+            vocabularyCardRepository: null,
+            navigationPresenter: null,
+            new FakeTelegramFormatter("batch body"),
+            sender,
+            new TelegramOptions { Enabled = true },
+            processedUpdates: null,
+            vocabularyPersistenceService: persistence);
+
+        await sut.Webhook(BuildTextUpdate(1001, 2002, "awkward exact", null), CancellationToken.None);
+
+        var firstSave = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.SaveBatchYes, null, updateId: 170),
+            CancellationToken.None);
+
+        var firstOk = Assert.IsType<OkObjectResult>(firstSave.Result);
+        var firstPayload = Assert.IsType<TelegramWebhookResponse>(firstOk.Value);
+        Assert.True(firstPayload.Replied);
+        Assert.Equal("vocab.save.batch.done", firstPayload.Intent);
+        var sentMessagesAfterFirstSave = sender.Calls;
+
+        var secondSave = await sut.Webhook(
+            BuildCallbackUpdate(1001, 2002, CallbackDataConstants.Vocab.SaveBatchYes, null, updateId: 171),
+            CancellationToken.None);
+
+        var secondOk = Assert.IsType<OkObjectResult>(secondSave.Result);
+        var secondPayload = Assert.IsType<TelegramWebhookResponse>(secondOk.Value);
+        Assert.False(secondPayload.Replied);
+        Assert.Equal("vocab.save.none", secondPayload.Intent);
+        Assert.Equal(sentMessagesAfterFirstSave, sender.Calls);
     }
 [Fact]
     public async Task Webhook_ShouldShowWordSuggestions_WhenWordIsUnrecognized()

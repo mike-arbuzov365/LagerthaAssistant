@@ -169,6 +169,28 @@ public sealed class SessionControllerTests
         Assert.Equal("en", payload.Locale.Locale);
     }
 
+    [Fact]
+    public async Task GetBootstrap_ShouldReadStoredLocaleAfterBootstrapCompletes_WhenServicesShareScopedState()
+    {
+        var guard = new SessionBootstrapGuard();
+        var scopeAccessor = new FakeConversationScopeAccessor();
+        var bootstrapService = new GuardedConversationBootstrapService(guard);
+        var localeStateService = new GuardedUserLocaleStateService(guard)
+        {
+            StoredLocale = "uk"
+        };
+
+        var sut = new SessionController(scopeAccessor, bootstrapService, localeStateService);
+
+        var response = await sut.GetBootstrap(cancellationToken: CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var payload = Assert.IsType<SessionBootstrapResponse>(ok.Value);
+
+        Assert.Equal("uk", payload.Locale.Locale);
+        Assert.Equal(["bootstrap:start", "bootstrap:end", "locale:start", "locale:end"], guard.Events);
+    }
+
     private sealed class FakeConversationScopeAccessor : IConversationScopeAccessor
     {
         public ConversationScope Current { get; private set; } = ConversationScope.Default;
@@ -241,6 +263,107 @@ public sealed class SessionControllerTests
             string userId,
             CancellationToken cancellationToken = default)
         {
+            return Task.FromResult(StoredLocale);
+        }
+
+        public Task<string> SetLocaleAsync(
+            string channel,
+            string userId,
+            string locale,
+            bool selectedManually = true,
+            CancellationToken cancellationToken = default)
+        {
+            StoredLocale = locale;
+            return Task.FromResult(locale);
+        }
+
+        public Task<UserLocaleStateResult> EnsureLocaleAsync(
+            string channel,
+            string userId,
+            string? telegramLanguageCode,
+            string? incomingText,
+            CancellationToken cancellationToken = default)
+        {
+            var locale = StoredLocale ?? "uk";
+            return Task.FromResult(new UserLocaleStateResult(locale, IsInitialized: true, IsSwitched: false));
+        }
+    }
+
+    private sealed class SessionBootstrapGuard
+    {
+        public bool BootstrapCompleted { get; private set; }
+
+        public List<string> Events { get; } = [];
+
+        public void BootstrapStarted() => Events.Add("bootstrap:start");
+
+        public void BootstrapFinished()
+        {
+            BootstrapCompleted = true;
+            Events.Add("bootstrap:end");
+        }
+
+        public void LocaleStarted()
+        {
+            Events.Add("locale:start");
+            if (!BootstrapCompleted)
+            {
+                throw new InvalidOperationException("Stored locale started before bootstrap completed.");
+            }
+        }
+
+        public void LocaleFinished() => Events.Add("locale:end");
+    }
+
+    private sealed class GuardedConversationBootstrapService : IConversationBootstrapService
+    {
+        private readonly SessionBootstrapGuard _guard;
+
+        public GuardedConversationBootstrapService(SessionBootstrapGuard guard)
+        {
+            _guard = guard;
+        }
+
+        public async Task<ConversationBootstrapSnapshot> BuildAsync(
+            ConversationScope scope,
+            ConversationBootstrapOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            _guard.BootstrapStarted();
+            await Task.Yield();
+            _guard.BootstrapFinished();
+
+            return new ConversationBootstrapSnapshot(
+                scope,
+                "ask",
+                ["ask", "auto", "off"],
+                "graph",
+                ["local", "graph"],
+                new GraphAuthStatus(true, false, "Not authenticated.", null),
+                [],
+                [],
+                null);
+        }
+    }
+
+    private sealed class GuardedUserLocaleStateService : IUserLocaleStateService
+    {
+        private readonly SessionBootstrapGuard _guard;
+
+        public GuardedUserLocaleStateService(SessionBootstrapGuard guard)
+        {
+            _guard = guard;
+        }
+
+        public string? StoredLocale { get; set; }
+
+        public Task<string?> GetStoredLocaleAsync(
+            string channel,
+            string userId,
+            CancellationToken cancellationToken = default)
+        {
+            _guard.LocaleStarted();
+            _guard.LocaleFinished();
             return Task.FromResult(StoredLocale);
         }
 

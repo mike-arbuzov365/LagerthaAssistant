@@ -44,12 +44,10 @@ public sealed class SessionController : ControllerBase
             IncludePartOfSpeechOptions: includePartOfSpeechOptions,
             IncludeWritableDecks: includeDecks);
 
-        var bootstrapTask = _conversationBootstrapService.BuildAsync(scope, options, cancellationToken);
-        var storedLocaleTask = _localeStateService.GetStoredLocaleAsync(scope.Channel, scope.UserId, cancellationToken);
-        await Task.WhenAll(bootstrapTask, storedLocaleTask);
-
-        var bootstrap = await bootstrapTask;
-        var storedLocale = await storedLocaleTask;
+        // Keep these reads sequential. In production both operations can traverse the same
+        // scoped persistence graph, and parallelizing them risks transient EF/db re-entrancy.
+        var bootstrap = await _conversationBootstrapService.BuildAsync(scope, options, cancellationToken);
+        var storedLocale = await _localeStateService.GetStoredLocaleAsync(scope.Channel, scope.UserId, cancellationToken);
         var locale = string.IsNullOrWhiteSpace(storedLocale)
             ? LocalizationConstants.UkrainianLocale
             : LocalizationConstants.NormalizeLocaleCode(storedLocale);

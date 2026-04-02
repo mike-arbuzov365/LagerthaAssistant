@@ -33,6 +33,9 @@ Each command in `Local validation` must be in backticks.
 2. On Windows PowerShell, prefer `gh pr create --body-file` and `gh pr edit --body-file`.
 3. If `gh pr edit` fails because of token scopes, use `gh api ... --raw-field body=\"...\"`.
 4. Before merge, verify PR body does not contain literal `\\n`.
+5. Before adding more commits to an existing PR, verify the PR state with `gh pr view <number> --json state`.
+6. Never continue work on a PR whose state is not `OPEN`. If the previous `dev` -> `master` PR is `MERGED` or `CLOSED`, create a new PR for the next batch of commits.
+7. If `master` moved since the last PR, sync `dev` with `origin/master` before creating the new PR.
 
 ---
 
@@ -50,6 +53,7 @@ Expected:
 - no merge conflicts
 - required checks green (or explicitly approved exception)
 - PR body is formatted as Markdown (real line breaks, no escaped junk)
+- PR state is `OPEN` before editing/updating that PR
 
 ---
 
