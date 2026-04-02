@@ -24,6 +24,11 @@ export type TelegramClosingConfirmationWebApp = {
   isClosingConfirmationEnabled?: boolean
 }
 
+export type TelegramMiniAppBridgeWebApp = TelegramClosingConfirmationWebApp & {
+  sendData?: (data: string) => void
+  close?: () => void
+}
+
 export function normalizeLocaleFromPreference(value: string | null | undefined): AppLocale {
   const normalized = value?.trim().toLowerCase() ?? ''
 
@@ -85,5 +90,37 @@ export function syncTelegramClosingConfirmation(
     // Intentionally no-op.
     // During Telegram Mini App close, React unmount may happen before Telegram processes
     // closing behavior. Disabling confirmation in cleanup can suppress the close prompt.
+  }
+}
+
+export function sendTelegramMiniAppSettingsSaved(
+  webApp: TelegramMiniAppBridgeWebApp | undefined,
+  locale: AppLocale,
+): boolean {
+  if (!webApp?.sendData) {
+    return false
+  }
+
+  try {
+    webApp.sendData(JSON.stringify({
+      type: 'settings_saved',
+      locale,
+    }))
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function closeTelegramMiniApp(webApp: TelegramMiniAppBridgeWebApp | undefined): boolean {
+  if (!webApp?.close) {
+    return false
+  }
+
+  try {
+    webApp.close()
+    return true
+  } catch {
+    return false
   }
 }

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Globalization;
+using System.Text.Json;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Interfaces;
 using LagerthaAssistant.Api.Models;
@@ -259,6 +260,18 @@ public sealed class TelegramController : ControllerBase
             // Telegram bot works only with Graph storage mode.
             _storageModeProvider.SetMode(VocabularyStorageMode.Graph);
 
+            if (!string.IsNullOrWhiteSpace(inbound.WebAppData))
+            {
+                if (await TryHandleMiniAppWebhookEventAsync(inbound, scope, update.UpdateId, cancellationToken))
+                {
+                    return Ok(new TelegramWebhookResponse(
+                        Processed: true,
+                        Replied: true,
+                        Intent: "miniapp.settings.saved",
+                        Error: null));
+                }
+            }
+
             var currentSection = await _navigationStateService.GetCurrentSectionAsync(
                 scope.Channel,
                 scope.UserId,
@@ -319,6 +332,7 @@ public sealed class TelegramController : ControllerBase
                     inbound.ChatId,
                     response.FollowUpMainKeyboardLocale,
                     inbound.MessageThreadId,
+                    "onboarding.language_saved",
                     CancellationToken.None);
             }
 
@@ -3632,11 +3646,12 @@ public sealed class TelegramController : ControllerBase
         long chatId,
         string locale,
         int? messageThreadId,
+        string textKey,
         CancellationToken cancellationToken)
     {
         try
         {
-            var text = WebUtility.HtmlEncode(_navigationPresenter.GetText("onboarding.language_saved", locale));
+            var text = WebUtility.HtmlEncode(_navigationPresenter.GetText(textKey, locale));
             var options = ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale));
             var sendResult = await _telegramBotSender.SendTextAsync(chatId, text, options, messageThreadId, cancellationToken);
             if (!sendResult.Succeeded)
@@ -3651,6 +3666,86 @@ public sealed class TelegramController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Telegram keyboard refresh send threw exception. ChatId={ChatId}; Locale={Locale}", chatId, locale);
+        }
+    }
+
+    private async Task<bool> TryHandleMiniAppWebhookEventAsync(
+        TelegramInboundMessage inbound,
+        ConversationScope scope,
+        long updateId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParseMiniAppSettingsSavedEvent(inbound.WebAppData, out var requestedLocale))
+        {
+            return false;
+        }
+
+        var storedLocale = await _userLocaleStateService.GetStoredLocaleAsync(scope.Channel, scope.UserId, cancellationToken);
+        var effectiveLocale = !string.IsNullOrWhiteSpace(storedLocale)
+            ? LocalizationConstants.NormalizeLocaleCode(storedLocale)
+            : LocalizationConstants.NormalizeLocaleCode(requestedLocale ?? inbound.LanguageCode);
+
+        await _navigationStateService.SetCurrentSectionAsync(
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
+            NavigationSections.Main,
+            cancellationToken);
+
+        await SendMainKeyboardRefreshMessageAsync(
+            inbound.ChatId,
+            effectiveLocale,
+            inbound.MessageThreadId,
+            "menu.main.title",
+            CancellationToken.None);
+
+        await _processedUpdates.MarkProcessedAsync(updateId, cancellationToken);
+        await CleanupOldUpdatesAsync(CancellationToken.None);
+
+        return true;
+    }
+
+    private static bool TryParseMiniAppSettingsSavedEvent(string? rawData, out string? locale)
+    {
+        locale = null;
+
+        if (string.IsNullOrWhiteSpace(rawData))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(rawData);
+            var root = document.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (!root.TryGetProperty("type", out var typeElement)
+                || typeElement.ValueKind != JsonValueKind.String)
+            {
+                return false;
+            }
+
+            var eventType = typeElement.GetString();
+            if (!string.Equals(eventType, "settings_saved", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (root.TryGetProperty("locale", out var localeElement) && localeElement.ValueKind == JsonValueKind.String)
+            {
+                locale = localeElement.GetString();
+            }
+
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 

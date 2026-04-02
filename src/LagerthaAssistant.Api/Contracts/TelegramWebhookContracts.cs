@@ -15,8 +15,13 @@ public sealed record TelegramIncomingMessage(
     [property: JsonPropertyName("text")] string? Text,
     [property: JsonPropertyName("caption")] string? Caption,
     [property: JsonPropertyName("message_thread_id")] int? MessageThreadId,
+    [property: JsonPropertyName("web_app_data")] TelegramIncomingWebAppData? WebAppData = null,
     [property: JsonPropertyName("document")] TelegramIncomingDocument? Document = null,
     [property: JsonPropertyName("photo")] IReadOnlyList<TelegramIncomingPhotoSize>? Photo = null);
+
+public sealed record TelegramIncomingWebAppData(
+    [property: JsonPropertyName("data")] string? Data,
+    [property: JsonPropertyName("button_text")] string? ButtonText);
 
 public sealed record TelegramUserInfo(
     [property: JsonPropertyName("id")] long Id,

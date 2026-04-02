@@ -28,11 +28,13 @@ internal static class ApiTelegramUpdateMapper
             text = message.Caption;
         }
 
+        var webAppData = message.WebAppData?.Data?.Trim();
+
         var photoFileId = ResolveLargestPhotoFileId(message);
         var documentFileId = message.Document?.FileId?.Trim();
         var hasMedia = !string.IsNullOrWhiteSpace(photoFileId) || !string.IsNullOrWhiteSpace(documentFileId);
 
-        if (string.IsNullOrWhiteSpace(text) && !hasMedia)
+        if (string.IsNullOrWhiteSpace(text) && !hasMedia && string.IsNullOrWhiteSpace(webAppData))
         {
             return false;
         }
@@ -56,6 +58,7 @@ internal static class ApiTelegramUpdateMapper
             DocumentFileName: message.Document?.FileName,
             DocumentMimeType: message.Document?.MimeType,
             PhotoFileId: photoFileId,
+            WebAppData: string.IsNullOrWhiteSpace(webAppData) ? null : webAppData,
             IsCallback: false);
         return true;
     }
@@ -92,6 +95,7 @@ internal static class ApiTelegramUpdateMapper
             DocumentFileName: null,
             DocumentMimeType: null,
             PhotoFileId: null,
+            WebAppData: null,
             IsCallback: true);
         return true;
     }
@@ -124,4 +128,5 @@ internal readonly record struct TelegramInboundMessage(
     string? DocumentFileName,
     string? DocumentMimeType,
     string? PhotoFileId,
+    string? WebAppData,
     bool IsCallback);
