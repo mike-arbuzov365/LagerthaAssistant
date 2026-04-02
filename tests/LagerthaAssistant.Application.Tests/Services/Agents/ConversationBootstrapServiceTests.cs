@@ -167,7 +167,6 @@ public sealed class ConversationBootstrapServiceTests
         Assert.False(snapshot.Graph.IsAuthenticated);
         Assert.Equal("Graph status unavailable. Retry later.", snapshot.Graph.Message);
     }
-
     private sealed class FakeSessionPreferenceService : IVocabularySessionPreferenceService
     {
         public IReadOnlyList<string> SupportedSaveModes { get; } = ["ask", "auto", "off"];
@@ -404,7 +403,6 @@ public sealed class ConversationBootstrapServiceTests
         public Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<string?>(null);
     }
-
     private sealed class ThrowingGraphAuthService : IGraphAuthService
     {
         public Task<GraphAuthStatus> GetStatusAsync(CancellationToken cancellationToken = default)
