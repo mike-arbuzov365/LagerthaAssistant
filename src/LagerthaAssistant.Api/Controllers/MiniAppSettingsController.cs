@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Text.Json;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Interfaces;
 using LagerthaAssistant.Api.Services;
@@ -7,7 +8,11 @@ using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Navigation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using SharedBotKernel.Abstractions;
+using SharedBotKernel.Infrastructure.Telegram;
+using SharedBotKernel.Models.Agents;
+using SharedBotKernel.Options;
 
 namespace LagerthaAssistant.Api.Controllers;
 
@@ -15,24 +20,29 @@ namespace LagerthaAssistant.Api.Controllers;
 [Route("api/miniapp/settings")]
 public sealed class MiniAppSettingsController : ControllerBase
 {
+    private static readonly TimeSpan MaxInitDataAge = TimeSpan.FromHours(24);
+
     private readonly IConversationScopeAccessor _scopeAccessor;
     private readonly MiniAppSettingsCommitService _commitService;
     private readonly INavigationStateService _navigationStateService;
     private readonly ITelegramNavigationPresenter _navigationPresenter;
     private readonly ITelegramBotSender _telegramBotSender;
+    private readonly TelegramOptions _telegramOptions;
 
     public MiniAppSettingsController(
         IConversationScopeAccessor scopeAccessor,
         MiniAppSettingsCommitService commitService,
         INavigationStateService navigationStateService,
         ITelegramNavigationPresenter navigationPresenter,
-        ITelegramBotSender telegramBotSender)
+        ITelegramBotSender telegramBotSender,
+        IOptions<TelegramOptions> telegramOptions)
     {
         _scopeAccessor = scopeAccessor;
         _commitService = commitService;
         _navigationStateService = navigationStateService;
         _navigationPresenter = navigationPresenter;
         _telegramBotSender = telegramBotSender;
+        _telegramOptions = telegramOptions.Value;
     }
 
     [HttpPost("commit")]
@@ -47,11 +57,10 @@ public sealed class MiniAppSettingsController : ControllerBase
             return BadRequest("Request body is required.");
         }
 
-        var scope = ApiConversationScopeApplier.Apply(
-            _scopeAccessor,
-            request.Channel,
-            request.UserId,
-            request.ConversationId);
+        if (!TryResolveScope(request, out var scope, out var scopeError))
+        {
+            return BadRequest(scopeError);
+        }
 
         var result = await _commitService.CommitAsync(scope, request, cancellationToken);
         if (!result.Succeeded)
@@ -67,8 +76,77 @@ public sealed class MiniAppSettingsController : ControllerBase
         return Ok(result.Response);
     }
 
+    private bool TryResolveScope(
+        MiniAppSettingsCommitRequest request,
+        out ConversationScope scope,
+        out string? errorMessage)
+    {
+        scope = ConversationScope.Default;
+        errorMessage = null;
+
+        if (!string.Equals(request.Channel, "telegram", StringComparison.OrdinalIgnoreCase))
+        {
+            scope = ApiConversationScopeApplier.Apply(
+                _scopeAccessor,
+                request.Channel,
+                request.UserId,
+                request.ConversationId);
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.InitData))
+        {
+            var verification = TelegramMiniAppInitDataVerifier.Verify(
+                request.InitData,
+                _telegramOptions.BotToken,
+                DateTimeOffset.UtcNow,
+                MaxInitDataAge);
+
+            if (!verification.IsValid)
+            {
+                errorMessage = $"initData is invalid: {verification.Reason}.";
+                return false;
+            }
+
+            if (!TryParseTelegramUserId(request.InitData, out var verifiedUserId))
+            {
+                errorMessage = "initData user is missing.";
+                return false;
+            }
+
+            var verifiedConversationId = ResolveVerifiedTelegramConversationId(
+                request.ConversationId,
+                verifiedUserId);
+            if (verifiedConversationId is null)
+            {
+                errorMessage = "conversationId does not match verified Telegram user.";
+                return false;
+            }
+
+            scope = ApiConversationScopeApplier.Apply(
+                _scopeAccessor,
+                "telegram",
+                verifiedUserId,
+                verifiedConversationId);
+            return true;
+        }
+
+        if (HasExplicitTelegramTarget(request))
+        {
+            errorMessage = "initData is required for Telegram-scoped writes.";
+            return false;
+        }
+
+        scope = ApiConversationScopeApplier.Apply(
+            _scopeAccessor,
+            request.Channel,
+            request.UserId,
+            request.ConversationId);
+        return true;
+    }
+
     private async Task TryRefreshTelegramMainKeyboardAsync(
-        SharedBotKernel.Models.Agents.ConversationScope scope,
+        ConversationScope scope,
         string locale,
         CancellationToken cancellationToken)
     {
@@ -133,5 +211,82 @@ public sealed class MiniAppSettingsController : ControllerBase
         }
 
         return long.TryParse(scope.UserId, NumberStyles.Integer, CultureInfo.InvariantCulture, out chatId);
+    }
+
+    private static bool HasExplicitTelegramTarget(MiniAppSettingsCommitRequest request)
+    {
+        var hasUserId = !string.IsNullOrWhiteSpace(request.UserId)
+            && !string.Equals(request.UserId.Trim(), ConversationScope.DefaultUserId, StringComparison.OrdinalIgnoreCase);
+        var hasConversationId = !string.IsNullOrWhiteSpace(request.ConversationId)
+            && !string.Equals(request.ConversationId.Trim(), ConversationScope.DefaultConversationId, StringComparison.OrdinalIgnoreCase);
+
+        return hasUserId || hasConversationId;
+    }
+
+    private static string? ResolveVerifiedTelegramConversationId(
+        string? requestedConversationId,
+        string verifiedUserId)
+    {
+        if (string.IsNullOrWhiteSpace(requestedConversationId)
+            || string.Equals(requestedConversationId.Trim(), ConversationScope.DefaultConversationId, StringComparison.OrdinalIgnoreCase))
+        {
+            return verifiedUserId;
+        }
+
+        var normalizedConversationId = requestedConversationId.Trim().ToLowerInvariant();
+        if (string.Equals(normalizedConversationId, verifiedUserId, StringComparison.Ordinal)
+            || normalizedConversationId.StartsWith($"{verifiedUserId}:", StringComparison.Ordinal))
+        {
+            return normalizedConversationId;
+        }
+
+        return null;
+    }
+
+    private static bool TryParseTelegramUserId(string initData, out string userId)
+    {
+        userId = string.Empty;
+
+        try
+        {
+            var parameters = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var pair in initData.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var idx = pair.IndexOf('=');
+                if (idx <= 0)
+                {
+                    continue;
+                }
+
+                var key = Uri.UnescapeDataString(pair[..idx]);
+                var value = Uri.UnescapeDataString(pair[(idx + 1)..]);
+                parameters[key] = value;
+            }
+
+            if (!parameters.TryGetValue("user", out var userPayload) || string.IsNullOrWhiteSpace(userPayload))
+            {
+                return false;
+            }
+
+            using var document = JsonDocument.Parse(userPayload);
+            if (!document.RootElement.TryGetProperty("id", out var idElement))
+            {
+                return false;
+            }
+
+            userId = idElement.ValueKind switch
+            {
+                JsonValueKind.Number when idElement.TryGetInt64(out var numericId)
+                    => numericId.ToString(CultureInfo.InvariantCulture),
+                JsonValueKind.String => idElement.GetString()?.Trim() ?? string.Empty,
+                _ => string.Empty
+            };
+
+            return !string.IsNullOrWhiteSpace(userId);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 }

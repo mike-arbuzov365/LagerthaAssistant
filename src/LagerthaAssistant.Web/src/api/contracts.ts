@@ -65,6 +65,7 @@ export interface MiniAppSettingsCommitRequest {
   channel?: string
   userId?: string
   conversationId?: string
+  initData?: string
 }
 
 export interface MiniAppSettingsCommitResponse {

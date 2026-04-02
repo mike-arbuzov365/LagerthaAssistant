@@ -11,7 +11,8 @@ public sealed record MiniAppSettingsCommitRequest(
     bool SelectedManually = true,
     string? Channel = null,
     string? UserId = null,
-    string? ConversationId = null);
+    string? ConversationId = null,
+    string? InitData = null);
 
 public sealed record MiniAppSettingsCommitResponse(
     string Locale,

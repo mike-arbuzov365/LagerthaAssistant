@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   applyTelegramClosingConfirmation,
   buildTelegramMiniAppSettingsCommitPayload,
+  canUseTelegramMiniAppSettingsBridge,
   closeTelegramMiniApp,
   hasUnsavedSettingsChanges,
   normalizeLocaleFromPreference,
@@ -204,6 +205,16 @@ describe('sendTelegramMiniAppSettingsCommit', () => {
     ).toBe(false)
   })
 })
+
+describe('canUseTelegramMiniAppSettingsBridge', () => {
+  it('returns true only for telegram channel with sendData bridge', () => {
+    expect(canUseTelegramMiniAppSettingsBridge('telegram', { sendData: vi.fn() })).toBe(true)
+    expect(canUseTelegramMiniAppSettingsBridge('telegram', {})).toBe(false)
+    expect(canUseTelegramMiniAppSettingsBridge('web', { sendData: vi.fn() })).toBe(false)
+    expect(canUseTelegramMiniAppSettingsBridge(null, { sendData: vi.fn() })).toBe(false)
+  })
+})
+
 describe('closeTelegramMiniApp', () => {
   it('closes mini app when close API is available', () => {
     const close = vi.fn()
