@@ -39,11 +39,11 @@ public sealed class TelegramNavigationPresenterTests
         var sut = new TelegramNavigationPresenter(
             new LocalizationService(),
             "https://lagertha.example.com/miniapp/settings",
-            "https://t.me/LagerthaAssistantBot?startapp=settings");
+            "https://t.me/LagerthaAssistantBot?startapp=settings&mode=fullscreen");
 
         var keyboard = sut.BuildSettingsLaunchKeyboard("en");
 
-        Assert.Equal("https://t.me/LagerthaAssistantBot?startapp=settings", keyboard.InlineKeyboard[0][0].Url);
+        Assert.Equal("https://t.me/LagerthaAssistantBot?startapp=settings&mode=fullscreen", keyboard.InlineKeyboard[0][0].Url);
         Assert.Null(keyboard.InlineKeyboard[0][0].WebApp);
         Assert.Equal(CallbackDataConstants.Settings.Legacy, keyboard.InlineKeyboard[1][0].CallbackData);
     }

@@ -87,7 +87,7 @@ Graph__TenantId=...
 Lagertha__AdminUserId=...
 ```
 
-For fullscreen-capable Telegram `Settings` in Lagertha, configure either `Telegram__MiniAppSettingsDirectUrl` or `Telegram__BotUsername`.
+For fullscreen-capable Telegram `Settings` in Lagertha, configure either `Telegram__MiniAppSettingsDirectUrl` or `Telegram__BotUsername`. The derived main Mini App link now uses `?startapp=settings&mode=fullscreen`, so the bot should also have its Main Mini App configured in BotFather.
 
 **BaguetteDesign (Railway):**
 ```

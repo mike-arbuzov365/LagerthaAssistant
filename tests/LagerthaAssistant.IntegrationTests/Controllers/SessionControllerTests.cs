@@ -282,6 +282,29 @@ public sealed class SessionControllerTests
     }
 
     [Fact]
+    public async Task PostBootstrap_ShouldRejectTelegramBootstrap_WhenInitDataMissing()
+    {
+        var sut = CreateSut(
+            new FakeConversationScopeAccessor(),
+            new FakeConversationBootstrapService(),
+            new FakeUserLocaleStateService(),
+            new FakeAiRuntimeSettingsService(),
+            new FakeNotionSyncProcessor(),
+            new FakeFoodSyncService(),
+            telegramOptions: new TelegramOptions { BotToken = BotToken });
+
+        var response = await sut.PostBootstrap(
+            new SessionBootstrapRequest(
+                Channel: "telegram",
+                UserId: "2002",
+                ConversationId: "2002"),
+            CancellationToken.None);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
+        Assert.Equal("initData is required for Telegram Mini App bootstrap.", badRequest.Value);
+    }
+
+    [Fact]
     public async Task GetBootstrap_ShouldFallbackToSafeSettingsSnapshot_WhenSettingsEnrichmentFails()
     {
         var sut = CreateSut(

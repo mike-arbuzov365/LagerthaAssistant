@@ -94,54 +94,44 @@ public sealed class MiniAppSettingsController : ControllerBase
             return true;
         }
 
-        if (!string.IsNullOrWhiteSpace(request.InitData))
-        {
-            var verification = TelegramMiniAppInitDataVerifier.Verify(
-                request.InitData,
-                _telegramOptions.BotToken,
-                DateTimeOffset.UtcNow,
-                MaxInitDataAge);
-
-            if (!verification.IsValid)
-            {
-                errorMessage = $"initData is invalid: {verification.Reason}.";
-                return false;
-            }
-
-            if (!TryParseTelegramUserId(request.InitData, out var verifiedUserId))
-            {
-                errorMessage = "initData user is missing.";
-                return false;
-            }
-
-            var verifiedConversationId = ResolveVerifiedTelegramConversationId(
-                request.ConversationId,
-                verifiedUserId);
-            if (verifiedConversationId is null)
-            {
-                errorMessage = "conversationId does not match verified Telegram user.";
-                return false;
-            }
-
-            scope = ApiConversationScopeApplier.Apply(
-                _scopeAccessor,
-                "telegram",
-                verifiedUserId,
-                verifiedConversationId);
-            return true;
-        }
-
-        if (HasExplicitTelegramTarget(request))
+        if (string.IsNullOrWhiteSpace(request.InitData))
         {
             errorMessage = "initData is required for Telegram-scoped writes.";
             return false;
         }
 
+        var verification = TelegramMiniAppInitDataVerifier.Verify(
+            request.InitData,
+            _telegramOptions.BotToken,
+            DateTimeOffset.UtcNow,
+            MaxInitDataAge);
+
+        if (!verification.IsValid)
+        {
+            errorMessage = $"initData is invalid: {verification.Reason}.";
+            return false;
+        }
+
+        if (!TryParseTelegramUserId(request.InitData, out var verifiedUserId))
+        {
+            errorMessage = "initData user is missing.";
+            return false;
+        }
+
+        var verifiedConversationId = ResolveVerifiedTelegramConversationId(
+            request.ConversationId,
+            verifiedUserId);
+        if (verifiedConversationId is null)
+        {
+            errorMessage = "conversationId does not match verified Telegram user.";
+            return false;
+        }
+
         scope = ApiConversationScopeApplier.Apply(
             _scopeAccessor,
-            request.Channel,
-            request.UserId,
-            request.ConversationId);
+            "telegram",
+            verifiedUserId,
+            verifiedConversationId);
         return true;
     }
 
@@ -211,16 +201,6 @@ public sealed class MiniAppSettingsController : ControllerBase
         }
 
         return long.TryParse(scope.UserId, NumberStyles.Integer, CultureInfo.InvariantCulture, out chatId);
-    }
-
-    private static bool HasExplicitTelegramTarget(MiniAppSettingsCommitRequest request)
-    {
-        var hasUserId = !string.IsNullOrWhiteSpace(request.UserId)
-            && !string.Equals(request.UserId.Trim(), ConversationScope.DefaultUserId, StringComparison.OrdinalIgnoreCase);
-        var hasConversationId = !string.IsNullOrWhiteSpace(request.ConversationId)
-            && !string.Equals(request.ConversationId.Trim(), ConversationScope.DefaultConversationId, StringComparison.OrdinalIgnoreCase);
-
-        return hasUserId || hasConversationId;
     }
 
     private static string? ResolveVerifiedTelegramConversationId(
