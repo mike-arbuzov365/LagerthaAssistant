@@ -23,6 +23,13 @@ import {
 import type { GraphDeviceLoginChallengeResponse } from '../api/contracts'
 import type { AppLocale } from '../lib/locale'
 import { getScopedUserId } from '../lib/settings-utils'
+import {
+  applyTelegramClosingConfirmation,
+  hasUnsavedSettingsChanges,
+  normalizeLocaleFromPreference,
+  type PersistedSnapshot,
+  type TelegramClosingConfirmationWebApp,
+} from './settings-page-utils'
 import { useAppStore } from '../state/appStore'
 
 type BannerTone = 'ok' | 'error' | 'warn'
@@ -83,14 +90,6 @@ interface CopyPack {
   openLoginPage: string
   enterCodeFirst: string
   storageLockedHint: string
-}
-
-interface PersistedSnapshot {
-  locale: AppLocale
-  saveMode: string
-  storageMode: string
-  aiProvider: string
-  aiModel: string
 }
 
 const copyByLocale: Record<AppLocale, CopyPack> = {
@@ -292,34 +291,6 @@ function StatusChip({ tone, children }: { tone: BannerTone; children: string }) 
   return <span className={`chip chip--${tone}`}>{children}</span>
 }
 
-type TelegramWebAppWithClosingConfirmation = {
-  enableClosingConfirmation?: () => void
-  disableClosingConfirmation?: () => void
-  isClosingConfirmationEnabled?: boolean
-}
-
-function applyTelegramClosingConfirmation(
-  webApp: TelegramWebAppWithClosingConfirmation | undefined,
-  enabled: boolean,
-) {
-  if (!webApp) {
-    return
-  }
-
-  if (enabled) {
-    webApp.enableClosingConfirmation?.()
-  } else {
-    webApp.disableClosingConfirmation?.()
-  }
-
-  // Compatibility fallback for Telegram clients that expose only flag-based behavior.
-  try {
-    webApp.isClosingConfirmationEnabled = enabled
-  } catch {
-    // no-op
-  }
-}
-
 export function SettingsPage() {
   const locale = useAppStore((s) => s.locale)
   const bootstrap = useAppStore((s) => s.bootstrap)
@@ -388,19 +359,15 @@ export function SettingsPage() {
   const copy = copyByLocale[uiLocale]
 
   const hasUnsavedChanges = useMemo(() => {
-    if (!snapshot) {
-      return false
-    }
-
-    return (
-      localeDraft !== snapshot.locale
-      || saveModeDraft !== snapshot.saveMode
-      || storageModeDraft !== snapshot.storageMode
-      || aiProviderDraft !== snapshot.aiProvider
-      || aiModelDraft !== snapshot.aiModel
-      || removeStoredKeyRequested
-      || apiKeyDraft.trim().length > 0
-    )
+    return hasUnsavedSettingsChanges(snapshot, {
+      locale: localeDraft,
+      saveMode: saveModeDraft,
+      storageMode: storageModeDraft,
+      aiProvider: aiProviderDraft,
+      aiModel: aiModelDraft,
+      apiKeyDraft,
+      removeStoredKeyRequested,
+    })
   }, [
     aiModelDraft,
     aiProviderDraft,
@@ -430,7 +397,7 @@ export function SettingsPage() {
   }, [hasUnsavedChanges])
 
   useEffect(() => {
-    const webApp = window.Telegram?.WebApp as TelegramWebAppWithClosingConfirmation | undefined
+    const webApp = window.Telegram?.WebApp as unknown as TelegramClosingConfirmationWebApp | undefined
 
     if (!webApp) {
       return
@@ -476,7 +443,7 @@ export function SettingsPage() {
       setRemoveStoredKeyRequested(false)
       setApiKeyDraft('')
 
-      const normalizedLocale: AppLocale = localeResponse.locale === 'en' ? 'en' : 'uk'
+      const normalizedLocale = normalizeLocaleFromPreference(localeResponse.locale)
       const saveModeFromApi = sessionBootstrapResponse.preferences.saveMode
       const storageModeFromApi = sessionBootstrapResponse.preferences.storageMode
 
@@ -605,7 +572,7 @@ export function SettingsPage() {
           userId: scopedUserId ?? undefined,
         })
 
-        const normalizedLocale: AppLocale = localeResponse.locale === 'en' ? 'en' : 'uk'
+        const normalizedLocale = normalizeLocaleFromPreference(localeResponse.locale)
         setLocaleInStore(normalizedLocale)
       }
 
