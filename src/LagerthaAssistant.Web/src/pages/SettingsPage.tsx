@@ -6,6 +6,8 @@ import {
   getAiProvider,
   getGraphStatus,
   getIntegrationNotionStatus,
+  getLocale,
+  getSessionBootstrap,
   graphClearCache,
   graphLogout,
   graphRebuildIndex,
@@ -290,6 +292,34 @@ function StatusChip({ tone, children }: { tone: BannerTone; children: string }) 
   return <span className={`chip chip--${tone}`}>{children}</span>
 }
 
+type TelegramWebAppWithClosingConfirmation = {
+  enableClosingConfirmation?: () => void
+  disableClosingConfirmation?: () => void
+  isClosingConfirmationEnabled?: boolean
+}
+
+function applyTelegramClosingConfirmation(
+  webApp: TelegramWebAppWithClosingConfirmation | undefined,
+  enabled: boolean,
+) {
+  if (!webApp) {
+    return
+  }
+
+  if (enabled) {
+    webApp.enableClosingConfirmation?.()
+  } else {
+    webApp.disableClosingConfirmation?.()
+  }
+
+  // Compatibility fallback for Telegram clients that expose only flag-based behavior.
+  try {
+    webApp.isClosingConfirmationEnabled = enabled
+  } catch {
+    // no-op
+  }
+}
+
 export function SettingsPage() {
   const locale = useAppStore((s) => s.locale)
   const bootstrap = useAppStore((s) => s.bootstrap)
@@ -400,25 +430,16 @@ export function SettingsPage() {
   }, [hasUnsavedChanges])
 
   useEffect(() => {
-    const webApp = window.Telegram?.WebApp as
-      | {
-        enableClosingConfirmation?: () => void
-        disableClosingConfirmation?: () => void
-      }
-      | undefined
+    const webApp = window.Telegram?.WebApp as TelegramWebAppWithClosingConfirmation | undefined
 
     if (!webApp) {
       return
     }
 
-    if (hasUnsavedChanges) {
-      webApp.enableClosingConfirmation?.()
-    } else {
-      webApp.disableClosingConfirmation?.()
-    }
+    applyTelegramClosingConfirmation(webApp, hasUnsavedChanges)
 
     return () => {
-      webApp.disableClosingConfirmation?.()
+      applyTelegramClosingConfirmation(webApp, false)
     }
   }, [hasUnsavedChanges])
 
@@ -432,7 +453,9 @@ export function SettingsPage() {
 
     try {
       const providerResponse = await getAiProvider(scopedUserId)
-      const [modelResponse, keyResponse, notionHubStatus, graphStatusResponse] = await Promise.all([
+      const [sessionBootstrapResponse, localeResponse, modelResponse, keyResponse, notionHubStatus, graphStatusResponse] = await Promise.all([
+        getSessionBootstrap(scopedUserId),
+        getLocale(scopedUserId),
         getAiModel(scopedUserId, providerResponse.provider),
         getAiKeyStatus(scopedUserId, providerResponse.provider),
         getIntegrationNotionStatus(),
@@ -453,14 +476,18 @@ export function SettingsPage() {
       setRemoveStoredKeyRequested(false)
       setApiKeyDraft('')
 
-      const normalizedLocale: AppLocale = locale === 'en' ? 'en' : 'uk'
+      const normalizedLocale: AppLocale = localeResponse.locale === 'en' ? 'en' : 'uk'
+      const saveModeFromApi = sessionBootstrapResponse.preferences.saveMode
+      const storageModeFromApi = sessionBootstrapResponse.preferences.storageMode
+
+      setLocaleInStore(normalizedLocale)
       setLocaleDraft(normalizedLocale)
-      setSaveModeDraft(bootstrap.preferences.saveMode)
-      setStorageModeDraft(bootstrap.preferences.storageMode)
+      setSaveModeDraft(saveModeFromApi)
+      setStorageModeDraft(storageModeFromApi)
       setSnapshot({
         locale: normalizedLocale,
-        saveMode: bootstrap.preferences.saveMode,
-        storageMode: bootstrap.preferences.storageMode,
+        saveMode: saveModeFromApi,
+        storageMode: storageModeFromApi,
         aiProvider: providerResponse.provider,
         aiModel: modelResponse.model,
       })
@@ -469,7 +496,7 @@ export function SettingsPage() {
     } finally {
       setLoading(false)
     }
-  }, [bootstrap, locale, scopedUserId])
+  }, [bootstrap, scopedUserId, setLocaleInStore])
 
   useEffect(() => {
     if (!bootstrap) {
