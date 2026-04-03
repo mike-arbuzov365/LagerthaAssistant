@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { getSessionBootstrap } from '../api/client'
 import { resolveHostContext } from '../host/createHost'
 import { emitMiniAppDiagnostic } from '../lib/miniAppDiagnostics'
+import { resolveTelegramBridge } from '../lib/telegramBridge'
 import { resolvePreferredLocale } from '../lib/locale'
 import { resolveAppliedTheme, type HostTheme } from '../lib/theme'
 import { DashboardPage } from '../pages/DashboardPage'
@@ -96,7 +97,7 @@ export function App() {
           userId: host.userId,
           conversationId: host.conversationId,
           hasInitData: host.initData.length > 0,
-          hasWebApp: Boolean(window.Telegram?.WebApp),
+          hasWebApp: Boolean(resolveTelegramBridge()),
           details: {
             safeAreaTop: host.safeAreaTop,
           },
@@ -117,7 +118,7 @@ export function App() {
           userId: host.userId,
           conversationId: host.conversationId,
           hasInitData: host.initData.length > 0,
-          hasWebApp: Boolean(window.Telegram?.WebApp),
+          hasWebApp: Boolean(resolveTelegramBridge()),
         })
 
         const bootstrap = await getSessionBootstrap({
@@ -147,7 +148,7 @@ export function App() {
           userId: bootstrap.scope.userId,
           conversationId: bootstrap.scope.conversationId,
           hasInitData: host.initData.length > 0,
-          hasWebApp: Boolean(window.Telegram?.WebApp),
+          hasWebApp: Boolean(resolveTelegramBridge()),
           locale: normalizedLocale,
           details: {
             bootstrapLocale: bootstrap.locale.locale,
@@ -179,11 +180,11 @@ export function App() {
           eventType: 'bootstrap.failure',
           severity: 'error',
           message,
-          isTelegram: Boolean(window.Telegram?.WebApp),
-          hostSource: window.Telegram?.WebApp ? 'telegram-webapp' : 'browser',
-          platform: window.Telegram?.WebApp?.platform ?? 'unknown',
-          hasInitData: Boolean(window.Telegram?.WebApp?.initData),
-          hasWebApp: Boolean(window.Telegram?.WebApp),
+          isTelegram: Boolean(resolveTelegramBridge()),
+          hostSource: resolveTelegramBridge() ? 'telegram-webapp' : 'browser',
+          platform: resolveTelegramBridge()?.platform ?? 'unknown',
+          hasInitData: Boolean(resolveTelegramBridge()?.initData),
+          hasWebApp: Boolean(resolveTelegramBridge()),
         })
         setError(message)
       }

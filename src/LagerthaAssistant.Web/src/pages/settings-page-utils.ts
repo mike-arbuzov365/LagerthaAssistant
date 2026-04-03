@@ -1,5 +1,6 @@
 ﻿import type { AppLocale } from '../lib/locale'
 import type { AppThemeMode } from '../lib/theme'
+import { resolveTelegramBridge } from '../lib/telegramBridge'
 
 type TelegramWebViewWindow = Window & {
   Telegram?: {
@@ -40,7 +41,7 @@ export type TelegramMiniAppBridgeWebApp = TelegramClosingConfirmationWebApp & {
 }
 
 export function resolveTelegramMiniAppBridge(): TelegramMiniAppBridgeWebApp | undefined {
-  return window.Telegram?.WebApp as unknown as TelegramMiniAppBridgeWebApp | undefined
+  return resolveTelegramBridge() as TelegramMiniAppBridgeWebApp | undefined
 }
 
 export async function waitForTelegramMiniAppBridge(
