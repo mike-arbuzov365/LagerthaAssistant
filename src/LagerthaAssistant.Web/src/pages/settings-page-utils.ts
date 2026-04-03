@@ -109,20 +109,18 @@ export function applyTelegramClosingConfirmation(
   webApp: TelegramClosingConfirmationWebApp | undefined,
   enabled: boolean,
 ) {
-  if (!webApp) {
-    return
-  }
+  if (webApp) {
+    if (enabled) {
+      webApp.enableClosingConfirmation?.()
+    } else {
+      webApp.disableClosingConfirmation?.()
+    }
 
-  if (enabled) {
-    webApp.enableClosingConfirmation?.()
-  } else {
-    webApp.disableClosingConfirmation?.()
-  }
-
-  try {
-    webApp.isClosingConfirmationEnabled = enabled
-  } catch {
-    // no-op
+    try {
+      webApp.isClosingConfirmationEnabled = enabled
+    } catch {
+      // no-op
+    }
   }
 
   postTelegramWebViewEvent('web_app_setup_closing_behavior', {

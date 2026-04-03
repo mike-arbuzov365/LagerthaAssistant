@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { MiniAppPolicyResponse, PreferenceSessionResponse, SessionBootstrapResponse } from '../api/contracts'
 import type { HostPlatform, HostSource } from '../host/types'
 import type { AppLocale } from '../lib/locale'
-import { normalizeThemeMode, type AppThemeMode } from '../lib/theme'
+import { normalizeThemeMode, type AppThemeMode, type HostTheme } from '../lib/theme'
 
 type AppStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -10,6 +10,7 @@ interface AppHostState {
   isTelegram: boolean
   source: HostSource
   platform: HostPlatform
+  theme: HostTheme
   initData: string
   userId: string | null
   conversationId: string | null

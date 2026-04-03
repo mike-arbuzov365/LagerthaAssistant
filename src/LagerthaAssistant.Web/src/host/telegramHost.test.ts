@@ -25,7 +25,7 @@ describe('createTelegramHost', () => {
     expect(createTelegramHost()).toBeNull()
   })
 
-  it('uses initDataUnsafe user when present and expands on ready', () => {
+  it('uses initDataUnsafe user when present and keeps desktop launch compact on ready', () => {
     vi.useFakeTimers()
     const ready = vi.fn()
     const expand = vi.fn()
@@ -62,7 +62,7 @@ describe('createTelegramHost', () => {
     vi.runAllTimers()
 
     expect(ready).toHaveBeenCalled()
-    expect(expand).toHaveBeenCalled()
+    expect(expand).not.toHaveBeenCalled()
     expect(requestFullscreen).not.toHaveBeenCalled()
   })
 

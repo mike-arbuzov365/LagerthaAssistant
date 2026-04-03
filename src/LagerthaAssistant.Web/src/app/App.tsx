@@ -163,6 +163,7 @@ export function App() {
             isTelegram: host.isTelegram,
             source: host.source,
             platform: host.platform,
+            theme: host.theme,
             initData: host.initData,
             userId: host.userId,
             conversationId: host.conversationId,
