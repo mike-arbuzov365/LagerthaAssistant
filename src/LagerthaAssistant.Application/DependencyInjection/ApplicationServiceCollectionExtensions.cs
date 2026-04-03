@@ -35,6 +35,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IVocabularySaveModePreferenceService, VocabularySaveModePreferenceService>();
         services.AddScoped<IVocabularySessionPreferenceService, VocabularySessionPreferenceService>();
         services.AddScoped<IUserLocaleStateService, UserLocaleStateService>();
+        services.AddScoped<IUserThemeStateService, UserThemeStateService>();
         services.AddScoped<INavigationStateService, NavigationStateService>();
         services.AddSingleton<NavigationRouter>();
 

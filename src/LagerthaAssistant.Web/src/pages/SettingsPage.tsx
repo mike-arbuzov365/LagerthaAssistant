@@ -16,6 +16,7 @@ import type { ReactNode } from 'react'
 import type { GraphDeviceLoginChallengeResponse, MiniAppSettingsCommitResponse } from '../api/contracts'
 import type { AppLocale } from '../lib/locale'
 import { getScopedUserId } from '../lib/settings-utils'
+import { normalizeThemeMode, type AppThemeMode } from '../lib/theme'
 import {
   applyTelegramClosingConfirmation,
   buildUnsavedChangesPrompt,
@@ -31,6 +32,7 @@ import {
   buildLanguageChoices,
   buildSaveModeChoices,
   buildStorageModeChoices,
+  buildThemeChoices,
   formatModelLabel,
   formatProviderLabel,
   mapAiKeySource,
@@ -61,6 +63,7 @@ interface CopyPack {
   aiIntro: string
   integrationsIntro: string
   languageLabel: string
+  themeLabel: string
   saveModeLabel: string
   storageModeLabel: string
   providerLabel: string
@@ -68,6 +71,7 @@ interface CopyPack {
   apiKeyLabel: string
   apiKeyPlaceholder: string
   languageHint: string
+  themeHint: string
   saveModeHint: string
   storageModeHint: string
   providerHint: string
@@ -141,6 +145,7 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     aiIntro: 'Провайдер, модель та секрети доступу для AI-частини Lagertha.',
     integrationsIntro: 'Статуси підключень і сервісні дії без втрати Telegram-функціоналу.',
     languageLabel: 'Мова інтерфейсу',
+    themeLabel: 'Тема',
     saveModeLabel: 'Режим збереження',
     storageModeLabel: 'Режим сховища',
     providerLabel: 'Провайдер',
@@ -148,6 +153,7 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     apiKeyLabel: 'API ключ',
     apiKeyPlaceholder: 'Введіть новий ключ (необовʼязково)',
     languageHint: 'Виберіть мову, якою Lagertha покаже Mini App та основні Telegram-меню.',
+    themeHint: 'Оберіть, чи мають налаштування наслідувати тему Telegram, чи бути завжди світлими або темними.',
     saveModeHint: 'Визначає, коли бот записує дані у сховище.',
     storageModeHint: 'Де зберігається робочий контекст цієї хвилі налаштувань.',
     providerHint: 'Основний AI-провайдер для відповідей і допоміжних сценаріїв.',
@@ -219,6 +225,7 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     aiIntro: 'Provider, model, and secret management for the AI layer of Lagertha.',
     integrationsIntro: 'Connection health and service actions without losing Telegram functionality.',
     languageLabel: 'Interface language',
+    themeLabel: 'Theme',
     saveModeLabel: 'Save mode',
     storageModeLabel: 'Storage mode',
     providerLabel: 'Provider',
@@ -226,6 +233,7 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     apiKeyLabel: 'API key',
     apiKeyPlaceholder: 'Enter a new key (optional)',
     languageHint: 'Choose the language used by the Mini App and the main Telegram menus.',
+    themeHint: 'Choose whether settings should follow Telegram, stay light, or stay dark.',
     saveModeHint: 'Defines when the bot writes data into persistent storage.',
     storageModeHint: 'Controls where the current Wave 1 context is stored.',
     providerHint: 'Primary AI provider used by assistant flows and completions.',
@@ -339,13 +347,16 @@ function ChoiceGrid({
           <button
             key={option.value}
             type="button"
-            className={`choice-card ${selected ? 'choice-card--selected' : ''}`}
+            className={`choice-card ${selected ? 'choice-card--selected' : ''} ${option.icon ? 'choice-card--icon' : ''} ${option.description ? '' : 'choice-card--compact'}`.trim()}
             onClick={() => onChange(option.value)}
             disabled={disabled}
             aria-pressed={selected}
           >
-            <span className="choice-card__title">{option.title}</span>
-            <span className="choice-card__description">{option.description}</span>
+            <span className="choice-card__main">
+              {option.icon ? <span className="choice-card__icon" aria-hidden="true">{option.icon}</span> : null}
+              <span className="choice-card__title">{option.title}</span>
+            </span>
+            {option.description ? <span className="choice-card__description">{option.description}</span> : null}
           </button>
         )
       })}
@@ -486,7 +497,9 @@ export function SettingsPage() {
   const bootstrap = useAppStore((s) => s.bootstrap)
   const policy = useAppStore((s) => s.policy)
   const setLocaleInStore = useAppStore((s) => s.setLocale)
+  const setThemeModeInStore = useAppStore((s) => s.setThemeMode)
   const setBootstrapPreferences = useAppStore((s) => s.setBootstrapPreferences)
+  const setBootstrapSettings = useAppStore((s) => s.setBootstrapSettings)
 
   const scopedUserId = useMemo(
     () => getScopedUserId(bootstrap?.scope.userId),
@@ -502,6 +515,7 @@ export function SettingsPage() {
   const [localeDraft, setLocaleDraft] = useState<AppLocale>(locale)
   const [saveModeDraft, setSaveModeDraft] = useState(bootstrap?.preferences.saveMode ?? 'ask')
   const [storageModeDraft, setStorageModeDraft] = useState(bootstrap?.preferences.storageMode ?? 'graph')
+  const [themeModeDraft, setThemeModeDraft] = useState<AppThemeMode>(normalizeThemeMode(bootstrap?.settings.themeMode))
 
   const [aiProviderDraft, setAiProviderDraft] = useState(bootstrap?.settings.aiProvider ?? 'openai')
   const [aiProviders, setAiProviders] = useState<string[]>(bootstrap?.settings.availableProviders ?? [])
@@ -525,6 +539,7 @@ export function SettingsPage() {
         locale,
         saveMode: bootstrap.preferences.saveMode,
         storageMode: bootstrap.preferences.storageMode,
+        themeMode: normalizeThemeMode(bootstrap.settings.themeMode),
         aiProvider: bootstrap.settings.aiProvider,
         aiModel: bootstrap.settings.aiModel,
       }
@@ -568,10 +583,12 @@ export function SettingsPage() {
     const normalizedLocale = locale
     const saveModeFromBootstrap = bootstrap.preferences.saveMode
     const storageModeFromBootstrap = bootstrap.preferences.storageMode
+    const themeModeFromBootstrap = normalizeThemeMode(bootstrap.settings.themeMode)
 
     setLocaleDraft(normalizedLocale)
     setSaveModeDraft(saveModeFromBootstrap)
     setStorageModeDraft(storageModeFromBootstrap)
+    setThemeModeDraft(themeModeFromBootstrap)
     setAiProviderDraft(bootstrap.settings.aiProvider)
     setAiProviders(bootstrap.settings.availableProviders)
     setAiModelDraft(bootstrap.settings.aiModel)
@@ -586,6 +603,7 @@ export function SettingsPage() {
       locale: normalizedLocale,
       saveMode: saveModeFromBootstrap,
       storageMode: storageModeFromBootstrap,
+      themeMode: themeModeFromBootstrap,
       aiProvider: bootstrap.settings.aiProvider,
       aiModel: bootstrap.settings.aiModel,
     })
@@ -597,6 +615,7 @@ export function SettingsPage() {
       locale: localeDraft,
       saveMode: saveModeDraft,
       storageMode: storageModeDraft,
+      themeMode: themeModeDraft,
       aiProvider: aiProviderDraft,
       aiModel: aiModelDraft,
       apiKeyDraft,
@@ -611,6 +630,7 @@ export function SettingsPage() {
     saveModeDraft,
     snapshot,
     storageModeDraft,
+    themeModeDraft,
   ])
 
   useEffect(() => {
@@ -643,10 +663,13 @@ export function SettingsPage() {
 
   const applyCommittedSettings = useCallback((response: MiniAppSettingsCommitResponse) => {
     const normalizedLocale = normalizeLocaleFromPreference(response.locale)
+    const normalizedThemeMode = normalizeThemeMode(response.themeMode)
     setLocaleInStore(normalizedLocale)
+    setThemeModeInStore(normalizedThemeMode)
     setLocaleDraft(normalizedLocale)
     setSaveModeDraft(response.saveMode)
     setStorageModeDraft(response.storageMode)
+    setThemeModeDraft(normalizedThemeMode)
     setAiProviderDraft(response.aiProvider)
     setAiProviders(response.availableProviders)
     setAiModelDraft(response.aiModel)
@@ -661,16 +684,27 @@ export function SettingsPage() {
       storageMode: response.storageMode,
       availableStorageModes: response.availableStorageModes,
     })
+    setBootstrapSettings({
+      aiProvider: response.aiProvider,
+      availableProviders: response.availableProviders,
+      aiModel: response.aiModel,
+      availableModels: response.availableModels,
+      hasStoredKey: response.hasStoredKey,
+      apiKeySource: response.apiKeySource,
+      themeMode: normalizedThemeMode,
+      availableThemeModes: response.availableThemeModes,
+    })
     setApiKeyDraft('')
     setRemoveStoredKeyRequested(false)
     setSnapshot({
       locale: normalizedLocale,
       saveMode: response.saveMode,
       storageMode: response.storageMode,
+      themeMode: normalizedThemeMode,
       aiProvider: response.aiProvider,
       aiModel: response.aiModel,
     })
-  }, [setBootstrapPreferences, setLocaleInStore])
+  }, [setBootstrapPreferences, setBootstrapSettings, setLocaleInStore, setThemeModeInStore])
 
   useEffect(() => {
     if (!bootstrap || !aiProviderDraft) {
@@ -736,6 +770,8 @@ export function SettingsPage() {
 
   const oneDriveConnected = activeGraphStatus.isAuthenticated
   const languageChoices = buildLanguageChoices(uiLocale)
+  const themeChoices = buildThemeChoices(uiLocale)
+    .filter((choice) => bootstrap.settings.availableThemeModes.includes(choice.value))
   const saveModeChoices = buildSaveModeChoices(uiLocale, availableSaveModes)
   const storageChoices = buildStorageModeChoices(uiLocale, storageOptions)
   const providerChoices = aiProviders.map((provider) => ({
@@ -808,6 +844,7 @@ export function SettingsPage() {
       locale: localeDraft,
       saveMode: saveModeDraft,
       storageMode: storageModeDraft,
+      themeMode: themeModeDraft,
       aiProvider: aiProviderDraft,
       aiModel: aiModelDraft,
       apiKey: apiKeyDraft.trim().length > 0 ? apiKeyDraft.trim() : null,
@@ -828,8 +865,8 @@ export function SettingsPage() {
         initData: window.Telegram?.WebApp?.initData || undefined,
       })
       applyCommittedSettings(response)
+      setSaveStatus(copy.saveSuccess)
       if (!webApp) {
-        setSaveStatus(copy.saveSuccess)
         return
       }
 
@@ -976,6 +1013,22 @@ export function SettingsPage() {
             options={languageChoices}
             value={localeDraft}
             onChange={(value) => setLocaleDraft(value === 'en' ? 'en' : 'uk')}
+            disabled={saving || !isOnline}
+            columns="compact"
+          />
+        </div>
+
+        <div className="settings-subsection">
+          <div className="settings-subsection__header">
+            <div>
+              <h4 className="settings-subsection__title">{copy.themeLabel}</h4>
+              <p className="settings-subsection__hint">{copy.themeHint}</p>
+            </div>
+          </div>
+          <ChoiceGrid
+            options={themeChoices}
+            value={themeModeDraft}
+            onChange={(value) => setThemeModeDraft(normalizeThemeMode(value))}
             disabled={saving || !isOnline}
             columns="compact"
           />

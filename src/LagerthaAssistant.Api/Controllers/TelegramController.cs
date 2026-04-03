@@ -3918,6 +3918,10 @@ public sealed class TelegramController : ControllerBase
                 ? apiKeyElement.GetString()
                 : null;
 
+            var themeMode = root.TryGetProperty("themeMode", out var themeModeElement) && themeModeElement.ValueKind == JsonValueKind.String
+                ? AppearanceConstants.NormalizeThemeMode(themeModeElement.GetString())
+                : AppearanceConstants.ThemeModeSystem;
+
             var removeStoredKey = root.TryGetProperty("removeStoredKey", out var removeStoredKeyElement)
                 && removeStoredKeyElement.ValueKind == JsonValueKind.True;
 
@@ -3925,6 +3929,7 @@ public sealed class TelegramController : ControllerBase
                 Locale: locale,
                 SaveMode: saveMode,
                 StorageMode: storageMode,
+                ThemeMode: themeMode,
                 AiProvider: aiProvider,
                 AiModel: aiModel,
                 ApiKey: apiKey,

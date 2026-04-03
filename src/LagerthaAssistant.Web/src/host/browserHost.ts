@@ -4,6 +4,7 @@ export function createBrowserHost(): HostContext {
   return {
     isTelegram: false,
     theme: 'light',
+    platform: 'desktop',
     safeAreaTop: 0,
     initData: '',
     userLanguageCode: navigator.language ?? null,

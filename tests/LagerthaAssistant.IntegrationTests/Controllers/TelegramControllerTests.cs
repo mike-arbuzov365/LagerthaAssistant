@@ -2722,10 +2722,12 @@ public sealed class TelegramControllerTests
         options.WebhookSecret ??= TestWebhookSecret;
 
         var effectiveLocaleStateService = localeStateService ?? new FakeUserLocaleStateService();
+        var effectiveThemeStateService = new FakeUserThemeStateService();
         var effectiveSaveModePreferenceService = saveModePreferenceService ?? new FakeVocabularySaveModePreferenceService();
         var effectiveAiRuntimeSettingsService = aiRuntimeSettingsService ?? new FakeAiRuntimeSettingsService();
         var miniAppSettingsCommitService = new MiniAppSettingsCommitService(
             effectiveLocaleStateService,
+            effectiveThemeStateService,
             effectiveSaveModePreferenceService,
             storagePreferenceService,
             storageModeProvider,
@@ -3677,6 +3679,27 @@ public sealed class TelegramControllerTests
             }
 
             return Task.FromResult(new UserLocaleStateResult(NextLocale, IsInitialized: false, IsSwitched: false));
+        }
+    }
+
+    private sealed class FakeUserThemeStateService : IUserThemeStateService
+    {
+        public string StoredThemeMode { get; set; } = AppearanceConstants.ThemeModeSystem;
+
+        public Task<string> GetStoredThemeModeAsync(
+            string channel,
+            string userId,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(StoredThemeMode);
+
+        public Task<string> SetThemeModeAsync(
+            string channel,
+            string userId,
+            string themeMode,
+            CancellationToken cancellationToken = default)
+        {
+            StoredThemeMode = AppearanceConstants.NormalizeThemeMode(themeMode);
+            return Task.FromResult(StoredThemeMode);
         }
     }
 

@@ -5,6 +5,7 @@ using System.Text;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Controllers;
 using LagerthaAssistant.Api.Options;
+using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Interfaces.Agents;
 using LagerthaAssistant.Application.Interfaces.Common;
@@ -47,6 +48,7 @@ public sealed class SessionControllerTests
             ]
         };
         var localeStateService = new FakeUserLocaleStateService();
+        var themeStateService = new FakeUserThemeStateService();
         var aiRuntimeSettings = new FakeAiRuntimeSettingsService();
         var notionSyncProcessor = new FakeNotionSyncProcessor();
         var foodSyncService = new FakeFoodSyncService();
@@ -55,6 +57,7 @@ public sealed class SessionControllerTests
             scopeAccessor,
             bootstrapService,
             localeStateService,
+            themeStateService,
             aiRuntimeSettings,
             notionSyncProcessor,
             foodSyncService);
@@ -87,6 +90,8 @@ public sealed class SessionControllerTests
         Assert.Equal(["gpt-4.1-mini", "gpt-4.1"], payload.Settings.AvailableModels);
         Assert.False(payload.Settings.HasStoredKey);
         Assert.Equal("missing", payload.Settings.ApiKeySource);
+        Assert.Equal(AppearanceConstants.ThemeModeSystem, payload.Settings.ThemeMode);
+        Assert.Equal(AppearanceConstants.SupportedThemeModes, payload.Settings.AvailableThemeModes);
         Assert.False(payload.Settings.Notion.NotionVocabulary.Enabled);
         Assert.False(payload.Settings.Notion.NotionFood.Enabled);
 
@@ -107,6 +112,7 @@ public sealed class SessionControllerTests
             scopeAccessor,
             bootstrapService,
             new FakeUserLocaleStateService(),
+            new FakeUserThemeStateService(),
             new FakeAiRuntimeSettingsService(),
             new FakeNotionSyncProcessor(),
             new FakeFoodSyncService());
@@ -153,6 +159,7 @@ public sealed class SessionControllerTests
             scopeAccessor,
             bootstrapService,
             new FakeUserLocaleStateService(),
+            new FakeUserThemeStateService(),
             new FakeAiRuntimeSettingsService(),
             new FakeNotionSyncProcessor(),
             new FakeFoodSyncService());
@@ -195,6 +202,10 @@ public sealed class SessionControllerTests
             scopeAccessor,
             bootstrapService,
             localeStateService,
+            new FakeUserThemeStateService
+            {
+                StoredThemeMode = AppearanceConstants.ThemeModeDark
+            },
             new FakeAiRuntimeSettingsService(),
             new FakeNotionSyncProcessor(),
             new FakeFoodSyncService());
@@ -213,6 +224,7 @@ public sealed class SessionControllerTests
         Assert.Equal("wm-verbs-us-en.xlsx", decks[1].FileName);
         Assert.Equal("v", decks[1].SuggestedPartOfSpeech);
         Assert.Equal("en", payload.Locale.Locale);
+        Assert.Equal(AppearanceConstants.ThemeModeDark, payload.Settings.ThemeMode);
     }
 
     [Fact]
@@ -230,6 +242,7 @@ public sealed class SessionControllerTests
             scopeAccessor,
             bootstrapService,
             localeStateService,
+            new FakeUserThemeStateService(),
             new FakeAiRuntimeSettingsService(),
             new FakeNotionSyncProcessor(),
             new FakeFoodSyncService());
@@ -258,6 +271,7 @@ public sealed class SessionControllerTests
             scopeAccessor,
             bootstrapService,
             new FakeUserLocaleStateService(),
+            new FakeUserThemeStateService(),
             new FakeAiRuntimeSettingsService(),
             new FakeNotionSyncProcessor(),
             new FakeFoodSyncService(),
@@ -288,6 +302,7 @@ public sealed class SessionControllerTests
             new FakeConversationScopeAccessor(),
             new FakeConversationBootstrapService(),
             new FakeUserLocaleStateService(),
+            new FakeUserThemeStateService(),
             new FakeAiRuntimeSettingsService(),
             new FakeNotionSyncProcessor(),
             new FakeFoodSyncService(),
@@ -311,6 +326,7 @@ public sealed class SessionControllerTests
             new FakeConversationScopeAccessor(),
             new FakeConversationBootstrapService(),
             new FakeUserLocaleStateService(),
+            new FakeUserThemeStateService(),
             new ThrowingAiRuntimeSettingsService(),
             new ThrowingNotionSyncProcessor(),
             new ThrowingFoodSyncService(),
@@ -336,6 +352,7 @@ public sealed class SessionControllerTests
         IConversationScopeAccessor scopeAccessor,
         IConversationBootstrapService bootstrapService,
         IUserLocaleStateService localeStateService,
+        IUserThemeStateService themeStateService,
         IAiRuntimeSettingsService aiRuntimeSettingsService,
         INotionSyncProcessor notionSyncProcessor,
         IFoodSyncService foodSyncService,
@@ -348,6 +365,7 @@ public sealed class SessionControllerTests
             scopeAccessor,
             bootstrapService,
             localeStateService,
+            themeStateService,
             aiRuntimeSettingsService,
             notionSyncProcessor,
             foodSyncService,
@@ -477,6 +495,29 @@ public sealed class SessionControllerTests
         {
             var locale = StoredLocale ?? "uk";
             return Task.FromResult(new UserLocaleStateResult(locale, IsInitialized: true, IsSwitched: false));
+        }
+    }
+
+    private sealed class FakeUserThemeStateService : IUserThemeStateService
+    {
+        public string StoredThemeMode { get; set; } = AppearanceConstants.ThemeModeSystem;
+
+        public Task<string> GetStoredThemeModeAsync(
+            string channel,
+            string userId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(StoredThemeMode);
+        }
+
+        public Task<string> SetThemeModeAsync(
+            string channel,
+            string userId,
+            string themeMode,
+            CancellationToken cancellationToken = default)
+        {
+            StoredThemeMode = AppearanceConstants.NormalizeThemeMode(themeMode);
+            return Task.FromResult(StoredThemeMode);
         }
     }
 

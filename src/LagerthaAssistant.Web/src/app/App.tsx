@@ -1,8 +1,9 @@
-﻿import { useEffect, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { getSessionBootstrap } from '../api/client'
-import { createHostContext } from '../host/createHost'
+import { resolveHostContext } from '../host/createHost'
 import { resolvePreferredLocale } from '../lib/locale'
+import { resolveAppliedTheme, type HostTheme } from '../lib/theme'
 import { DashboardPage } from '../pages/DashboardPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { useAppStore } from '../state/appStore'
@@ -10,19 +11,18 @@ import { useAppStore } from '../state/appStore'
 function AppShellHeader() {
   const locale = useAppStore((s) => s.locale)
   const title = locale === 'en' ? 'Settings' : 'Налаштування'
-  const subtitle = locale === 'en' ? 'Lagertha Assistant Bot' : 'Lagertha Assistant Bot'
 
   return (
     <header className="shell-header">
       <div>
         <h1 className="shell-title">{title}</h1>
-        <p className="shell-subtitle">{subtitle}</p>
+        <p className="shell-subtitle">Lagertha Assistant Bot</p>
       </div>
     </header>
   )
 }
 
-function SettingsBootSkeleton({ title }: { title: string }) {
+function SettingsBootSkeleton() {
   return (
     <div className="settings-page settings-page--skeleton" aria-hidden="true">
       <section className="tg-profile-card settings-hero settings-hero--skeleton">
@@ -38,7 +38,7 @@ function SettingsBootSkeleton({ title }: { title: string }) {
 
       <section className="tg-card settings-section">
         <div className="settings-section__intro">
-          <p className="settings-section__eyebrow">{title}</p>
+          <div className="skeleton-block skeleton-block--eyebrow" />
           <div className="skeleton-block skeleton-block--section" />
           <div className="skeleton-block skeleton-block--body" />
         </div>
@@ -62,24 +62,32 @@ function SettingsBootSkeleton({ title }: { title: string }) {
 }
 
 export function App() {
-  const host = useMemo(() => createHostContext(), [])
   const location = useLocation()
   const status = useAppStore((s) => s.status)
   const locale = useAppStore((s) => s.locale)
+  const themeMode = useAppStore((s) => s.themeMode)
   const error = useAppStore((s) => s.error)
   const setLoading = useAppStore((s) => s.setLoading)
   const setReady = useAppStore((s) => s.setReady)
   const setError = useAppStore((s) => s.setError)
+  const [hostTheme, setHostTheme] = useState<HostTheme>('light')
   const isSettingsRoute = location.pathname === '/settings' || location.pathname === '/miniapp/settings'
 
   useEffect(() => {
+    let cancelled = false
+
     void (async () => {
       setLoading()
 
       try {
+        const host = await resolveHostContext()
+        if (cancelled) {
+          return
+        }
+
+        setHostTheme(host.theme)
         host.ready()
         document.documentElement.style.setProperty('--safe-top', `${host.safeAreaTop}px`)
-        document.documentElement.dataset.theme = host.theme
 
         const bootstrap = await getSessionBootstrap({
           channel: host.isTelegram ? 'telegram' : 'api',
@@ -88,6 +96,10 @@ export function App() {
           initData: host.initData || undefined,
         })
 
+        if (cancelled) {
+          return
+        }
+
         const normalizedLocale = resolvePreferredLocale(
           bootstrap.locale.locale ?? bootstrap.policy.defaultLocale,
           host.userLanguageCode,
@@ -95,15 +107,27 @@ export function App() {
 
         setReady({ locale: normalizedLocale, bootstrap, policy: bootstrap.policy })
       } catch (e) {
+        if (cancelled) {
+          return
+        }
+
         const message = e instanceof Error ? e.message : 'Помилка ініціалізації'
         setError(message)
       }
     })()
-  }, [host, setError, setLoading, setReady])
+
+    return () => {
+      cancelled = true
+    }
+  }, [setError, setLoading, setReady])
 
   useEffect(() => {
     document.documentElement.lang = locale
   }, [locale])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolveAppliedTheme(themeMode, hostTheme)
+  }, [hostTheme, themeMode])
 
   return (
     <div className="shell">
@@ -111,7 +135,7 @@ export function App() {
 
       {status === 'loading' && (
         isSettingsRoute
-          ? <SettingsBootSkeleton title={locale === 'en' ? 'General' : 'Загальні'} />
+          ? <SettingsBootSkeleton />
           : (
             <div className="card" role="status" aria-live="polite">
               {locale === 'en' ? 'Loading Mini App…' : 'Завантаження Mini App…'}

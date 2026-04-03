@@ -16,4 +16,6 @@ public sealed record MiniAppSettingsBootstrapResponse(
     IReadOnlyList<string> AvailableModels,
     bool HasStoredKey,
     string ApiKeySource,
+    string ThemeMode,
+    IReadOnlyList<string> AvailableThemeModes,
     IntegrationNotionHubStatusResponse Notion);
