@@ -1,4 +1,5 @@
 import type { HostTheme } from '../lib/theme'
+import { resolveTelegramBridge, type TelegramBridgeLike } from '../lib/telegramBridge'
 import type { HostContext, HostPlatform } from './types'
 
 declare global {
@@ -38,7 +39,7 @@ interface TelegramLaunchParams {
   userLanguageCode: string | null
 }
 
-type TelegramWebApp = NonNullable<NonNullable<typeof window.Telegram>['WebApp']>
+type TelegramWebApp = TelegramBridgeLike & NonNullable<NonNullable<typeof window.Telegram>['WebApp']>
 
 function resolveTheme(value: string | undefined): HostTheme {
   return value === 'dark' ? 'dark' : 'light'
@@ -203,7 +204,7 @@ function scheduleTelegramReady(platform: HostPlatform) {
 
   for (const delayMs of retryDelaysMs) {
     window.setTimeout(() => {
-      const webApp = window.Telegram?.WebApp
+      const webApp = resolveTelegramBridge() as TelegramWebApp | undefined
       if (!webApp) {
         return
       }
@@ -219,7 +220,7 @@ function scheduleTelegramReady(platform: HostPlatform) {
 }
 
 export function createTelegramHost(): HostContext | null {
-  const webApp = window.Telegram?.WebApp
+  const webApp = resolveTelegramBridge() as TelegramWebApp | undefined
   const launchParams = readTelegramLaunchParams()
 
   if (!webApp && !launchParams) {
