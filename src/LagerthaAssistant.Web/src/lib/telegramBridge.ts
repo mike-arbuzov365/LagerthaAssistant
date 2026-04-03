@@ -4,6 +4,9 @@ export type TelegramBridgeLike = {
   initData?: string
   platform?: string
   colorScheme?: 'light' | 'dark'
+  isExpanded?: boolean
+  isFullscreen?: boolean
+  contentSafeAreaInsets?: { top?: number }
   ready?: () => void
   expand?: () => void
   requestFullscreen?: () => void

@@ -79,13 +79,17 @@ export function App() {
     let cancelled = false
 
     void (async () => {
+      const appBootStartedAt = performance.now()
       setLoading()
 
       try {
+        const hostResolveStartedAt = performance.now()
         const host = await resolveHostContext()
         if (cancelled) {
           return
         }
+        const hostResolveMs = Math.round(performance.now() - hostResolveStartedAt)
+        const resolvedBridge = resolveTelegramBridge()
 
         emitMiniAppDiagnostic({
           eventType: 'host.resolved',
@@ -97,9 +101,15 @@ export function App() {
           userId: host.userId,
           conversationId: host.conversationId,
           hasInitData: host.initData.length > 0,
-          hasWebApp: Boolean(resolveTelegramBridge()),
+          hasWebApp: Boolean(resolvedBridge),
           details: {
             safeAreaTop: host.safeAreaTop,
+            hostResolveMs,
+            innerWidth: window.innerWidth,
+            innerHeight: window.innerHeight,
+            devicePixelRatio: window.devicePixelRatio,
+            isExpanded: resolvedBridge?.isExpanded ?? null,
+            isFullscreen: resolvedBridge?.isFullscreen ?? null,
           },
         })
 
@@ -121,12 +131,15 @@ export function App() {
           hasWebApp: Boolean(resolveTelegramBridge()),
         })
 
+        const bootstrapRequestStartedAt = performance.now()
         const bootstrap = await getSessionBootstrap({
           channel: host.isTelegram ? 'telegram' : 'api',
           userId: host.userId,
           conversationId: host.conversationId,
           initData: host.initData || undefined,
         })
+        const bootstrapRequestMs = Math.round(performance.now() - bootstrapRequestStartedAt)
+        const totalBootMs = Math.round(performance.now() - appBootStartedAt)
 
         if (cancelled) {
           return
@@ -153,6 +166,8 @@ export function App() {
           details: {
             bootstrapLocale: bootstrap.locale.locale,
             defaultLocale: bootstrap.policy.defaultLocale,
+            bootstrapRequestMs,
+            totalBootMs,
           },
         })
 
@@ -176,6 +191,7 @@ export function App() {
         }
 
         const message = e instanceof Error ? e.message : 'Помилка ініціалізації'
+        const totalBootMs = Math.round(performance.now() - appBootStartedAt)
         emitMiniAppDiagnostic({
           eventType: 'bootstrap.failure',
           severity: 'error',
@@ -185,6 +201,9 @@ export function App() {
           platform: resolveTelegramBridge()?.platform ?? 'unknown',
           hasInitData: Boolean(resolveTelegramBridge()?.initData),
           hasWebApp: Boolean(resolveTelegramBridge()),
+          details: {
+            totalBootMs,
+          },
         })
         setError(message)
       }

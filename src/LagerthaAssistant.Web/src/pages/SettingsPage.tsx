@@ -790,6 +790,82 @@ export function SettingsPage() {
     skipInitialProviderRefreshRef.current = true
   }, [bootstrap, locale])
 
+  useEffect(() => {
+    if (!bootstrap || !isOnline) {
+      return
+    }
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const [notionStatus, currentGraphStatus] = await Promise.all([
+          getIntegrationNotionStatus(),
+          getGraphStatus(),
+        ])
+
+        if (cancelled) {
+          return
+        }
+
+        setIntegrationStatus(notionStatus)
+        setGraphStatus(currentGraphStatus)
+        emitMiniAppDiagnostic({
+          eventType: 'bootstrap.status_refresh_success',
+          severity: 'info',
+          message: 'Background runtime statuses refreshed after bootstrap.',
+          isTelegram: host?.isTelegram,
+          hostSource: host?.source,
+          platform: host?.platform,
+          channel: bootstrap.scope.channel,
+          userId: bootstrap.scope.userId,
+          conversationId: bootstrap.scope.conversationId,
+          hasInitData: Boolean(host?.initData),
+          hasWebApp: Boolean(resolveTelegramMiniAppBridge()),
+          locale,
+          details: {
+            graphAuthenticated: currentGraphStatus.isAuthenticated,
+            notionVocabularyEnabled: notionStatus.notionVocabulary.enabled,
+            notionFoodEnabled: notionStatus.notionFood.enabled,
+          },
+        })
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+
+        emitMiniAppDiagnostic({
+          eventType: 'bootstrap.status_refresh_failure',
+          severity: 'warn',
+          message: error instanceof Error ? error.message : 'Status refresh failed.',
+          isTelegram: host?.isTelegram,
+          hostSource: host?.source,
+          platform: host?.platform,
+          channel: bootstrap.scope.channel,
+          userId: bootstrap.scope.userId,
+          conversationId: bootstrap.scope.conversationId,
+          hasInitData: Boolean(host?.initData),
+          hasWebApp: Boolean(resolveTelegramMiniAppBridge()),
+          locale,
+        })
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    bootstrap?.scope.channel,
+    bootstrap?.scope.conversationId,
+    bootstrap?.scope.userId,
+    host?.initData,
+    host?.isTelegram,
+    host?.platform,
+    host?.source,
+    isOnline,
+    locale,
+  ])
+
   const hasUnsavedChanges = useMemo(() => {
     return hasUnsavedSettingsChanges(snapshot, {
       locale: localeDraft,
@@ -814,7 +890,7 @@ export function SettingsPage() {
   ])
 
   useEffect(() => {
-    if (!hasUnsavedChanges) {
+    if (host?.isTelegram || !hasUnsavedChanges) {
       return
     }
 
@@ -829,7 +905,7 @@ export function SettingsPage() {
     return () => {
       window.removeEventListener('beforeunload', beforeUnloadHandler)
     }
-  }, [hasUnsavedChanges, uiLocale])
+  }, [hasUnsavedChanges, host?.isTelegram, uiLocale])
 
   useLayoutEffect(() => {
     if (!host?.isTelegram) {
