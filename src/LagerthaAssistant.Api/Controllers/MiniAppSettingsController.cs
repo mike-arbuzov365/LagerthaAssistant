@@ -27,6 +27,7 @@ public sealed class MiniAppSettingsController : ControllerBase
     private readonly INavigationStateService _navigationStateService;
     private readonly ITelegramNavigationPresenter _navigationPresenter;
     private readonly ITelegramBotSender _telegramBotSender;
+    private readonly ILogger<MiniAppSettingsController> _logger;
     private readonly TelegramOptions _telegramOptions;
 
     public MiniAppSettingsController(
@@ -35,6 +36,7 @@ public sealed class MiniAppSettingsController : ControllerBase
         INavigationStateService navigationStateService,
         ITelegramNavigationPresenter navigationPresenter,
         ITelegramBotSender telegramBotSender,
+        ILogger<MiniAppSettingsController> logger,
         IOptions<TelegramOptions> telegramOptions)
     {
         _scopeAccessor = scopeAccessor;
@@ -42,6 +44,7 @@ public sealed class MiniAppSettingsController : ControllerBase
         _navigationStateService = navigationStateService;
         _navigationPresenter = navigationPresenter;
         _telegramBotSender = telegramBotSender;
+        _logger = logger;
         _telegramOptions = telegramOptions.Value;
     }
 
@@ -59,18 +62,50 @@ public sealed class MiniAppSettingsController : ControllerBase
 
         if (!TryResolveScope(request, out var scope, out var scopeError))
         {
+            _logger.LogWarning(
+                "Mini App settings commit rejected. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, HasInitData={HasInitData}, Locale={Locale}, ThemeMode={ThemeMode}, Error={Error}",
+                request.Channel,
+                request.UserId,
+                request.ConversationId,
+                !string.IsNullOrWhiteSpace(request.InitData),
+                request.Locale,
+                request.ThemeMode,
+                scopeError);
             return BadRequest(scopeError);
         }
+
+        _logger.LogInformation(
+            "Mini App settings commit started. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, Locale={Locale}, ThemeMode={ThemeMode}, Provider={Provider}, Model={Model}",
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
+            request.Locale,
+            request.ThemeMode,
+            request.AiProvider,
+            request.AiModel);
 
         var result = await _commitService.CommitAsync(scope, request, cancellationToken);
         if (!result.Succeeded)
         {
+            _logger.LogWarning(
+                "Mini App settings commit failed. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, Error={Error}",
+                scope.Channel,
+                scope.UserId,
+                scope.ConversationId,
+                result.ErrorMessage);
             return BadRequest(result.ErrorMessage);
         }
 
         if (result.Response is not null)
         {
             await TryRefreshTelegramMainKeyboardAsync(scope, result.Response.Locale, cancellationToken);
+            _logger.LogInformation(
+                "Mini App settings commit completed. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, Locale={Locale}, ThemeMode={ThemeMode}",
+                scope.Channel,
+                scope.UserId,
+                scope.ConversationId,
+                result.Response.Locale,
+                result.Response.ThemeMode);
         }
 
         return Ok(result.Response);
@@ -171,8 +206,24 @@ public sealed class MiniAppSettingsController : ControllerBase
 
         if (!result.Succeeded)
         {
-            // Silent failure: settings are already persisted, this is only UI refresh.
+            _logger.LogWarning(
+                "Mini App keyboard refresh failed. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, ChatId={ChatId}, ThreadId={ThreadId}",
+                scope.Channel,
+                scope.UserId,
+                scope.ConversationId,
+                chatId,
+                messageThreadId);
+            return;
         }
+
+        _logger.LogInformation(
+            "Mini App keyboard refresh succeeded. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, ChatId={ChatId}, ThreadId={ThreadId}, Locale={Locale}",
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
+            chatId,
+            messageThreadId,
+            locale);
     }
 
     private static bool TryResolveTelegramTarget(

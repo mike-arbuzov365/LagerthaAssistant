@@ -82,6 +82,7 @@ describe('appStore', () => {
       themeMode: 'system',
       bootstrap: null,
       policy: null,
+      host: null,
       error: null,
     })
   })
@@ -91,6 +92,14 @@ describe('appStore', () => {
       locale: 'en',
       bootstrap: bootstrapFixture,
       policy: policyFixture,
+      host: {
+        isTelegram: true,
+        source: 'telegram-webapp',
+        platform: 'android',
+        initData: 'auth_date=1&hash=h',
+        userId: '123',
+        conversationId: '123',
+      },
     })
 
     const state = useAppStore.getState()
@@ -98,6 +107,7 @@ describe('appStore', () => {
     expect(state.locale).toBe('en')
     expect(state.bootstrap?.scope.userId).toBe('123')
     expect(state.policy?.storageModePolicy).toBe('graph_only_v1')
+    expect(state.host?.source).toBe('telegram-webapp')
   })
 
   it('updates bootstrap preferences without replacing scope', () => {
@@ -105,6 +115,14 @@ describe('appStore', () => {
       locale: 'uk',
       bootstrap: bootstrapFixture,
       policy: policyFixture,
+      host: {
+        isTelegram: true,
+        source: 'telegram-launch-params',
+        platform: 'ios',
+        initData: 'auth_date=1&hash=h',
+        userId: '123',
+        conversationId: '123',
+      },
     })
 
     useAppStore.getState().setBootstrapPreferences({

@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+﻿import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createTelegramHost } from './telegramHost'
 
 const originalTelegram = window.Telegram
+const originalHref = window.location.href
 
 function resetTelegramGlobal() {
   if (typeof originalTelegram === 'undefined') {
@@ -14,22 +15,25 @@ function resetTelegramGlobal() {
 
 describe('createTelegramHost', () => {
   afterEach(() => {
+    vi.useRealTimers()
     resetTelegramGlobal()
+    window.history.pushState({}, '', originalHref)
   })
 
-  it('returns null when Telegram WebApp is not available', () => {
+  it('returns null when Telegram launch context is not available', () => {
     delete window.Telegram
     expect(createTelegramHost()).toBeNull()
   })
 
   it('uses initDataUnsafe user when present and expands on ready', () => {
+    vi.useFakeTimers()
     const ready = vi.fn()
     const expand = vi.fn()
     const requestFullscreen = vi.fn()
 
     window.Telegram = {
       WebApp: {
-        initData: 'auth_date=1',
+        initData: 'auth_date=1&hash=h',
         initDataUnsafe: {
           user: {
             id: 123456,
@@ -47,6 +51,7 @@ describe('createTelegramHost', () => {
 
     const host = createTelegramHost()
     expect(host).not.toBeNull()
+    expect(host?.source).toBe('telegram-webapp')
     expect(host?.userId).toBe('123456')
     expect(host?.conversationId).toBe('123456')
     expect(host?.userLanguageCode).toBe('uk')
@@ -54,8 +59,10 @@ describe('createTelegramHost', () => {
     expect(host?.platform).toBe('desktop')
 
     host?.ready()
-    expect(ready).toHaveBeenCalledOnce()
-    expect(expand).toHaveBeenCalledOnce()
+    vi.runAllTimers()
+
+    expect(ready).toHaveBeenCalled()
+    expect(expand).toHaveBeenCalled()
     expect(requestFullscreen).not.toHaveBeenCalled()
   })
 
@@ -84,7 +91,25 @@ describe('createTelegramHost', () => {
     expect(host?.platform).toBe('android')
   })
 
-  it('returns null when initData is missing even if Telegram global exists', () => {
+  it('uses Telegram launch params when the bridge is not ready yet', () => {
+    delete window.Telegram
+
+    const encodedUser = encodeURIComponent(JSON.stringify({ id: 445566, language_code: 'en' }))
+    const initData = encodeURIComponent(`query_id=q1&user=${encodedUser}&auth_date=1&hash=h`)
+    const themeParams = encodeURIComponent(JSON.stringify({ bg_color: '#17212b' }))
+    window.history.pushState({}, '', `/miniapp/settings?tgWebAppData=${initData}&tgWebAppPlatform=ios&tgWebAppThemeParams=${themeParams}`)
+
+    const host = createTelegramHost()
+    expect(host).not.toBeNull()
+    expect(host?.source).toBe('telegram-launch-params')
+    expect(host?.isTelegram).toBe(true)
+    expect(host?.userId).toBe('445566')
+    expect(host?.platform).toBe('ios')
+    expect(host?.theme).toBe('dark')
+    expect(host?.initData).toContain('query_id=q1')
+  })
+
+  it('returns null when initData is missing and no launch params exist', () => {
     window.Telegram = {
       WebApp: {
         initDataUnsafe: {
@@ -102,13 +127,14 @@ describe('createTelegramHost', () => {
   })
 
   it('requests fullscreen for mobile platforms during ready', () => {
+    vi.useFakeTimers()
     const ready = vi.fn()
     const expand = vi.fn()
     const requestFullscreen = vi.fn()
 
     window.Telegram = {
       WebApp: {
-        initData: 'auth_date=1',
+        initData: 'auth_date=1&hash=h',
         initDataUnsafe: {
           user: {
             id: 123456,
@@ -126,9 +152,10 @@ describe('createTelegramHost', () => {
 
     const host = createTelegramHost()
     host?.ready()
+    vi.runAllTimers()
 
-    expect(ready).toHaveBeenCalledOnce()
-    expect(expand).toHaveBeenCalledOnce()
-    expect(requestFullscreen).toHaveBeenCalledOnce()
+    expect(ready).toHaveBeenCalled()
+    expect(expand).toHaveBeenCalled()
+    expect(requestFullscreen).toHaveBeenCalled()
   })
 })

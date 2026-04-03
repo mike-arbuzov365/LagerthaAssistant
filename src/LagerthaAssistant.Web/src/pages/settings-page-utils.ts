@@ -1,4 +1,4 @@
-import type { AppLocale } from '../lib/locale'
+﻿import type { AppLocale } from '../lib/locale'
 import type { AppThemeMode } from '../lib/theme'
 
 type TelegramWebViewWindow = Window & {
@@ -38,6 +38,26 @@ export type TelegramClosingConfirmationWebApp = {
 export type TelegramMiniAppBridgeWebApp = TelegramClosingConfirmationWebApp & {
   close?: (options?: { return_back?: boolean }) => void
 }
+
+export function resolveTelegramMiniAppBridge(): TelegramMiniAppBridgeWebApp | undefined {
+  return window.Telegram?.WebApp as unknown as TelegramMiniAppBridgeWebApp | undefined
+}
+
+export async function waitForTelegramMiniAppBridge(
+  timeoutMs = 480,
+  intervalMs = 40,
+): Promise<TelegramMiniAppBridgeWebApp | undefined> {
+  const start = Date.now()
+  let bridge = resolveTelegramMiniAppBridge()
+
+  while (!bridge && Date.now() - start < timeoutMs) {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, intervalMs))
+    bridge = resolveTelegramMiniAppBridge()
+  }
+
+  return bridge
+}
+
 export function normalizeLocaleFromPreference(value: string | null | undefined): AppLocale {
   const normalized = value?.trim().toLowerCase() ?? ''
 
@@ -99,7 +119,6 @@ export function applyTelegramClosingConfirmation(
     webApp.disableClosingConfirmation?.()
   }
 
-  // Compatibility fallback for Telegram clients that expose only flag-based behavior.
   try {
     webApp.isClosingConfirmationEnabled = enabled
   } catch {
@@ -129,9 +148,7 @@ export function syncTelegramClosingConfirmation(
 
   return () => {
     timerIds.forEach((timerId) => window.clearTimeout(timerId))
-    // Intentionally no-op.
-    // During Telegram Mini App close, React unmount may happen before Telegram processes
-    // closing behavior. Disabling confirmation in cleanup can suppress the close prompt.
+    // Не вимикаємо confirmation у cleanup, інакше Telegram може проковтнути close prompt під час unmount.
   }
 }
 

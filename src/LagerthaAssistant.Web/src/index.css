@@ -357,6 +357,124 @@ body {
   flex: 0 0 auto;
 }
 
+.choice-card__glyph {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.choice-card__flag {
+  position: relative;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.choice-card__flag-band {
+  display: block;
+  width: 100%;
+  height: 50%;
+}
+
+.choice-card__flag-band--blue {
+  background: #2563eb;
+}
+
+.choice-card__flag-band--yellow {
+  background: #facc15;
+}
+
+.choice-card__flag--gb {
+  background: #1d4ed8;
+}
+
+.choice-card__flag-gb-diagonal,
+.choice-card__flag-gb-cross {
+  position: absolute;
+  inset: 0;
+}
+
+.choice-card__flag-gb-diagonal::before,
+.choice-card__flag-gb-diagonal::after,
+.choice-card__flag-gb-cross::before,
+.choice-card__flag-gb-cross::after {
+  content: "";
+  position: absolute;
+  background: #ffffff;
+}
+
+.choice-card__flag-gb-diagonal--a::before,
+.choice-card__flag-gb-diagonal--a::after,
+.choice-card__flag-gb-diagonal--b::before,
+.choice-card__flag-gb-diagonal--b::after {
+  width: 3px;
+  height: 28px;
+  top: -5px;
+  left: 7px;
+}
+
+.choice-card__flag-gb-diagonal--a::before {
+  transform: rotate(45deg);
+}
+
+.choice-card__flag-gb-diagonal--a::after {
+  transform: rotate(-45deg);
+}
+
+.choice-card__flag-gb-diagonal--b::before,
+.choice-card__flag-gb-diagonal--b::after {
+  width: 1.5px;
+  background: #dc2626;
+}
+
+.choice-card__flag-gb-diagonal--b::before {
+  transform: rotate(45deg);
+}
+
+.choice-card__flag-gb-diagonal--b::after {
+  transform: rotate(-45deg);
+}
+
+.choice-card__flag-gb-cross--h::before,
+.choice-card__flag-gb-cross--v::before {
+  background: #ffffff;
+}
+
+.choice-card__flag-gb-cross--h::before {
+  left: 0;
+  right: 0;
+  top: 7px;
+  height: 4px;
+}
+
+.choice-card__flag-gb-cross--v::before {
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  width: 4px;
+}
+
+.choice-card__flag-gb-cross--h::after,
+.choice-card__flag-gb-cross--v::after {
+  background: #dc2626;
+}
+
+.choice-card__flag-gb-cross--h::after {
+  left: 0;
+  right: 0;
+  top: 8px;
+  height: 2px;
+}
+
+.choice-card__flag-gb-cross--v::after {
+  top: 0;
+  bottom: 0;
+  left: 8px;
+  width: 2px;
+}
+
 .choice-card--compact {
   min-height: 64px;
   gap: 0;
@@ -810,6 +928,100 @@ body {
   --border-strong: #335071;
   --shadow-card: 0 18px 40px rgba(2, 8, 23, 0.4);
   --shadow-card-soft: 0 10px 22px rgba(2, 8, 23, 0.3);
+}
+
+[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at top left, rgba(51, 144, 236, 0.18), transparent 32%),
+    radial-gradient(circle at top right, rgba(16, 185, 129, 0.08), transparent 24%),
+    linear-gradient(180deg, #0b1220 0%, #0f172a 42%, #111c2e 100%);
+}
+
+[data-theme="dark"] .shell-header,
+[data-theme="dark"] .settings-savebar {
+  background: rgba(9, 16, 30, 0.92);
+  border-color: var(--border-strong);
+}
+
+[data-theme="dark"] .settings-hero {
+  background:
+    linear-gradient(145deg, rgba(16, 27, 46, 0.98), rgba(18, 31, 54, 0.92)),
+    var(--bg-card);
+  border-color: var(--border-strong);
+}
+
+[data-theme="dark"] .settings-subsection,
+[data-theme="dark"] .integration-card,
+[data-theme="dark"] .details-block--soft,
+[data-theme="dark"] .action-tile,
+[data-theme="dark"] .tg-check--boxed,
+[data-theme="dark"] .info-pill,
+[data-theme="dark"] .btn-secondary--quiet,
+[data-theme="dark"] .choice-chip,
+[data-theme="dark"] .choice-card {
+  background: linear-gradient(180deg, rgba(17, 28, 46, 0.98), rgba(12, 20, 34, 0.98));
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .choice-card__icon,
+[data-theme="dark"] .integration-card__icon,
+[data-theme="dark"] .tg-avatar {
+  background: linear-gradient(180deg, rgba(51, 144, 236, 0.24), rgba(16, 27, 46, 0.96));
+  border-color: rgba(96, 165, 250, 0.42);
+  color: #dbeafe;
+}
+
+[data-theme="dark"] .choice-card--selected {
+  background: linear-gradient(180deg, rgba(29, 78, 216, 0.3), rgba(17, 28, 46, 0.98));
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.34);
+}
+
+[data-theme="dark"] .choice-chip--selected {
+  background: rgba(51, 144, 236, 0.24);
+  border-color: rgba(96, 165, 250, 0.42);
+  color: #dbeafe;
+}
+
+[data-theme="dark"] .action-tile--danger {
+  background: linear-gradient(180deg, rgba(69, 10, 10, 0.96), rgba(31, 11, 18, 0.98));
+  border-color: rgba(248, 113, 113, 0.28);
+}
+
+[data-theme="dark"] .status-banner--ok {
+  background: rgba(5, 46, 22, 0.88);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #bbf7d0;
+}
+
+[data-theme="dark"] .status-banner--warn {
+  background: rgba(69, 39, 5, 0.9);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fde68a;
+}
+
+[data-theme="dark"] .status-banner--error {
+  background: rgba(69, 10, 10, 0.92);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fecaca;
+}
+
+[data-theme="dark"] .chip--ok {
+  color: #bbf7d0;
+  background: rgba(5, 46, 22, 0.88);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+[data-theme="dark"] .chip--warn {
+  color: #fde68a;
+  background: rgba(69, 39, 5, 0.88);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+[data-theme="dark"] .chip--error {
+  color: #fecaca;
+  background: rgba(69, 10, 10, 0.88);
+  border-color: rgba(248, 113, 113, 0.35);
 }
 
 .chip {

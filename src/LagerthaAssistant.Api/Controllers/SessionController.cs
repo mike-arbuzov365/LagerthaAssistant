@@ -30,6 +30,7 @@ public sealed class SessionController : ControllerBase
     private readonly IAiRuntimeSettingsService _aiRuntimeSettingsService;
     private readonly INotionSyncProcessor _notionSyncProcessor;
     private readonly IFoodSyncService _foodSyncService;
+    private readonly ILogger<SessionController> _logger;
     private readonly TelegramOptions _telegramOptions;
     private readonly NotionFoodOptions _notionFoodOptions;
     private readonly NotionSyncWorkerOptions _notionSyncWorkerOptions;
@@ -43,6 +44,7 @@ public sealed class SessionController : ControllerBase
         IAiRuntimeSettingsService aiRuntimeSettingsService,
         INotionSyncProcessor notionSyncProcessor,
         IFoodSyncService foodSyncService,
+        ILogger<SessionController> logger,
         IOptions<TelegramOptions> telegramOptions,
         NotionFoodOptions notionFoodOptions,
         IOptions<NotionSyncWorkerOptions> notionSyncWorkerOptions,
@@ -55,6 +57,7 @@ public sealed class SessionController : ControllerBase
         _aiRuntimeSettingsService = aiRuntimeSettingsService;
         _notionSyncProcessor = notionSyncProcessor;
         _foodSyncService = foodSyncService;
+        _logger = logger;
         _telegramOptions = telegramOptions.Value;
         _notionFoodOptions = notionFoodOptions;
         _notionSyncWorkerOptions = notionSyncWorkerOptions.Value;
@@ -76,6 +79,13 @@ public sealed class SessionController : ControllerBase
     {
         if (!TryResolveScope(channel, userId, conversationId, initData, out var scope, out var scopeError))
         {
+            _logger.LogWarning(
+                "Mini App bootstrap rejected. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, HasInitData={HasInitData}, Error={Error}",
+                channel,
+                userId,
+                conversationId,
+                !string.IsNullOrWhiteSpace(initData),
+                scopeError);
             return BadRequest(scopeError);
         }
 
@@ -98,6 +108,13 @@ public sealed class SessionController : ControllerBase
 
         if (!TryResolveScope(request.Channel, request.UserId, request.ConversationId, request.InitData, out var scope, out var scopeError))
         {
+            _logger.LogWarning(
+                "Mini App bootstrap rejected. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, HasInitData={HasInitData}, Error={Error}",
+                request.Channel,
+                request.UserId,
+                request.ConversationId,
+                !string.IsNullOrWhiteSpace(request.InitData),
+                scopeError);
             return BadRequest(scopeError);
         }
 
@@ -121,6 +138,15 @@ public sealed class SessionController : ControllerBase
             IncludePartOfSpeechOptions: includePartOfSpeechOptions,
             IncludeWritableDecks: includeDecks);
 
+        _logger.LogInformation(
+            "Mini App bootstrap started. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, IncludeCommands={IncludeCommands}, IncludePartOfSpeechOptions={IncludePartOfSpeechOptions}, IncludeDecks={IncludeDecks}",
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
+            includeCommands,
+            includePartOfSpeechOptions,
+            includeDecks);
+
         // Keep these reads sequential. In production both operations can traverse the same
         // scoped persistence graph, and parallelizing them risks transient EF/db re-entrancy.
         var bootstrap = await _conversationBootstrapService.BuildAsync(scope, options, cancellationToken);
@@ -135,6 +161,15 @@ public sealed class SessionController : ControllerBase
             bootstrap.AvailableStorageModes);
 
         var settings = await BuildSettingsBootstrapAsync(scope, cancellationToken);
+
+        _logger.LogInformation(
+            "Mini App bootstrap completed. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, Locale={Locale}, ThemeMode={ThemeMode}, AiProvider={AiProvider}",
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
+            locale,
+            settings.ThemeMode,
+            settings.AiProvider);
 
         return Ok(new SessionBootstrapResponse(
             new SessionScopeResponse(bootstrap.Scope.Channel, bootstrap.Scope.UserId, bootstrap.Scope.ConversationId),

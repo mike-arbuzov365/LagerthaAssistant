@@ -69,6 +69,24 @@ export interface MiniAppVerifyResponse {
   authDateUtc: string | null
 }
 
+export interface MiniAppDiagnosticRequest {
+  sessionId: string
+  eventType: string
+  severity?: 'info' | 'warn' | 'error'
+  message?: string
+  path?: string
+  isTelegram?: boolean
+  hostSource?: string
+  platform?: string
+  channel?: string
+  userId?: string | null
+  conversationId?: string | null
+  hasInitData?: boolean
+  hasWebApp?: boolean
+  locale?: string | null
+  details?: Record<string, string | number | boolean | null>
+}
+
 export interface MiniAppPolicyResponse {
   defaultLocale: string
   supportedLocales: string[]

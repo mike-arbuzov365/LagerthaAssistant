@@ -18,6 +18,7 @@ using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Vocabulary;
 using LagerthaAssistant.Infrastructure.Options;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using SharedBotKernel.Infrastructure.AI;
 using SharedBotKernel.Models.AI;
@@ -369,6 +370,7 @@ public sealed class SessionControllerTests
             aiRuntimeSettingsService,
             notionSyncProcessor,
             foodSyncService,
+            NullLogger<SessionController>.Instance,
             Options.Create(telegramOptions ?? new TelegramOptions()),
             notionFoodOptions ?? new NotionFoodOptions(),
             Options.Create(notionSyncWorkerOptions ?? new NotionSyncWorkerOptions()),
