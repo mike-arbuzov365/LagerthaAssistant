@@ -1,9 +1,19 @@
 import type { AppLocale } from '../lib/locale'
+import type { AppThemeMode } from '../lib/theme'
+
+type TelegramWebViewWindow = Window & {
+  Telegram?: {
+    WebView?: {
+      postEvent?: (eventType: string, callback?: boolean, eventData?: Record<string, unknown>) => void
+    }
+  }
+}
 
 export interface PersistedSnapshot {
   locale: AppLocale
   saveMode: string
   storageMode: string
+  themeMode: AppThemeMode
   aiProvider: string
   aiModel: string
 }
@@ -12,6 +22,7 @@ export interface SettingsDraftState {
   locale: AppLocale
   saveMode: string
   storageMode: string
+  themeMode: AppThemeMode
   aiProvider: string
   aiModel: string
   apiKeyDraft: string
@@ -25,7 +36,7 @@ export type TelegramClosingConfirmationWebApp = {
 }
 
 export type TelegramMiniAppBridgeWebApp = TelegramClosingConfirmationWebApp & {
-  close?: () => void
+  close?: (options?: { return_back?: boolean }) => void
 }
 export function normalizeLocaleFromPreference(value: string | null | undefined): AppLocale {
   const normalized = value?.trim().toLowerCase() ?? ''
@@ -49,11 +60,29 @@ export function hasUnsavedSettingsChanges(
     draft.locale !== snapshot.locale
     || draft.saveMode !== snapshot.saveMode
     || draft.storageMode !== snapshot.storageMode
+    || draft.themeMode !== snapshot.themeMode
     || draft.aiProvider !== snapshot.aiProvider
     || draft.aiModel !== snapshot.aiModel
     || draft.removeStoredKeyRequested
     || draft.apiKeyDraft.trim().length > 0
   )
+}
+
+function postTelegramWebViewEvent(
+  eventType: string,
+  eventData?: Record<string, unknown>,
+): boolean {
+  const postEvent = (window as TelegramWebViewWindow).Telegram?.WebView?.postEvent
+  if (typeof postEvent !== 'function') {
+    return false
+  }
+
+  try {
+    postEvent(eventType, false, eventData)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function applyTelegramClosingConfirmation(
@@ -76,6 +105,10 @@ export function applyTelegramClosingConfirmation(
   } catch {
     // no-op
   }
+
+  postTelegramWebViewEvent('web_app_setup_closing_behavior', {
+    need_confirmation: enabled,
+  })
 }
 
 export function buildUnsavedChangesPrompt(locale: AppLocale): string {
@@ -103,14 +136,13 @@ export function syncTelegramClosingConfirmation(
 }
 
 export function closeTelegramMiniApp(webApp: TelegramMiniAppBridgeWebApp | undefined): boolean {
-  if (!webApp?.close) {
-    return false
+  let closed = false
+  try {
+    webApp?.close?.({ return_back: true })
+    closed = Boolean(webApp?.close)
+  } catch {
+    // no-op
   }
 
-  try {
-    webApp.close()
-    return true
-  } catch {
-    return false
-  }
+  return postTelegramWebViewEvent('web_app_close', { return_back: true }) || closed
 }

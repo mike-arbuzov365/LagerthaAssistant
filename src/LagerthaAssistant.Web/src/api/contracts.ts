@@ -38,6 +38,8 @@ export interface SessionBootstrapResponse {
     availableModels: string[]
     hasStoredKey: boolean
     apiKeySource: string
+    themeMode: string
+    availableThemeModes: string[]
     notion: IntegrationNotionHubStatusResponse
   }
 }
@@ -81,6 +83,7 @@ export interface MiniAppSettingsCommitRequest {
   locale: string
   saveMode: string
   storageMode: string
+  themeMode: string
   aiProvider: string
   aiModel: string
   apiKey?: string | null
@@ -99,6 +102,8 @@ export interface MiniAppSettingsCommitResponse {
   availableSaveModes: string[]
   storageMode: string
   availableStorageModes: string[]
+  themeMode: string
+  availableThemeModes: string[]
   aiProvider: string
   availableProviders: string[]
   aiModel: string

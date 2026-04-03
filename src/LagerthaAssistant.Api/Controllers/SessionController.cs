@@ -26,6 +26,7 @@ public sealed class SessionController : ControllerBase
     private readonly IConversationScopeAccessor _scopeAccessor;
     private readonly IConversationBootstrapService _conversationBootstrapService;
     private readonly IUserLocaleStateService _localeStateService;
+    private readonly IUserThemeStateService _themeStateService;
     private readonly IAiRuntimeSettingsService _aiRuntimeSettingsService;
     private readonly INotionSyncProcessor _notionSyncProcessor;
     private readonly IFoodSyncService _foodSyncService;
@@ -38,6 +39,7 @@ public sealed class SessionController : ControllerBase
         IConversationScopeAccessor scopeAccessor,
         IConversationBootstrapService conversationBootstrapService,
         IUserLocaleStateService localeStateService,
+        IUserThemeStateService themeStateService,
         IAiRuntimeSettingsService aiRuntimeSettingsService,
         INotionSyncProcessor notionSyncProcessor,
         IFoodSyncService foodSyncService,
@@ -49,6 +51,7 @@ public sealed class SessionController : ControllerBase
         _scopeAccessor = scopeAccessor;
         _conversationBootstrapService = conversationBootstrapService;
         _localeStateService = localeStateService;
+        _themeStateService = themeStateService;
         _aiRuntimeSettingsService = aiRuntimeSettingsService;
         _notionSyncProcessor = notionSyncProcessor;
         _foodSyncService = foodSyncService;
@@ -159,12 +162,14 @@ public sealed class SessionController : ControllerBase
         var provider = availableProviders.FirstOrDefault(static x => !string.IsNullOrWhiteSpace(x)) ?? "openai";
         var hasStoredKey = false;
         var apiKeySource = "missing";
+        var themeMode = AppearanceConstants.ThemeModeSystem;
 
         try
         {
             provider = await _aiRuntimeSettingsService.GetProviderAsync(scope, cancellationToken);
             hasStoredKey = await _aiRuntimeSettingsService.HasStoredApiKeyAsync(scope, provider, cancellationToken);
             apiKeySource = hasStoredKey ? "stored" : "missing";
+            themeMode = await _themeStateService.GetStoredThemeModeAsync(scope.Channel, scope.UserId, cancellationToken);
         }
         catch
         {
@@ -201,6 +206,8 @@ public sealed class SessionController : ControllerBase
             availableModels,
             hasStoredKey,
             apiKeySource,
+            themeMode,
+            AppearanceConstants.SupportedThemeModes,
             notionStatus);
     }
 

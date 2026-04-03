@@ -40,6 +40,8 @@ const bootstrapFixture: SessionBootstrapResponse = {
     availableModels: ['gpt-4.1-mini', 'gpt-4.1'],
     hasStoredKey: false,
     apiKeySource: 'missing',
+    themeMode: 'system',
+    availableThemeModes: ['system', 'light', 'dark'],
     notion: {
       notionVocabulary: {
         enabled: false,
@@ -77,6 +79,7 @@ describe('appStore', () => {
     useAppStore.setState({
       status: 'idle',
       locale: 'uk',
+      themeMode: 'system',
       bootstrap: null,
       policy: null,
       error: null,

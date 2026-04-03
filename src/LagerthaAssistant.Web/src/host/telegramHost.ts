@@ -1,8 +1,12 @@
-import type { HostContext, HostTheme } from './types'
+import type { HostTheme } from '../lib/theme'
+import type { HostContext, HostPlatform } from './types'
 
 declare global {
   interface Window {
     Telegram?: {
+      WebView?: {
+        postEvent?: (eventType: string, callback?: boolean, eventData?: Record<string, unknown>) => void
+      }
       WebApp?: {
         initData?: string
         initDataUnsafe?: {
@@ -12,6 +16,7 @@ declare global {
           }
         }
         colorScheme?: 'light' | 'dark'
+        platform?: string
         contentSafeAreaInsets?: { top?: number }
         isExpanded?: boolean
         isFullscreen?: boolean
@@ -27,6 +32,14 @@ declare global {
 
 function resolveTheme(value: string | undefined): HostTheme {
   return value === 'dark' ? 'dark' : 'light'
+}
+
+function resolvePlatform(value: string | undefined): HostPlatform {
+  const normalized = value?.trim().toLowerCase()
+
+  return normalized === 'android' || normalized === 'ios' || normalized === 'tdesktop'
+    ? (normalized === 'tdesktop' ? 'desktop' : normalized)
+    : 'unknown'
 }
 
 function parseInitDataUser(
@@ -65,8 +78,19 @@ function parseInitDataUser(
   }
 }
 
-function requestPreferredViewport(webApp: NonNullable<NonNullable<typeof window.Telegram>['WebApp']>) {
+function requestPreferredViewport(
+  webApp: NonNullable<NonNullable<typeof window.Telegram>['WebApp']>,
+  platform: HostPlatform,
+) {
   webApp.expand()
+
+  if (platform === 'android' || platform === 'ios') {
+    try {
+      webApp.requestFullscreen?.()
+    } catch {
+      // Best-effort only.
+    }
+  }
 }
 
 export function createTelegramHost(): HostContext | null {
@@ -79,18 +103,26 @@ export function createTelegramHost(): HostContext | null {
   const parsedInitDataUser = parseInitDataUser(webApp.initData)
   const userId = typeof user?.id === 'number' ? String(user.id) : parsedInitDataUser.id
   const userLanguageCode = user?.language_code ?? parsedInitDataUser.languageCode
+  const initData = webApp.initData?.trim() ?? ''
+
+  if (!userId || initData.length === 0) {
+    return null
+  }
+
+  const platform = resolvePlatform(webApp.platform)
 
   return {
     isTelegram: true,
     theme: resolveTheme(webApp.colorScheme),
+    platform,
     safeAreaTop: Math.max(0, webApp.contentSafeAreaInsets?.top ?? 0),
-    initData: webApp.initData ?? '',
+    initData,
     userLanguageCode,
     userId,
     conversationId: userId,
     ready() {
       webApp.ready()
-      requestPreferredViewport(webApp)
+      requestPreferredViewport(webApp, platform)
     },
   }
 }

@@ -12,6 +12,7 @@ public sealed class MiniAppSettingsCommitService
         [LocalizationConstants.UkrainianLocale, LocalizationConstants.EnglishLocale];
 
     private readonly IUserLocaleStateService _localeStateService;
+    private readonly IUserThemeStateService _themeStateService;
     private readonly IVocabularySaveModePreferenceService _saveModePreferenceService;
     private readonly IVocabularyStoragePreferenceService _storagePreferenceService;
     private readonly IVocabularyStorageModeProvider _storageModeProvider;
@@ -19,12 +20,14 @@ public sealed class MiniAppSettingsCommitService
 
     public MiniAppSettingsCommitService(
         IUserLocaleStateService localeStateService,
+        IUserThemeStateService themeStateService,
         IVocabularySaveModePreferenceService saveModePreferenceService,
         IVocabularyStoragePreferenceService storagePreferenceService,
         IVocabularyStorageModeProvider storageModeProvider,
         IAiRuntimeSettingsService aiRuntimeSettingsService)
     {
         _localeStateService = localeStateService;
+        _themeStateService = themeStateService;
         _saveModePreferenceService = saveModePreferenceService;
         _storagePreferenceService = storagePreferenceService;
         _storageModeProvider = storageModeProvider;
@@ -65,6 +68,8 @@ public sealed class MiniAppSettingsCommitService
                     _storagePreferenceService.SupportedModes));
         }
 
+        var normalizedThemeMode = AppearanceConstants.NormalizeThemeMode(request.ThemeMode);
+
         if (!_aiRuntimeSettingsService.TryNormalizeProvider(request.AiProvider, out var provider))
         {
             return MiniAppSettingsCommitResult.Fail(
@@ -98,6 +103,7 @@ public sealed class MiniAppSettingsCommitService
 
         var persistedSaveMode = await _saveModePreferenceService.SetModeAsync(scope, saveMode, cancellationToken);
         var persistedStorageMode = await _storagePreferenceService.SetModeAsync(scope, storageMode, cancellationToken);
+        var persistedThemeMode = await _themeStateService.SetThemeModeAsync(scope.Channel, scope.UserId, normalizedThemeMode, cancellationToken);
         _storageModeProvider.SetMode(persistedStorageMode);
 
         var persistedProvider = await _aiRuntimeSettingsService.SetProviderAsync(scope, provider, cancellationToken);
@@ -130,6 +136,8 @@ public sealed class MiniAppSettingsCommitService
                 _saveModePreferenceService.SupportedModes,
                 _storageModeProvider.ToText(persistedStorageMode),
                 _storagePreferenceService.SupportedModes,
+                persistedThemeMode,
+                AppearanceConstants.SupportedThemeModes,
                 persistedProvider,
                 _aiRuntimeSettingsService.SupportedProviders,
                 persistedModel,

@@ -32,6 +32,7 @@ describe('hasUnsavedSettingsChanges', () => {
     locale: 'uk',
     saveMode: 'ask',
     storageMode: 'graph',
+    themeMode: 'system',
     aiProvider: 'openai',
     aiModel: 'gpt-4.1-mini',
   }
@@ -41,6 +42,7 @@ describe('hasUnsavedSettingsChanges', () => {
       locale: 'uk',
       saveMode: 'ask',
       storageMode: 'graph',
+      themeMode: 'system',
       aiProvider: 'openai',
       aiModel: 'gpt-4.1-mini',
       apiKeyDraft: '',
@@ -61,6 +63,10 @@ describe('hasUnsavedSettingsChanges', () => {
     expect(hasUnsavedSettingsChanges(snapshot, draft({ locale: 'en' }))).toBe(true)
   })
 
+  it('returns true when theme changes', () => {
+    expect(hasUnsavedSettingsChanges(snapshot, draft({ themeMode: 'dark' }))).toBe(true)
+  })
+
   it('returns true when api key was entered', () => {
     expect(hasUnsavedSettingsChanges(snapshot, draft({ apiKeyDraft: 'secret-key' }))).toBe(true)
   })
@@ -72,6 +78,8 @@ describe('hasUnsavedSettingsChanges', () => {
 
 describe('applyTelegramClosingConfirmation', () => {
   it('enables and sets compatibility flag', () => {
+    const postEvent = vi.fn()
+    window.Telegram = { WebView: { postEvent } }
     const webApp = {
       enableClosingConfirmation: vi.fn(),
       disableClosingConfirmation: vi.fn(),
@@ -83,9 +91,12 @@ describe('applyTelegramClosingConfirmation', () => {
     expect(webApp.enableClosingConfirmation).toHaveBeenCalledOnce()
     expect(webApp.disableClosingConfirmation).not.toHaveBeenCalled()
     expect(webApp.isClosingConfirmationEnabled).toBe(true)
+    expect(postEvent).toHaveBeenCalledWith('web_app_setup_closing_behavior', false, { need_confirmation: true })
   })
 
   it('disables and sets compatibility flag', () => {
+    const postEvent = vi.fn()
+    window.Telegram = { WebView: { postEvent } }
     const webApp = {
       enableClosingConfirmation: vi.fn(),
       disableClosingConfirmation: vi.fn(),
@@ -97,6 +108,7 @@ describe('applyTelegramClosingConfirmation', () => {
     expect(webApp.disableClosingConfirmation).toHaveBeenCalledOnce()
     expect(webApp.enableClosingConfirmation).not.toHaveBeenCalled()
     expect(webApp.isClosingConfirmationEnabled).toBe(false)
+    expect(postEvent).toHaveBeenCalledWith('web_app_setup_closing_behavior', false, { need_confirmation: false })
   })
 })
 
@@ -159,13 +171,17 @@ describe('syncTelegramClosingConfirmation', () => {
 
 describe('closeTelegramMiniApp', () => {
   it('closes mini app when close API is available', () => {
+    const postEvent = vi.fn()
+    window.Telegram = { WebView: { postEvent } }
     const close = vi.fn()
     const result = closeTelegramMiniApp({ close })
     expect(result).toBe(true)
-    expect(close).toHaveBeenCalledOnce()
+    expect(close).toHaveBeenCalledWith({ return_back: true })
+    expect(postEvent).toHaveBeenCalledWith('web_app_close', false, { return_back: true })
   })
 
   it('returns false when close API is unavailable', () => {
+    delete window.Telegram
     expect(closeTelegramMiniApp({})).toBe(false)
   })
 })

@@ -23,6 +23,8 @@
 - After each review-intended push, verify that an `OPEN` `dev` -> `master` PR still exists; if not, create a new PR immediately
 - Never report "PR updated" until that post-push check confirms the PR is still `OPEN`
 - PR authoring/formatting rules: `docs/shared/01-pr-authoring-guide.md`
+- In the current shell environment (`PowerShell`), do not chain commands with `&&`; use separate commands or PowerShell-safe sequencing with `$LASTEXITCODE`
+- Do not run parallel `git` write operations in the same repo (`add`, `commit`, `merge`, `rebase`), because they can collide on `.git/index.lock`
 
 **Commit convention:** `feat` / `fix` / `refactor` / `test` / `docs` / `chore`
 

@@ -3,7 +3,8 @@
 export interface SettingChoiceOption {
   value: string
   title: string
-  description: string
+  description?: string
+  icon?: string
 }
 
 export type IntegrationTone = 'ok' | 'warn' | 'error'
@@ -105,12 +106,12 @@ export function buildLanguageChoices(locale: AppLocale): SettingChoiceOption[] {
       {
         value: 'uk',
         title: 'Українська',
-        description: 'Базова мова Wave 1. Увесь головний UX доступний українською.',
+        icon: '🇺🇦',
       },
       {
         value: 'en',
         title: 'English',
-        description: 'Альтернативна локалізація для двомовного сценарію та перевірок.',
+        icon: '🇬🇧',
       },
     ]
   }
@@ -119,12 +120,52 @@ export function buildLanguageChoices(locale: AppLocale): SettingChoiceOption[] {
     {
       value: 'uk',
       title: 'Ukrainian',
-      description: 'Primary Wave 1 language with the fullest localized UX.',
+      icon: '🇺🇦',
     },
     {
       value: 'en',
       title: 'English',
-      description: 'Alternate interface copy for bilingual usage and checks.',
+      icon: '🇬🇧',
+    },
+  ]
+}
+
+export function buildThemeChoices(locale: AppLocale): SettingChoiceOption[] {
+  if (locale === 'uk') {
+    return [
+      {
+        value: 'system',
+        title: 'Як у Telegram',
+        icon: '✳',
+      },
+      {
+        value: 'light',
+        title: 'Світла',
+        icon: '☀',
+      },
+      {
+        value: 'dark',
+        title: 'Темна',
+        icon: '☾',
+      },
+    ]
+  }
+
+  return [
+    {
+      value: 'system',
+      title: 'Match Telegram',
+      icon: '✳',
+    },
+    {
+      value: 'light',
+      title: 'Light',
+      icon: '☀',
+    },
+    {
+      value: 'dark',
+      title: 'Dark',
+      icon: '☾',
     },
   ]
 }

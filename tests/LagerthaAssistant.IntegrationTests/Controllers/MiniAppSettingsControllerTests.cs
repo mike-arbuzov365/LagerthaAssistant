@@ -46,6 +46,7 @@ public sealed class MiniAppSettingsControllerTests
                 Locale: "en",
                 SaveMode: "ask",
                 StorageMode: "graph",
+                ThemeMode: AppearanceConstants.ThemeModeSystem,
                 AiProvider: "openai",
                 AiModel: "gpt-4.1-mini",
                 Channel: "telegram",
@@ -96,6 +97,7 @@ public sealed class MiniAppSettingsControllerTests
                 Locale: "uk",
                 SaveMode: "ask",
                 StorageMode: "graph",
+                ThemeMode: AppearanceConstants.ThemeModeSystem,
                 AiProvider: "openai",
                 AiModel: "gpt-4.1-mini",
                 Channel: "telegram",
@@ -136,6 +138,7 @@ public sealed class MiniAppSettingsControllerTests
                 Locale: "en",
                 SaveMode: "ask",
                 StorageMode: "graph",
+                ThemeMode: AppearanceConstants.ThemeModeSystem,
                 AiProvider: "openai",
                 AiModel: "gpt-4.1-mini",
                 Channel: "telegram",
@@ -166,6 +169,7 @@ public sealed class MiniAppSettingsControllerTests
                 Locale: "en",
                 SaveMode: "ask",
                 StorageMode: "graph",
+                ThemeMode: AppearanceConstants.ThemeModeSystem,
                 AiProvider: "openai",
                 AiModel: "gpt-4.1-mini",
                 Channel: "telegram",
@@ -195,6 +199,7 @@ public sealed class MiniAppSettingsControllerTests
                 Locale: "en",
                 SaveMode: "ask",
                 StorageMode: "graph",
+                ThemeMode: AppearanceConstants.ThemeModeSystem,
                 AiProvider: "openai",
                 AiModel: "gpt-4.1-mini",
                 Channel: "telegram"),
@@ -227,6 +232,7 @@ public sealed class MiniAppSettingsControllerTests
                 Locale: "en",
                 SaveMode: "ask",
                 StorageMode: "graph",
+                ThemeMode: AppearanceConstants.ThemeModeSystem,
                 AiProvider: "openai",
                 AiModel: "gpt-4.1-mini",
                 Channel: "telegram",
@@ -245,6 +251,7 @@ public sealed class MiniAppSettingsControllerTests
     {
         return new MiniAppSettingsCommitService(
             localeService,
+            new FakeUserThemeStateService(),
             new FakeVocabularySaveModePreferenceService(),
             new FakeVocabularyStoragePreferenceService(),
             new FakeVocabularyStorageModeProvider(),
@@ -335,6 +342,27 @@ public sealed class MiniAppSettingsControllerTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new UserLocaleStateResult(SetLocaleResult, IsInitialized: false, IsSwitched: false));
+        }
+    }
+
+    private sealed class FakeUserThemeStateService : IUserThemeStateService
+    {
+        public string StoredThemeMode { get; set; } = AppearanceConstants.ThemeModeSystem;
+
+        public Task<string> GetStoredThemeModeAsync(
+            string channel,
+            string userId,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(StoredThemeMode);
+
+        public Task<string> SetThemeModeAsync(
+            string channel,
+            string userId,
+            string themeMode,
+            CancellationToken cancellationToken = default)
+        {
+            StoredThemeMode = AppearanceConstants.NormalizeThemeMode(themeMode);
+            return Task.FromResult(StoredThemeMode);
         }
     }
 
