@@ -22,6 +22,9 @@
 - Sync `dev` with `origin/master` before opening the next PR if `master` moved
 - After each review-intended push, verify that an `OPEN` `dev` -> `master` PR still exists; if not, create a new PR immediately
 - Never report "PR updated" until that post-push check confirms the PR is still `OPEN`
+- Merge `dev` -> `master` PRs with **Create a merge commit** only
+- Do not use **Squash and merge** or **Rebase and merge** for the long-lived `dev` branch
+- Immediately after every merge to `master`, sync `dev` with `origin/master` before starting the next task
 - PR authoring/formatting rules: `docs/shared/01-pr-authoring-guide.md`
 - In the current shell environment (`PowerShell`), do not chain commands with `&&`; use separate commands or PowerShell-safe sequencing with `$LASTEXITCODE`
 - Do not run parallel `git` write operations in the same repo (`add`, `commit`, `merge`, `rebase`), because they can collide on `.git/index.lock`
@@ -35,6 +38,31 @@ git commit -m "feat: QuestionHandler with conversation history (M1 #013)"
 git push origin dev
 # → open PR dev → master
 ```
+
+### Merge Runbook
+
+Use this exact sequence:
+
+```bash
+# 1. Work only in dev
+git push origin dev
+
+# 2. Open/update PR dev -> master
+
+# 3. In GitHub, merge with:
+#    Create a merge commit
+
+# 4. Sync dev back with master immediately after merge
+git fetch origin
+git checkout dev
+git merge origin/master
+git push origin dev
+```
+
+Why:
+- `Squash and merge` creates a new commit in `master` that `dev` does not contain
+- that makes `master` appear "ahead" even in solo development
+- the next PR then hits unnecessary conflicts caused by the merge strategy itself
 
 ---
 
