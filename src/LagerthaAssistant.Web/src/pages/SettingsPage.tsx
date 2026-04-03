@@ -796,6 +796,7 @@ export function SettingsPage() {
     }
 
     let cancelled = false
+    const statusRefreshStartedAt = performance.now()
 
     void (async () => {
       try {
@@ -824,6 +825,7 @@ export function SettingsPage() {
           hasWebApp: Boolean(resolveTelegramMiniAppBridge()),
           locale,
           details: {
+            statusRefreshMs: Math.round(performance.now() - statusRefreshStartedAt),
             graphAuthenticated: currentGraphStatus.isAuthenticated,
             notionVocabularyEnabled: notionStatus.notionVocabulary.enabled,
             notionFoodEnabled: notionStatus.notionFood.enabled,
@@ -847,6 +849,9 @@ export function SettingsPage() {
           hasInitData: Boolean(host?.initData),
           hasWebApp: Boolean(resolveTelegramMiniAppBridge()),
           locale,
+          details: {
+            statusRefreshMs: Math.round(performance.now() - statusRefreshStartedAt),
+          },
         })
       }
     })()

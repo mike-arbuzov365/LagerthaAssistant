@@ -27,6 +27,11 @@ import type {
   SessionBootstrapResponse,
 } from './contracts'
 
+export interface SessionBootstrapResult {
+  payload: SessionBootstrapResponse
+  serverTiming: Record<string, number>
+}
+
 const JSON_HEADERS = {
   'Content-Type': 'application/json',
 }
@@ -45,9 +50,29 @@ export async function verifyMiniAppInitData(request: MiniAppVerifyRequest): Prom
   return response.json() as Promise<MiniAppVerifyResponse>
 }
 
+function parseServerTiming(raw: string | null): Record<string, number> {
+  if (!raw) {
+    return {}
+  }
+
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .reduce<Record<string, number>>((acc, entry) => {
+      const [namePart, ...parts] = entry.split(';').map((part) => part.trim())
+      const durPart = parts.find((part) => part.startsWith('dur='))
+      const duration = durPart ? Number.parseFloat(durPart.slice(4)) : Number.NaN
+      if (namePart && Number.isFinite(duration)) {
+        acc[namePart] = duration
+      }
+      return acc
+    }, {})
+}
+
 export async function getSessionBootstrap(
   request: SessionBootstrapRequest,
-): Promise<SessionBootstrapResponse> {
+): Promise<SessionBootstrapResult> {
   const response = await fetch('/api/session/bootstrap', {
     method: 'POST',
     headers: JSON_HEADERS,
@@ -63,7 +88,10 @@ export async function getSessionBootstrap(
     throw new Error(`Bootstrap failed: ${response.status}`)
   }
 
-  return response.json() as Promise<SessionBootstrapResponse>
+  return {
+    payload: await response.json() as SessionBootstrapResponse,
+    serverTiming: parseServerTiming(response.headers.get('Server-Timing')),
+  }
 }
 
 export async function getMiniAppPolicy(): Promise<MiniAppPolicyResponse> {

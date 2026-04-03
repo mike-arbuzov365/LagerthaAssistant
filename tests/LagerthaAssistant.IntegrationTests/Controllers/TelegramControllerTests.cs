@@ -4139,7 +4139,7 @@ public sealed class TelegramControllerTests
         public TelegramInlineKeyboardMarkup BuildSettingsLaunchKeyboard(string locale)
             => new(
             [
-                [new TelegramInlineKeyboardButton("Open settings", Url: "https://t.me/LagerthaAssistantBot?startapp=settings&mode=fullscreen")],
+                [new TelegramInlineKeyboardButton("Open settings", Url: "https://t.me/LagerthaAssistantBot?startapp=settings&mode=compact")],
                 [new TelegramInlineKeyboardButton("Legacy", CallbackDataConstants.Settings.Legacy)]
             ]);
 

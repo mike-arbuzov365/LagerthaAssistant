@@ -195,7 +195,7 @@ static string? ResolveMiniAppSettingsDirectUrl(IConfiguration configuration)
         return null;
     }
 
-    return $"https://t.me/{botUsername}?startapp=settings&mode=fullscreen";
+    return $"https://t.me/{botUsername}?startapp=settings&mode=compact";
 }
 
 static bool TryNormalizeHttpsUrl(string? raw, out string value)

@@ -256,19 +256,11 @@ public sealed class SessionController : ControllerBase
 
         var notionStatus = BuildFallbackNotionStatus();
         var notionStopwatch = Stopwatch.StartNew();
-        try
-        {
-            notionStatus = await BuildNotionStatusAsync(cancellationToken);
-        }
-        catch
-        {
-            // Best-effort bootstrap enrichment only.
-        }
         notionStopwatch.Stop();
         totalStopwatch.Stop();
 
         _logger.LogInformation(
-            "Mini App settings bootstrap prepared. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, AiMs={AiMs}, NotionMs={NotionMs}, TotalMs={TotalMs}, AiProvider={AiProvider}, ThemeMode={ThemeMode}",
+            "Mini App settings bootstrap prepared. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, AiMs={AiMs}, NotionMs={NotionMs}, TotalMs={TotalMs}, AiProvider={AiProvider}, ThemeMode={ThemeMode}, IntegrationStatusDeferred={IntegrationStatusDeferred}",
             scope.Channel,
             scope.UserId,
             scope.ConversationId,
@@ -276,7 +268,8 @@ public sealed class SessionController : ControllerBase
             notionStopwatch.ElapsedMilliseconds,
             totalStopwatch.ElapsedMilliseconds,
             provider,
-            themeMode);
+            themeMode,
+            true);
 
         return new MiniAppSettingsBootstrapResponse(
             provider,

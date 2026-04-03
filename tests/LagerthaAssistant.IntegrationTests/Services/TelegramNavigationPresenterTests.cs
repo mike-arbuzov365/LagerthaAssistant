@@ -34,20 +34,18 @@ public sealed class TelegramNavigationPresenterTests
     }
 
     [Fact]
-    public void BuildSettingsLaunchKeyboard_ShouldExposeCompactAndFullscreenOptions_WhenConfigured()
+    public void BuildSettingsLaunchKeyboard_ShouldPreferDirectCompactLaunch_WhenConfigured()
     {
         var sut = new TelegramNavigationPresenter(
             new LocalizationService(),
             "https://lagertha.example.com/miniapp/settings",
-            "https://t.me/LagerthaAssistantBot?startapp=settings&mode=fullscreen");
+            "https://t.me/LagerthaAssistantBot?startapp=settings&mode=compact");
 
         var keyboard = sut.BuildSettingsLaunchKeyboard("en");
 
-        Assert.NotNull(keyboard.InlineKeyboard[0][0].WebApp);
-        Assert.Equal("https://lagertha.example.com/miniapp/settings", keyboard.InlineKeyboard[0][0].WebApp!.Url);
-        Assert.Equal("https://t.me/LagerthaAssistantBot?startapp=settings&mode=fullscreen", keyboard.InlineKeyboard[1][0].Url);
-        Assert.Null(keyboard.InlineKeyboard[1][0].WebApp);
-        Assert.Equal(CallbackDataConstants.Settings.Legacy, keyboard.InlineKeyboard[2][0].CallbackData);
+        Assert.Equal("https://t.me/LagerthaAssistantBot?startapp=settings&mode=compact", keyboard.InlineKeyboard[0][0].Url);
+        Assert.Null(keyboard.InlineKeyboard[0][0].WebApp);
+        Assert.Equal(CallbackDataConstants.Settings.Legacy, keyboard.InlineKeyboard[1][0].CallbackData);
     }
 
     [Fact]

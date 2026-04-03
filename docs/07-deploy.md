@@ -87,7 +87,7 @@ Graph__TenantId=...
 Lagertha__AdminUserId=...
 ```
 
-For direct Mini App Telegram `Settings` in Lagertha, configure either `Telegram__MiniAppSettingsDirectUrl` or `Telegram__BotUsername`. The derived main Mini App link now uses `?startapp=settings&mode=fullscreen`, while the regular compact launch continues to use `Telegram__MiniAppSettingsUrl` as a `web_app` button, so the bot should also have its Main Mini App configured in BotFather.
+For direct Mini App Telegram `Settings` in Lagertha, configure either `Telegram__MiniAppSettingsDirectUrl` or `Telegram__BotUsername`. The derived main Mini App link now uses `?startapp=settings&mode=compact`, while the app itself requests fullscreen only on mobile clients after launch. This keeps desktop launch compact while preserving the mobile fullscreen path, so the bot should also have its Main Mini App configured in BotFather.
 
 **BaguetteDesign (Railway):**
 ```
@@ -112,7 +112,7 @@ Before opening BotFather, make sure:
 
 1. Railway variables are configured:
    - `Telegram__BotUsername=LagerthaAssistantBot`
-   - optionally `Telegram__MiniAppSettingsDirectUrl=https://t.me/LagerthaAssistantBot?startapp=settings&mode=fullscreen`
+   - optionally `Telegram__MiniAppSettingsDirectUrl=https://t.me/LagerthaAssistantBot?startapp=settings&mode=compact`
 2. The public Mini App URL opens successfully:
    - `https://lagertha-prod.up.railway.app/miniapp/settings`
 3. The service has been redeployed after env var changes.
@@ -136,7 +136,7 @@ Before opening BotFather, make sure:
 3. Confirm that the launch-entry message appears
 4. Confirm that the launch-entry prefers the direct Mini App direct flow instead of the old fallback button
 5. Test the direct link manually:
-   - `https://t.me/LagerthaAssistantBot?startapp=settings&mode=fullscreen`
+   - `https://t.me/LagerthaAssistantBot?startapp=settings&mode=compact`
 
 ### Expected Result
 
@@ -154,7 +154,7 @@ Check these in order:
 4. The latest `master` deploy is active on Railway
 5. Telegram client cache was refreshed by reopening the chat or running `/start`
 
-If all five are correct and fullscreen still does not happen, investigate Telegram client/version behavior next rather than changing CSS or frontend layout first.
+If all five are correct and the desktop client still opens in a larger-than-expected surface, investigate Telegram client/version behavior next rather than changing CSS or frontend layout first. The app now intentionally uses `mode=compact` for direct launch and relies on the mobile Telegram bridge to request fullscreen only on handheld clients.
 
 ---
 

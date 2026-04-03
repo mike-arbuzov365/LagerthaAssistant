@@ -171,23 +171,22 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
     {
         var rows = new List<IReadOnlyList<TelegramInlineKeyboardButton>>();
 
-        if (!string.IsNullOrWhiteSpace(_miniAppSettingsUrl))
+        if (!string.IsNullOrWhiteSpace(_miniAppSettingsDirectUrl))
+        {
+            rows.Add([
+                UrlButton(
+                    locale,
+                    "settings.launch_open",
+                    _miniAppSettingsDirectUrl)
+            ]);
+        }
+        else if (!string.IsNullOrWhiteSpace(_miniAppSettingsUrl))
         {
             rows.Add([
                 WebAppButton(
                     locale,
                     "settings.launch_open",
                     _miniAppSettingsUrl)
-            ]);
-        }
-
-        if (!string.IsNullOrWhiteSpace(_miniAppSettingsDirectUrl))
-        {
-            rows.Add([
-                UrlButton(
-                    locale,
-                    "settings.launch_open_fullscreen",
-                    _miniAppSettingsDirectUrl)
             ]);
         }
 
