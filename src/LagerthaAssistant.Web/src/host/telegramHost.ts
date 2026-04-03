@@ -187,9 +187,9 @@ function readTelegramLaunchParams(): TelegramLaunchParams | null {
 }
 
 function requestPreferredViewport(webApp: TelegramWebApp, platform: HostPlatform) {
-  webApp.expand()
-
   if (platform === 'android' || platform === 'ios') {
+    webApp.expand()
+
     try {
       webApp.requestFullscreen?.()
     } catch {

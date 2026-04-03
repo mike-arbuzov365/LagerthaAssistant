@@ -17,7 +17,7 @@ import type { GraphDeviceLoginChallengeResponse, MiniAppSettingsCommitResponse }
 import { emitMiniAppDiagnostic } from '../lib/miniAppDiagnostics'
 import type { AppLocale } from '../lib/locale'
 import { getScopedUserId } from '../lib/settings-utils'
-import { normalizeThemeMode, type AppThemeMode } from '../lib/theme'
+import { normalizeThemeMode, resolveAppliedTheme, type AppThemeMode } from '../lib/theme'
 import {
   applyTelegramClosingConfirmation,
   buildUnsavedChangesPrompt,
@@ -131,84 +131,84 @@ interface CopyPack {
 
 const copyByLocale: Record<AppLocale, CopyPack> = {
   uk: {
-    screenTitle: 'ÐÐ°Ð»Ð°ÑˆÑ‚ÑƒÐ²Ð°Ð½Ð½Ñ Lagertha',
-    screenSubtitle: 'Ð„Ð´Ð¸Ð½Ð¸Ð¹ ÐµÐºÑ€Ð°Ð½ Ð´Ð»Ñ Ð¼Ð¾Ð²Ð¸, AI Ñ‚Ð° Ñ–Ð½Ñ‚ÐµÐ³Ñ€Ð°Ñ†Ñ–Ð¹.',
-    online: 'ÐžÐ½Ð»Ð°Ð¹Ð½',
-    offline: 'ÐžÑ„Ð»Ð°Ð¹Ð½',
-    noBootstrap: 'ÐÐµÐ¼Ð°Ñ” Ð´Ð°Ð½Ð¸Ñ… bootstrap.',
-    loadingAi: 'Ð—Ð°Ð²Ð°Ð½Ñ‚Ð°Ð¶ÐµÐ½Ð½Ñ AI-Ð½Ð°Ð»Ð°ÑˆÑ‚ÑƒÐ²Ð°Ð½ÑŒâ€¦',
-    loadingIntegrations: 'Ð—Ð°Ð²Ð°Ð½Ñ‚Ð°Ð¶ÐµÐ½Ð½Ñ ÑÑ‚Ð°Ñ‚ÑƒÑÑ–Ð² Ñ–Ð½Ñ‚ÐµÐ³Ñ€Ð°Ñ†Ñ–Ð¹â€¦',
-    loadingModels: 'ÐžÐ½Ð¾Ð²Ð»ÑŽÑ”Ð¼Ð¾ ÑÐ¿Ð¸ÑÐ¾Ðº Ð¼Ð¾Ð´ÐµÐ»ÐµÐ¹â€¦',
-    retry: 'Ð¡Ð¿Ñ€Ð¾Ð±ÑƒÐ²Ð°Ñ‚Ð¸ Ð·Ð½Ð¾Ð²Ñƒ',
-    generalSection: 'Ð—Ð°Ð³Ð°Ð»ÑŒÐ½Ñ–',
+    screenTitle: 'Налаштування Lagertha',
+    screenSubtitle: 'Єдиний екран для мови, AI та інтеграцій.',
+    online: 'Онлайн',
+    offline: 'Офлайн',
+    noBootstrap: 'Немає bootstrap-даних.',
+    loadingAi: 'Завантаження AI-налаштувань…',
+    loadingIntegrations: 'Завантаження статусів інтеграцій…',
+    loadingModels: 'Оновлюємо список моделей…',
+    retry: 'Спробувати знову',
+    generalSection: 'Загальні',
     aiSection: 'AI',
-    integrationsSection: 'Ð†Ð½Ñ‚ÐµÐ³Ñ€Ð°Ñ†Ñ–Ñ—',
-    generalIntro: 'Ð‘Ð°Ð·Ð¾Ð²Ñ– Ð¿Ñ€Ð°Ð²Ð¸Ð»Ð° Ñ–Ð½Ñ‚ÐµÑ€Ñ„ÐµÐ¹ÑÑƒ Ñ‚Ð° Ð·Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ð½Ñ Ð´Ð»Ñ Ð¿Ð¾Ñ‚Ð¾Ñ‡Ð½Ð¾Ñ— ÑÐµÑÑ–Ñ—.',
-    aiIntro: 'ÐŸÑ€Ð¾Ð²Ð°Ð¹Ð´ÐµÑ€, Ð¼Ð¾Ð´ÐµÐ»ÑŒ Ñ‚Ð° ÑÐµÐºÑ€ÐµÑ‚Ð¸ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ñƒ Ð´Ð»Ñ AI-Ñ‡Ð°ÑÑ‚Ð¸Ð½Ð¸ Lagertha.',
-    integrationsIntro: 'Ð¡Ñ‚Ð°Ñ‚ÑƒÑÐ¸ Ð¿Ñ–Ð´ÐºÐ»ÑŽÑ‡ÐµÐ½ÑŒ Ñ– ÑÐµÑ€Ð²Ñ–ÑÐ½Ñ– Ð´Ñ–Ñ— Ð±ÐµÐ· Ð²Ñ‚Ñ€Ð°Ñ‚Ð¸ Telegram-Ñ„ÑƒÐ½ÐºÑ†Ñ–Ð¾Ð½Ð°Ð»Ñƒ.',
-    languageLabel: 'ÐœÐ¾Ð²Ð° Ñ–Ð½Ñ‚ÐµÑ€Ñ„ÐµÐ¹ÑÑƒ',
-    themeLabel: 'Ð¢ÐµÐ¼Ð°',
-    saveModeLabel: 'Ð ÐµÐ¶Ð¸Ð¼ Ð·Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ð½Ñ',
-    storageModeLabel: 'Ð ÐµÐ¶Ð¸Ð¼ ÑÑ…Ð¾Ð²Ð¸Ñ‰Ð°',
-    providerLabel: 'ÐŸÑ€Ð¾Ð²Ð°Ð¹Ð´ÐµÑ€',
-    modelLabel: 'ÐœÐ¾Ð´ÐµÐ»ÑŒ',
-    apiKeyLabel: 'API ÐºÐ»ÑŽÑ‡',
-    apiKeyPlaceholder: 'Ð’Ð²ÐµÐ´Ñ–Ñ‚ÑŒ Ð½Ð¾Ð²Ð¸Ð¹ ÐºÐ»ÑŽÑ‡ (Ð½ÐµÐ¾Ð±Ð¾Ð²Ê¼ÑÐ·ÐºÐ¾Ð²Ð¾)',
-    languageHint: 'Ð’Ð¸Ð±ÐµÑ€Ñ–Ñ‚ÑŒ Ð¼Ð¾Ð²Ñƒ, ÑÐºÐ¾ÑŽ Lagertha Ð¿Ð¾ÐºÐ°Ð¶Ðµ Mini App Ñ‚Ð° Ð¾ÑÐ½Ð¾Ð²Ð½Ñ– Telegram-Ð¼ÐµÐ½ÑŽ.',
-    themeHint: 'ÐžÐ±ÐµÑ€Ñ–Ñ‚ÑŒ, Ñ‡Ð¸ Ð¼Ð°ÑŽÑ‚ÑŒ Ð½Ð°Ð»Ð°ÑˆÑ‚ÑƒÐ²Ð°Ð½Ð½Ñ Ð½Ð°ÑÐ»Ñ–Ð´ÑƒÐ²Ð°Ñ‚Ð¸ Ñ‚ÐµÐ¼Ñƒ Telegram, Ñ‡Ð¸ Ð±ÑƒÑ‚Ð¸ Ð·Ð°Ð²Ð¶Ð´Ð¸ ÑÐ²Ñ–Ñ‚Ð»Ð¸Ð¼Ð¸ Ð°Ð±Ð¾ Ñ‚ÐµÐ¼Ð½Ð¸Ð¼Ð¸.',
-    saveModeHint: 'Ð’Ð¸Ð·Ð½Ð°Ñ‡Ð°Ñ”, ÐºÐ¾Ð»Ð¸ Ð±Ð¾Ñ‚ Ð·Ð°Ð¿Ð¸ÑÑƒÑ” Ð´Ð°Ð½Ñ– Ñƒ ÑÑ…Ð¾Ð²Ð¸Ñ‰Ðµ.',
-    storageModeHint: 'Ð”Ðµ Ð·Ð±ÐµÑ€Ñ–Ð³Ð°Ñ”Ñ‚ÑŒÑÑ Ñ€Ð¾Ð±Ð¾Ñ‡Ð¸Ð¹ ÐºÐ¾Ð½Ñ‚ÐµÐºÑÑ‚ Ñ†Ñ–Ñ”Ñ— Ñ…Ð²Ð¸Ð»Ñ– Ð½Ð°Ð»Ð°ÑˆÑ‚ÑƒÐ²Ð°Ð½ÑŒ.',
-    providerHint: 'ÐžÑÐ½Ð¾Ð²Ð½Ð¸Ð¹ AI-Ð¿Ñ€Ð¾Ð²Ð°Ð¹Ð´ÐµÑ€ Ð´Ð»Ñ Ð²Ñ–Ð´Ð¿Ð¾Ð²Ñ–Ð´ÐµÐ¹ Ñ– Ð´Ð¾Ð¿Ð¾Ð¼Ñ–Ð¶Ð½Ð¸Ñ… ÑÑ†ÐµÐ½Ð°Ñ€Ñ–Ñ—Ð².',
-    modelHint: 'Ð¡Ð¿Ð¸ÑÐ¾Ðº Ð¼Ð¾Ð´ÐµÐ»ÐµÐ¹ Ð¿Ñ–Ð´Ð»Ð°ÑˆÑ‚Ð¾Ð²ÑƒÑ”Ñ‚ÑŒÑÑ Ð¿Ñ–Ð´ Ð²Ð¸Ð±Ñ€Ð°Ð½Ð¾Ð³Ð¾ Ð¿Ñ€Ð¾Ð²Ð°Ð¹Ð´ÐµÑ€Ð°.',
-    apiKeyHint: 'ÐšÑ€Ð¸Ñ‚Ð¸Ñ‡Ð½Ðµ Ð¿Ð¾Ð»Ðµ. ÐÐ¾Ð²Ð¸Ð¹ ÐºÐ»ÑŽÑ‡ Ð·Ð°ÑÑ‚Ð¾ÑÐ¾Ð²ÑƒÑ”Ñ‚ÑŒÑÑ Ñ‚Ñ–Ð»ÑŒÐºÐ¸ Ð¿Ñ–ÑÐ»Ñ Ð·Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ð½Ñ.',
-    removeStoredKeyLabel: 'Ð’Ð¸Ð´Ð°Ð»Ð¸Ñ‚Ð¸ Ð·Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ð¸Ð¹ ÐºÐ»ÑŽÑ‡ Ð¿Ñ€Ð¸ Ð·Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ð½Ñ–',
-    keySourceLabel: 'Ð”Ð¶ÐµÑ€ÐµÐ»Ð¾ ÐºÐ»ÑŽÑ‡Ð°',
-    keyStoredLabel: 'ÐšÐ»ÑŽÑ‡ Ñƒ ÑÑ…Ð¾Ð²Ð¸Ñ‰Ñ–',
-    modelCountLabel: 'Ð”Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾ Ð¼Ð¾Ð´ÐµÐ»ÐµÐ¹',
+    integrationsSection: 'Інтеграції',
+    generalIntro: 'Базові правила інтерфейсу та збереження для поточної сесії.',
+    aiIntro: 'Провайдер, модель та секрети доступу для AI-частини Lagertha.',
+    integrationsIntro: 'Статуси підключень і сервісні дії без втрати Telegram-функціоналу.',
+    languageLabel: 'Мова інтерфейсу',
+    themeLabel: 'Тема',
+    saveModeLabel: 'Режим збереження',
+    storageModeLabel: 'Режим сховища',
+    providerLabel: 'Провайдер',
+    modelLabel: 'Модель',
+    apiKeyLabel: 'API ключ',
+    apiKeyPlaceholder: 'Введіть новий ключ (необов’язково)',
+    languageHint: 'Виберіть мову, якою Lagertha покаже Mini App та основні Telegram-меню.',
+    themeHint: 'Оберіть, чи мають налаштування наслідувати тему Telegram, чи бути завжди світлими або темними.',
+    saveModeHint: 'Визначає, коли бот записує дані у сховище.',
+    storageModeHint: 'Де зберігається робочий контекст поточної хвилі налаштувань.',
+    providerHint: 'Основний AI-провайдер для відповідей і допоміжних сценаріїв.',
+    modelHint: 'Список моделей підлаштовується під вибраного провайдера.',
+    apiKeyHint: 'Критичне поле. Новий ключ застосовується лише після збереження.',
+    removeStoredKeyLabel: 'Видалити збережений ключ при збереженні',
+    keySourceLabel: 'Джерело ключа',
+    keyStoredLabel: 'Ключ у сховищі',
+    modelCountLabel: 'Доступно моделей',
     oneDriveStatusLabel: 'OneDrive / Graph',
-    oneDriveTokenLabel: 'Ð¢Ð¾ÐºÐµÐ½ Ð´Ð¾',
+    oneDriveTokenLabel: 'Токен до',
     notionLabel: 'Notion',
-    notionVocabularyLabel: 'Ð¡Ð»Ð¾Ð²Ð½Ð¸Ðº',
+    notionVocabularyLabel: 'Словник',
     notionFoodLabel: 'Food',
-    oneDriveSubtitle: 'Ð¡Ð¸Ð½Ñ…Ñ€Ð¾Ð½Ñ–Ð·Ð°Ñ†Ñ–Ñ Ñ„Ð°Ð¹Ð»Ñ–Ð², Ñ‡ÐµÑ€Ð³ Ñ‚Ð° Ñ–Ð½Ð´ÐµÐºÑÑƒ Ð·Ð½Ð°Ð½ÑŒ.',
-    notionSubtitle: 'ÐœÐ°Ð¹Ð±ÑƒÑ‚Ð½Ñ–Ð¹ Ñ†ÐµÐ½Ñ‚Ñ€ Ñ–Ð½Ñ‚ÐµÐ³Ñ€Ð°Ñ†Ñ–Ð¹ Ð´Ð»Ñ ÐºÑ–Ð»ÑŒÐºÐ¾Ñ… Ð¿Ñ€Ð¾ÑÑ‚Ð¾Ñ€Ñ–Ð² Ñ– Ð±Ð¾Ñ‚Ñ–Ð².',
-    connected: 'ÐŸÑ–Ð´ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¾',
-    disconnected: 'ÐÐµ Ð¿Ñ–Ð´ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¾',
-    enabled: 'Ð£Ð²Ñ–Ð¼ÐºÐ½ÐµÐ½Ð¾',
-    disabled: 'Ð’Ð¸Ð¼ÐºÐ½ÐµÐ½Ð¾',
-    yes: 'Ð¢Ð°Ðº',
-    no: 'ÐÑ–',
-    notConfigured: 'ÐÐµ Ð½Ð°Ð»Ð°ÑˆÑ‚Ð¾Ð²Ð°Ð½Ð¾',
-    noData: 'ÐÐµÐ¼Ð°Ñ”',
-    saveChanges: 'Ð—Ð±ÐµÑ€ÐµÐ³Ñ‚Ð¸ Ð·Ð¼Ñ–Ð½Ð¸',
-    saving: 'Ð—Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ð½Ñâ€¦',
-    unsavedChanges: 'Ð„ Ð½ÐµÐ·Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ñ– Ð·Ð¼Ñ–Ð½Ð¸',
-    allSaved: 'Ð£ÑÑ– Ð·Ð¼Ñ–Ð½Ð¸ Ð·Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ð¾',
-    noChanges: 'ÐÐµÐ¼Ð°Ñ” Ð½Ð¾Ð²Ð¸Ñ… Ð·Ð¼Ñ–Ð½ Ð´Ð»Ñ Ð·Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ð½Ñ.',
-    saveSuccess: 'ÐÐ°Ð»Ð°ÑˆÑ‚ÑƒÐ²Ð°Ð½Ð½Ñ Ð·Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ð¾.',
-    offlineError: 'ÐÐµÐ¼Ð°Ñ” Ð¼ÐµÑ€ÐµÐ¶Ñ–. Ð—Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ð½Ñ Ð½ÐµÐ´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ðµ.',
-    errorPrefix: 'ÐŸÐ¾Ð¼Ð¸Ð»ÐºÐ°',
-    loadErrorPrefix: 'ÐÐµ Ð²Ð´Ð°Ð»Ð¾ÑÑ Ð·Ð°Ð²Ð°Ð½Ñ‚Ð°Ð¶Ð¸Ñ‚Ð¸ Ð´Ð°Ð½Ñ–',
-    refreshStatus: 'ÐžÐ½Ð¾Ð²Ð¸Ñ‚Ð¸ ÑÑ‚Ð°Ñ‚ÑƒÑ',
-    startLogin: 'ÐŸÐ¾Ñ‡Ð°Ñ‚Ð¸ Ð²Ñ…Ñ–Ð´',
-    finishLogin: 'Ð—Ð°Ð²ÐµÑ€ÑˆÐ¸Ñ‚Ð¸ Ð²Ñ…Ñ–Ð´',
-    logout: 'Ð’Ð¸Ð¹Ñ‚Ð¸',
-    serviceActions: 'Ð¡ÐµÑ€Ð²Ñ–ÑÐ½Ñ– Ð´Ñ–Ñ—',
-    serviceActionsHint: 'ÐžÐ±ÐµÑ€ÐµÐ¶Ð½Ñ– Ð¾Ð¿ÐµÑ€Ð°Ñ†Ñ–Ñ— Ð´Ð»Ñ ÑÐ¸Ð½Ñ…Ñ€Ð¾Ð½Ñ–Ð·Ð°Ñ†Ñ–Ñ—, Ñ–Ð½Ð´ÐµÐºÑÑƒ Ñ‚Ð° ÐºÐµÑˆÑƒ.',
-    syncNow: 'Ð¡Ð¸Ð½Ñ…Ñ€Ð¾Ð½Ñ–Ð·ÑƒÐ²Ð°Ñ‚Ð¸ Ð·Ð°Ñ€Ð°Ð·',
-    rebuildIndex: 'ÐŸÐµÑ€ÐµÐ±ÑƒÐ´ÑƒÐ²Ð°Ñ‚Ð¸ Ñ–Ð½Ð´ÐµÐºÑ',
-    clearCache: 'ÐžÑ‡Ð¸ÑÑ‚Ð¸Ñ‚Ð¸ ÐºÐµÑˆ',
-    loginCodeLabel: 'ÐšÐ¾Ð´ Ð²Ñ…Ð¾Ð´Ñƒ',
-    openLoginPage: 'Ð’Ñ–Ð´ÐºÑ€Ð¸Ñ‚Ð¸ ÑÑ‚Ð¾Ñ€Ñ–Ð½ÐºÑƒ Ð²Ñ…Ð¾Ð´Ñƒ',
-    enterCodeFirst: 'Ð¡Ð¿Ð¾Ñ‡Ð°Ñ‚ÐºÑƒ Ñ–Ð½Ñ–Ñ†Ñ–ÑŽÐ¹Ñ‚Ðµ Ð²Ñ…Ñ–Ð´ Ñƒ OneDrive.',
-    storageLockedHint: 'Ð ÐµÐ¶Ð¸Ð¼ ÑÑ…Ð¾Ð²Ð¸Ñ‰Ð° Ð¾Ð±Ð¼ÐµÐ¶ÐµÐ½Ð¾ policy Wave 1.',
-    refreshHint: 'ÐŸÐµÑ€ÐµÑ‡Ð¸Ñ‚Ð°Ñ‚Ð¸ Ð°ÐºÑ‚ÑƒÐ°Ð»ÑŒÐ½Ð¸Ð¹ ÑÑ‚Ð°Ð½ Ñ–Ð½Ñ‚ÐµÐ³Ñ€Ð°Ñ†Ñ–Ð¹.',
-    startLoginHint: 'Ð—Ð°Ð¿ÑƒÑÑ‚Ð¸Ñ‚Ð¸ device-code flow Ð´Ð»Ñ OneDrive.',
-    finishLoginHint: 'Ð—Ð°Ð²ÐµÑ€ÑˆÐ¸Ñ‚Ð¸ Ð²Ñ…Ñ–Ð´ Ð¿Ñ–ÑÐ»Ñ Ð¿Ñ–Ð´Ñ‚Ð²ÐµÑ€Ð´Ð¶ÐµÐ½Ð½Ñ Ð² Ð±Ñ€Ð°ÑƒÐ·ÐµÑ€Ñ–.',
-    logoutHint: 'Ð’Ñ–Ð´Ð²â€™ÑÐ·Ð°Ñ‚Ð¸ OneDrive Ð²Ñ–Ð´ Ð¿Ð¾Ñ‚Ð¾Ñ‡Ð½Ð¾Ñ— ÑÐµÑÑ–Ñ—.',
-    syncNowHint: 'Ð¤Ð¾Ñ€ÑÑƒÐ²Ð°Ñ‚Ð¸ ÑÐ¸Ð½Ñ…Ñ€Ð¾Ð½Ñ–Ð·Ð°Ñ†Ñ–ÑŽ Ð±ÐµÐ· Ð¾Ñ‡Ñ–ÐºÑƒÐ²Ð°Ð½Ð½Ñ Ð²Ð¾Ñ€ÐºÐµÑ€Ð°.',
-    rebuildIndexHint: 'ÐŸÐ¾Ð²Ð½Ñ–ÑÑ‚ÑŽ Ð¿ÐµÑ€ÐµÐ±ÑƒÐ´ÑƒÐ²Ð°Ñ‚Ð¸ Ñ–Ð½Ð´ÐµÐºÑ OneDrive-Ð´Ð°Ð½Ð¸Ñ….',
-    clearCacheHint: 'Ð¡ÐºÐ¸Ð½ÑƒÑ‚Ð¸ Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ð¸Ð¹ ÐºÐµÑˆ ÑÐµÑ€Ð²Ñ–ÑÑƒ Ð¹ Ð¿ÐµÑ€ÐµÑ‡Ð¸Ñ‚Ð°Ñ‚Ð¸ ÑÑ‚Ð°Ð½ Ð·Ð°Ð½Ð¾Ð²Ð¾.',
+    oneDriveSubtitle: 'Синхронізація файлів, черг та індексу знань.',
+    notionSubtitle: 'Майбутній центр інтеграцій для кількох просторів і ботів.',
+    connected: 'Підключено',
+    disconnected: 'Не підключено',
+    enabled: 'Увімкнено',
+    disabled: 'Вимкнено',
+    yes: 'Так',
+    no: 'Ні',
+    notConfigured: 'Не налаштовано',
+    noData: 'Немає',
+    saveChanges: 'Зберегти зміни',
+    saving: 'Збереження…',
+    unsavedChanges: 'Є незбережені зміни',
+    allSaved: 'Усі зміни збережено',
+    noChanges: 'Немає нових змін для збереження.',
+    saveSuccess: 'Налаштування збережено.',
+    offlineError: 'Немає мережі. Збереження недоступне.',
+    errorPrefix: 'Помилка',
+    loadErrorPrefix: 'Не вдалося завантажити дані',
+    refreshStatus: 'Оновити статус',
+    startLogin: 'Почати вхід',
+    finishLogin: 'Завершити вхід',
+    logout: 'Вийти',
+    serviceActions: 'Сервісні дії',
+    serviceActionsHint: 'Обережні операції для синхронізації, індексу та кешу.',
+    syncNow: 'Синхронізувати зараз',
+    rebuildIndex: 'Перебудувати індекс',
+    clearCache: 'Очистити кеш',
+    loginCodeLabel: 'Код входу',
+    openLoginPage: 'Відкрити сторінку входу',
+    enterCodeFirst: 'Спочатку ініціюйте вхід у OneDrive.',
+    storageLockedHint: 'Режим сховища обмежено policy Wave 1.',
+    refreshHint: 'Перечитати актуальний стан інтеграцій.',
+    startLoginHint: 'Запустити device-code flow для OneDrive.',
+    finishLoginHint: 'Завершити вхід після підтвердження в браузері.',
+    logoutHint: 'Відв’язати OneDrive від поточної сесії.',
+    syncNowHint: 'Форсувати синхронізацію без очікування воркера.',
+    rebuildIndexHint: 'Повністю перебудувати індекс OneDrive-даних.',
+    clearCacheHint: 'Скинути локальний кеш сервісу й перечитати стан заново.',
   },
   en: {
     screenTitle: 'Lagertha Settings',
@@ -216,9 +216,9 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     online: 'Online',
     offline: 'Offline',
     noBootstrap: 'No bootstrap data available.',
-    loadingAi: 'Loading AI settingsâ€¦',
-    loadingIntegrations: 'Loading integration statusesâ€¦',
-    loadingModels: 'Updating model listâ€¦',
+    loadingAi: 'Loading AI settings…',
+    loadingIntegrations: 'Loading integration statuses…',
+    loadingModels: 'Updating model list…',
     retry: 'Retry',
     generalSection: 'General',
     aiSection: 'AI',
@@ -261,7 +261,7 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     notConfigured: 'Not configured',
     noData: 'None',
     saveChanges: 'Save changes',
-    saving: 'Savingâ€¦',
+    saving: 'Saving…',
     unsavedChanges: 'You have unsaved changes',
     allSaved: 'All changes saved',
     noChanges: 'No new changes to save.',
@@ -310,11 +310,11 @@ function formatDateTime(value: string | null, locale: AppLocale, emptyLabel: str
 }
 
 function resolveBannerTone(value: string): BannerTone {
-  if (value.startsWith('ÐŸÐ¾Ð¼Ð¸Ð»ÐºÐ°') || value.startsWith('Error')) {
+  if (value.startsWith('Помилка') || value.startsWith('Error')) {
     return 'error'
   }
 
-  if (value.startsWith('Ð£Ð²Ð°Ð³Ð°') || value.startsWith('Warning')) {
+  if (value.startsWith('Увага') || value.startsWith('Warning')) {
     return 'warn'
   }
 
@@ -323,6 +323,29 @@ function resolveBannerTone(value: string): BannerTone {
 
 function StatusChip({ tone, children }: { tone: BannerTone; children: string }) {
   return <span className={`chip chip--${tone}`}>{children}</span>
+}
+
+function GlyphSvg({
+  children,
+  className = 'choice-card__glyph-svg',
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  )
 }
 
 function ChoiceIcon({ icon }: { icon: string }) {
@@ -347,15 +370,65 @@ function ChoiceIcon({ icon }: { icon: string }) {
   }
 
   if (icon === 'theme-system') {
-    return <span className="choice-card__glyph" aria-hidden="true">â—</span>
+    return (
+      <GlyphSvg>
+        <rect x="4.5" y="5" width="15" height="10.5" rx="2.2" />
+        <path d="M9.5 19h5" />
+        <path d="M12 15.5V19" />
+      </GlyphSvg>
+    )
   }
 
   if (icon === 'theme-light') {
-    return <span className="choice-card__glyph" aria-hidden="true">â˜€</span>
+    return (
+      <GlyphSvg>
+        <circle cx="12" cy="12" r="3.6" />
+        <path d="M12 3.5v2.3" />
+        <path d="M12 18.2v2.3" />
+        <path d="M4 12h2.3" />
+        <path d="M17.7 12H20" />
+        <path d="m6.1 6.1 1.6 1.6" />
+        <path d="m16.3 16.3 1.6 1.6" />
+        <path d="m16.3 7.7 1.6-1.6" />
+        <path d="m6.1 17.9 1.6-1.6" />
+      </GlyphSvg>
+    )
   }
 
   if (icon === 'theme-dark') {
-    return <span className="choice-card__glyph" aria-hidden="true">â˜¾</span>
+    return (
+      <GlyphSvg className="choice-card__glyph-svg choice-card__glyph-svg--filled">
+        <path
+          d="M15.5 4.8c-1.2.2-2.4.9-3.2 1.9a6.5 6.5 0 0 0 5 10.7 6.5 6.5 0 0 1-8.8-8.9 6.5 6.5 0 0 1 7-3.7Z"
+          fill="currentColor"
+          stroke="none"
+        />
+      </GlyphSvg>
+    )
+  }
+
+  if (icon === 'hero-settings') {
+    return (
+      <GlyphSvg>
+        <circle cx="12" cy="12" r="3.2" />
+        <path d="M12 2.8v2.1" />
+        <path d="M12 19.1v2.1" />
+        <path d="m5.5 5.5 1.5 1.5" />
+        <path d="m17 17 1.5 1.5" />
+        <path d="M2.8 12h2.1" />
+        <path d="M19.1 12h2.1" />
+        <path d="m5.5 18.5 1.5-1.5" />
+        <path d="M17 7l1.5-1.5" />
+      </GlyphSvg>
+    )
+  }
+
+  if (icon === 'service-cloud') {
+    return (
+      <GlyphSvg>
+        <path d="M7.5 17a3.5 3.5 0 1 1 .7-6.9A5 5 0 0 1 18 11.3a3 3 0 0 1-.5 5.7Z" />
+      </GlyphSvg>
+    )
   }
 
   return <span className="choice-card__glyph" aria-hidden="true">{icon}</span>
@@ -389,6 +462,8 @@ function ChoiceGrid({
             onClick={() => onChange(option.value)}
             disabled={disabled}
             aria-pressed={selected}
+            data-choice-value={option.value}
+            data-choice-icon={option.icon ?? ''}
           >
             <span className="choice-card__main">
               {option.icon ? <span className="choice-card__icon" aria-hidden="true"><ChoiceIcon icon={option.icon} /></span> : null}
@@ -485,7 +560,7 @@ function IntegrationFact({ label, value }: IntegrationFactProps) {
 }
 
 interface IntegrationCardProps {
-  icon: string
+  icon: ReactNode
   title: string
   subtitle: string
   tone: IntegrationTone
@@ -532,6 +607,7 @@ function IntegrationCard({
 
 export function SettingsPage() {
   const locale = useAppStore((s) => s.locale)
+  const persistedThemeMode = useAppStore((s) => s.themeMode)
   const bootstrap = useAppStore((s) => s.bootstrap)
   const host = useAppStore((s) => s.host)
   const policy = useAppStore((s) => s.policy)
@@ -780,7 +856,6 @@ export function SettingsPage() {
           hasUnsavedChanges,
         },
       })
-      return
     }
 
     return syncTelegramClosingConfirmation(webApp, hasUnsavedChanges)
@@ -793,6 +868,15 @@ export function SettingsPage() {
     host,
     localeDraft,
   ])
+
+  useEffect(() => {
+    const hostTheme = host?.theme ?? 'light'
+    document.documentElement.dataset.theme = resolveAppliedTheme(themeModeDraft, hostTheme)
+
+    return () => {
+      document.documentElement.dataset.theme = resolveAppliedTheme(persistedThemeMode, hostTheme)
+    }
+  }, [host?.theme, persistedThemeMode, themeModeDraft])
 
   const applyCommittedSettings = useCallback((response: MiniAppSettingsCommitResponse) => {
     const normalizedLocale = normalizeLocaleFromPreference(response.locale)
@@ -937,9 +1021,9 @@ export function SettingsPage() {
     `${copy.keyStoredLabel}: ${keyStatus.hasStoredKey ? copy.yes : copy.no}`,
     `${copy.modelCountLabel}: ${aiModels.length}${modelsLoading ? ` (${copy.loadingModels})` : ''}`,
   ]
-  const generalHeadline = uiLocale === 'uk' ? 'ÐœÐ¾Ð²Ð° Ñ‚Ð° Ð·Ð±ÐµÑ€ÐµÐ¶ÐµÐ½Ð½Ñ' : 'Language and persistence'
-  const aiHeadline = uiLocale === 'uk' ? 'AI ÐºÐ¾Ð½Ñ„Ñ–Ð³ÑƒÑ€Ð°Ñ†Ñ–Ñ' : 'AI configuration'
-  const integrationsHeadline = uiLocale === 'uk' ? 'ÐŸÑ–Ð´ÐºÐ»ÑŽÑ‡ÐµÐ½Ñ– ÑÐµÑ€Ð²Ñ–ÑÐ¸' : 'Connected services'
+  const generalHeadline = uiLocale === 'uk' ? 'Мова та збереження' : 'Language and persistence'
+  const aiHeadline = uiLocale === 'uk' ? 'AI конфігурація' : 'AI configuration'
+  const integrationsHeadline = uiLocale === 'uk' ? 'Підключені сервіси' : 'Connected services'
 
   async function runAction(task: () => Promise<void>, successMessage: string): Promise<boolean> {
     if (!isOnline) {
@@ -1040,24 +1124,6 @@ export function SettingsPage() {
       })
       setSaveStatus(copy.saveSuccess)
       const webApp = await waitForTelegramMiniAppBridge()
-      if (!webApp) {
-        emitMiniAppDiagnostic({
-          eventType: 'settings.close_skipped',
-          severity: 'warn',
-          message: 'Settings were saved, but Telegram WebApp bridge is unavailable for close().',
-          isTelegram: host?.isTelegram,
-          hostSource: host?.source,
-          platform: host?.platform,
-          channel: bootstrapChannel,
-          userId: scopedUserId ?? host?.userId,
-          conversationId: bootstrapConversationId,
-          hasInitData: Boolean(host?.initData),
-          hasWebApp: false,
-          locale: response.locale,
-        })
-        return
-      }
-
       applyTelegramClosingConfirmation(webApp, false)
       await new Promise<void>((resolve) => window.setTimeout(resolve, 32))
       const closeSucceeded = closeTelegramMiniApp(webApp)
@@ -1072,7 +1138,7 @@ export function SettingsPage() {
         userId: scopedUserId ?? host?.userId,
         conversationId: bootstrapConversationId,
         hasInitData: Boolean(host?.initData),
-        hasWebApp: true,
+        hasWebApp: Boolean(webApp),
         locale: response.locale,
       })
       if (!closeSucceeded) {
@@ -1118,7 +1184,7 @@ export function SettingsPage() {
       ])
       setIntegrationStatus(notionStatus)
       setGraphStatus(currentGraphStatus)
-      setSaveStatus(uiLocale === 'en' ? 'Status refreshed.' : 'Ð¡Ñ‚Ð°Ñ‚ÑƒÑ Ð¾Ð½Ð¾Ð²Ð»ÐµÐ½Ð¾.')
+      setSaveStatus(uiLocale === 'en' ? 'Status refreshed.' : 'Статус оновлено.')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Refresh failed'
       setLoadError(message)
@@ -1184,7 +1250,9 @@ export function SettingsPage() {
     <div className="settings-page" aria-busy={saving || loading}>
       <section className="tg-profile-card settings-hero">
         <div className="tg-profile-main">
-          <div className="tg-avatar" aria-hidden="true">âš™ï¸</div>
+          <div className="tg-avatar" aria-hidden="true">
+            <ChoiceIcon icon="hero-settings" />
+          </div>
           <div>
             <h2 className="tg-profile-title">{copy.screenTitle}</h2>
             <p className="tg-profile-subtitle">{copy.screenSubtitle}</p>
@@ -1401,7 +1469,7 @@ export function SettingsPage() {
 
         <div className="integration-stack">
           <IntegrationCard
-            icon="â˜"
+            icon={<ChoiceIcon icon="service-cloud" />}
             title={copy.oneDriveStatusLabel}
             subtitle={`${copy.oneDriveSubtitle} ${oneDriveVisual.description}`}
             tone={oneDriveVisual.tone}

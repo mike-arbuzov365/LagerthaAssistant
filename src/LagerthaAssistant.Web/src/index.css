@@ -362,9 +362,26 @@ body {
   line-height: 1;
 }
 
+.choice-card__glyph-svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.choice-card__glyph-svg--filled {
+  overflow: visible;
+}
+
+.integration-card__icon .choice-card__glyph-svg,
+.tg-avatar .choice-card__glyph-svg {
+  width: 20px;
+  height: 20px;
+}
+
 .choice-card__flag {
   position: relative;
   display: inline-flex;
+  flex-direction: column;
   width: 18px;
   height: 18px;
   border-radius: 999px;
@@ -973,8 +990,25 @@ body {
 }
 
 [data-theme="dark"] .choice-card--selected {
-  background: linear-gradient(180deg, rgba(29, 78, 216, 0.3), rgba(17, 28, 46, 0.98));
+  background: linear-gradient(180deg, rgba(29, 78, 216, 0.26), rgba(10, 18, 31, 0.98));
+  border-color: rgba(96, 165, 250, 0.48);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.34);
+}
+
+[data-theme="dark"] .choice-card__title {
+  color: #f8fbff;
+}
+
+[data-theme="dark"] .choice-card__description,
+[data-theme="dark"] .settings-section__description,
+[data-theme="dark"] .settings-subsection__hint {
+  color: #aac0db;
+}
+
+[data-theme="dark"] .choice-card[data-choice-value="dark"] .choice-card__icon {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(5, 10, 20, 0.98));
+  border-color: rgba(96, 165, 250, 0.28);
+  color: #dbeafe;
 }
 
 [data-theme="dark"] .choice-chip--selected {

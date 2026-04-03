@@ -110,6 +110,15 @@ describe('applyTelegramClosingConfirmation', () => {
     expect(webApp.isClosingConfirmationEnabled).toBe(false)
     expect(postEvent).toHaveBeenCalledWith('web_app_setup_closing_behavior', false, { need_confirmation: false })
   })
+
+  it('still posts closing behavior when bridge object is missing', () => {
+    const postEvent = vi.fn()
+    window.Telegram = { WebView: { postEvent } }
+
+    applyTelegramClosingConfirmation(undefined, true)
+
+    expect(postEvent).toHaveBeenCalledWith('web_app_setup_closing_behavior', false, { need_confirmation: true })
+  })
 })
 
 describe('buildUnsavedChangesPrompt', () => {
@@ -175,6 +184,7 @@ describe('closeTelegramMiniApp', () => {
     window.Telegram = { WebView: { postEvent } }
     const close = vi.fn()
     const result = closeTelegramMiniApp({ close })
+
     expect(result).toBe(true)
     expect(close).toHaveBeenCalledWith({ return_back: true })
     expect(postEvent).toHaveBeenCalledWith('web_app_close', false, { return_back: true })
@@ -183,5 +193,13 @@ describe('closeTelegramMiniApp', () => {
   it('returns false when close API is unavailable', () => {
     delete window.Telegram
     expect(closeTelegramMiniApp({})).toBe(false)
+  })
+
+  it('falls back to WebView postEvent when close API is unavailable', () => {
+    const postEvent = vi.fn()
+    window.Telegram = { WebView: { postEvent } }
+
+    expect(closeTelegramMiniApp(undefined)).toBe(true)
+    expect(postEvent).toHaveBeenCalledWith('web_app_close', false, { return_back: true })
   })
 })
