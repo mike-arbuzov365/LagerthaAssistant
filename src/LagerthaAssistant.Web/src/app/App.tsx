@@ -132,12 +132,13 @@ export function App() {
         })
 
         const bootstrapRequestStartedAt = performance.now()
-        const bootstrap = await getSessionBootstrap({
+        const bootstrapResult = await getSessionBootstrap({
           channel: host.isTelegram ? 'telegram' : 'api',
           userId: host.userId,
           conversationId: host.conversationId,
           initData: host.initData || undefined,
         })
+        const bootstrap = bootstrapResult.payload
         const bootstrapRequestMs = Math.round(performance.now() - bootstrapRequestStartedAt)
         const totalBootMs = Math.round(performance.now() - appBootStartedAt)
 
@@ -168,6 +169,9 @@ export function App() {
             defaultLocale: bootstrap.policy.defaultLocale,
             bootstrapRequestMs,
             totalBootMs,
+            ...Object.fromEntries(
+              Object.entries(bootstrapResult.serverTiming).map(([key, value]) => [`serverTiming.${key}`, Math.round(value)]),
+            ),
           },
         })
 
@@ -184,6 +188,26 @@ export function App() {
             userId: host.userId,
             conversationId: host.conversationId,
           },
+        })
+
+        window.requestAnimationFrame(() => {
+          emitMiniAppDiagnostic({
+            eventType: 'bootstrap.first_ready_paint',
+            severity: 'info',
+            message: 'Mini App reached the first ready paint.',
+            isTelegram: host.isTelegram,
+            hostSource: host.source,
+            platform: host.platform,
+            channel: bootstrap.scope.channel,
+            userId: bootstrap.scope.userId,
+            conversationId: bootstrap.scope.conversationId,
+            hasInitData: host.initData.length > 0,
+            hasWebApp: Boolean(resolveTelegramBridge()),
+            locale: normalizedLocale,
+            details: {
+              totalBootMs: Math.round(performance.now() - appBootStartedAt),
+            },
+          })
         })
       } catch (e) {
         if (cancelled) {
