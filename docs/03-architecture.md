@@ -1,31 +1,31 @@
-# Архітектура: BotPlatform
+﻿# ÐÑ€Ñ…Ñ–Ñ‚ÐµÐºÑ‚ÑƒÑ€Ð°: BotPlatform
 
-> Версія: 1.1 | Статус: Оновлено (SharedBotKernel реалізовано)
-> Читати разом з: docs/adr/*.md
+> Ð’ÐµÑ€ÑÑ–Ñ: 1.1 | Ð¡Ñ‚Ð°Ñ‚ÑƒÑ: ÐžÐ½Ð¾Ð²Ð»ÐµÐ½Ð¾ (SharedBotKernel Ñ€ÐµÐ°Ð»Ñ–Ð·Ð¾Ð²Ð°Ð½Ð¾)
+> Ð§Ð¸Ñ‚Ð°Ñ‚Ð¸ Ñ€Ð°Ð·Ð¾Ð¼ Ð·: docs/adr/*.md
 
 ---
 
-## Monorepo структура (BotPlatform.sln)
+## Monorepo ÑÑ‚Ñ€ÑƒÐºÑ‚ÑƒÑ€Ð° (BotPlatform.sln)
 
 ```
 BotPlatform.sln
-│
-├── src/SharedBotKernel/          ← Спільна бібліотека (реалізовано)
-│   ├── Domain/                   ← Entities, Base classes, AI types
-│   ├── Infrastructure/AI/        ← ClaudeChatClient, OpenAiChatClient
-│   └── Persistence/              ← KernelDbContext (abstract)
-│
-├── src/LagerthaAssistant.*/      ← Побутовий бот (production)
-│   ├── LagerthaAssistant.Domain
-│   ├── LagerthaAssistant.Application
-│   ├── LagerthaAssistant.Infrastructure  ← AppDbContext : KernelDbContext
-│   └── LagerthaAssistant.Api
-│
-└── src/BaguetteDesign.*/         ← Бот для дизайнера (M1+)
-    ├── BaguetteDesign.Domain
-    ├── BaguetteDesign.Application
-    ├── BaguetteDesign.Infrastructure     ← BaguetteDbContext : KernelDbContext
-    └── BaguetteDesign.Api
+â”‚
+â”œâ”€â”€ src/SharedBotKernel/          â† Ð¡Ð¿Ñ–Ð»ÑŒÐ½Ð° Ð±Ñ–Ð±Ð»Ñ–Ð¾Ñ‚ÐµÐºÐ° (Ñ€ÐµÐ°Ð»Ñ–Ð·Ð¾Ð²Ð°Ð½Ð¾)
+â”‚   â”œâ”€â”€ Domain/                   â† Entities, Base classes, AI types
+â”‚   â”œâ”€â”€ Infrastructure/AI/        â† ClaudeChatClient, OpenAiChatClient
+â”‚   â””â”€â”€ Persistence/              â† KernelDbContext (abstract)
+â”‚
+â”œâ”€â”€ src/LagerthaAssistant.*/      â† ÐŸÐ¾Ð±ÑƒÑ‚Ð¾Ð²Ð¸Ð¹ Ð±Ð¾Ñ‚ (production)
+â”‚   â”œâ”€â”€ LagerthaAssistant.Domain
+â”‚   â”œâ”€â”€ LagerthaAssistant.Application
+â”‚   â”œâ”€â”€ LagerthaAssistant.Infrastructure  â† AppDbContext : KernelDbContext
+â”‚   â””â”€â”€ LagerthaAssistant.Api
+â”‚
+â””â”€â”€ src/BaguetteDesign.*/         â† Ð‘Ð¾Ñ‚ Ð´Ð»Ñ Ð´Ð¸Ð·Ð°Ð¹Ð½ÐµÑ€Ð° (M1+)
+    â”œâ”€â”€ BaguetteDesign.Domain
+    â”œâ”€â”€ BaguetteDesign.Application
+    â”œâ”€â”€ BaguetteDesign.Infrastructure     â† BaguetteDbContext : KernelDbContext
+    â””â”€â”€ BaguetteDesign.Api
 ```
 
 ---
@@ -33,11 +33,11 @@ BotPlatform.sln
 ## C4 Level 1: System Context (BaguetteDesign)
 
 ```
-[Клієнт (Telegram)]  →  [BaguetteDesign Bot]  →  [Notion]
-[Дизайнер (Telegram)] →  [BaguetteDesign Bot]  →  [Google Drive]
-                                                →  [Google Calendar]
-                                                →  [Claude AI (Anthropic)]
-                                                →  [PostgreSQL]
+[ÐšÐ»Ñ–Ñ”Ð½Ñ‚ (Telegram)]  â†’  [BaguetteDesign Bot]  â†’  [Notion]
+[Ð”Ð¸Ð·Ð°Ð¹Ð½ÐµÑ€ (Telegram)] â†’  [BaguetteDesign Bot]  â†’  [Google Drive]
+                                                â†’  [Google Calendar]
+                                                â†’  [Claude AI (Anthropic)]
+                                                â†’  [PostgreSQL]
 ```
 
 ---
@@ -46,63 +46,63 @@ BotPlatform.sln
 
 ```
 BaguetteDesign (Railway.app)
-│
-├── BaguetteDesign.Api           ← ASP.NET Core 10, Webhook endpoint
-│   POST /api/telegram/webhook
-│   GET  /health
-│
-├── BaguetteDesign.Application   ← Use-case services
-│   BriefFlowService             ← Покроковий бриф
-│   InboxService                 ← Inbox дизайнера
-│   LeadService                  ← CRM
-│   ProjectService               ← Проєкти + статуси
-│   FileService                  ← Матеріали клієнтів
-│   PriceService                 ← Прайс з Notion
-│   PortfolioService             ← Портфоліо з Notion
-│   CalendarService              ← Дзвінки
-│   NotificationService          ← Розумні нагадування
-│   AiAssistantService           ← AI для дизайнера
-│
-├── BaguetteDesign.Infrastructure ← Adapters
-│   BaguetteDbContext             ← EF Core → PostgreSQL
-│   GoogleDriveClient             ← Google Drive API
-│   GoogleCalendarClient          ← Google Calendar API
-│   NotionBriefClient             ← Notion (briefs, leads, projects)
-│   NotionPriceClient             ← Notion (price + portfolio cache)
-│   ReminderWorker                ← BackgroundSyncWorkerBase<Notification>
-│
-└── BaguetteDesign.Domain        ← Entities, Value Objects, Interfaces
+â”‚
+â”œâ”€â”€ BaguetteDesign.Api           â† ASP.NET Core 10, Webhook endpoint
+â”‚   POST /api/telegram/webhook
+â”‚   GET  /health
+â”‚
+â”œâ”€â”€ BaguetteDesign.Application   â† Use-case services
+â”‚   BriefFlowService             â† ÐŸÐ¾ÐºÑ€Ð¾ÐºÐ¾Ð²Ð¸Ð¹ Ð±Ñ€Ð¸Ñ„
+â”‚   InboxService                 â† Inbox Ð´Ð¸Ð·Ð°Ð¹Ð½ÐµÑ€Ð°
+â”‚   LeadService                  â† CRM
+â”‚   ProjectService               â† ÐŸÑ€Ð¾Ñ”ÐºÑ‚Ð¸ + ÑÑ‚Ð°Ñ‚ÑƒÑÐ¸
+â”‚   FileService                  â† ÐœÐ°Ñ‚ÐµÑ€Ñ–Ð°Ð»Ð¸ ÐºÐ»Ñ–Ñ”Ð½Ñ‚Ñ–Ð²
+â”‚   PriceService                 â† ÐŸÑ€Ð°Ð¹Ñ Ð· Notion
+â”‚   PortfolioService             â† ÐŸÐ¾Ñ€Ñ‚Ñ„Ð¾Ð»Ñ–Ð¾ Ð· Notion
+â”‚   CalendarService              â† Ð”Ð·Ð²Ñ–Ð½ÐºÐ¸
+â”‚   NotificationService          â† Ð Ð¾Ð·ÑƒÐ¼Ð½Ñ– Ð½Ð°Ð³Ð°Ð´ÑƒÐ²Ð°Ð½Ð½Ñ
+â”‚   AiAssistantService           â† AI Ð´Ð»Ñ Ð´Ð¸Ð·Ð°Ð¹Ð½ÐµÑ€Ð°
+â”‚
+â”œâ”€â”€ BaguetteDesign.Infrastructure â† Adapters
+â”‚   BaguetteDbContext             â† EF Core â†’ PostgreSQL
+â”‚   GoogleDriveClient             â† Google Drive API
+â”‚   GoogleCalendarClient          â† Google Calendar API
+â”‚   NotionBriefClient             â† Notion (briefs, leads, projects)
+â”‚   NotionPriceClient             â† Notion (price + portfolio cache)
+â”‚   ReminderWorker                â† BackgroundSyncWorkerBase<Notification>
+â”‚
+â””â”€â”€ BaguetteDesign.Domain        â† Entities, Value Objects, Interfaces
     Client, Lead, Brief, Project
     Message, FileRecord, CalendarEvent
     Notification, Tenant
     PriceItem, PortfolioCase
 
 SharedBotKernel (Project Reference)
-│
-├── Domain
-│   ConversationSession, ConversationHistoryEntry
-│   UserMemoryEntry, SystemPromptEntry, SystemPromptProposal
-│   ConversationIntentMetric, TelegramProcessedUpdate
-│
-├── Infrastructure
-│   ClaudeChatClient, OpenAiChatClient, ResolvingAiChatClient
-│   NotionHttpClient (базовий HTTP wrapper)
-│   GraphHttpClient, TokenManager, GraphAuthService
-│   TelegramWebhookAdapter, TelegramDeduplicationService
-│   IClock, SystemClock
-│
-├── Persistence
-│   KernelDbContext (abstract)
-│
-└── Workers
+â”‚
+â”œâ”€â”€ Domain
+â”‚   ConversationSession, ConversationHistoryEntry
+â”‚   UserMemoryEntry, SystemPromptEntry, SystemPromptProposal
+â”‚   ConversationIntentMetric, TelegramProcessedUpdate
+â”‚
+â”œâ”€â”€ Infrastructure
+â”‚   ClaudeChatClient, OpenAiChatClient, ResolvingAiChatClient
+â”‚   NotionHttpClient (Ð±Ð°Ð·Ð¾Ð²Ð¸Ð¹ HTTP wrapper)
+â”‚   GraphHttpClient, TokenManager, GraphAuthService
+â”‚   TelegramWebhookAdapter, TelegramDeduplicationService
+â”‚   IClock, SystemClock
+â”‚
+â”œâ”€â”€ Persistence
+â”‚   KernelDbContext (abstract)
+â”‚
+â””â”€â”€ Workers
     BackgroundSyncWorkerBase<TJob>
 
 External Services
-├── PostgreSQL (Railway) — спільний для обох ботів
-├── Anthropic Claude API
-├── Notion API (v2022-06-28)
-├── Google Drive API v3
-└── Google Calendar API v3
+â”œâ”€â”€ PostgreSQL (Railway) â€” ÑÐ¿Ñ–Ð»ÑŒÐ½Ð¸Ð¹ Ð´Ð»Ñ Ð¾Ð±Ð¾Ñ… Ð±Ð¾Ñ‚Ñ–Ð²
+â”œâ”€â”€ Anthropic Claude API
+â”œâ”€â”€ Notion API (v2022-06-28)
+â”œâ”€â”€ Google Drive API v3
+â””â”€â”€ Google Calendar API v3
 ```
 
 ---
@@ -110,66 +110,66 @@ External Services
 ## Telegram Message Processing Flow
 
 ```
-Telegram → POST /api/telegram/webhook
-  ↓
+Telegram â†’ POST /api/telegram/webhook
+  â†“
 TelegramWebhookAdapter (SharedBotKernel)
-  ↓
-TelegramDeduplicationService → TelegramProcessedUpdates
-  ↓
-RoleRouter.Resolve(userId) → Designer | Client
-  ↓
-  ├── Designer → DesignerUpdateRouter
-  │     ├── InboxController
-  │     ├── LeadsController
-  │     ├── ProjectsController
-  │     └── QuickActionController
-  │
-  └── Client → ClientUpdateRouter
-        ├── StartHandler
-        ├── QuestionHandler (Claude)
-        ├── BriefFlowHandler (state machine)
-        ├── PriceHandler (Notion)
-        ├── PortfolioHandler (Notion)
-        ├── ContactHandler (Calendar)
-        └── StatusHandler
+  â†“
+TelegramDeduplicationService â†’ TelegramProcessedUpdates
+  â†“
+RoleRouter.Resolve(userId) â†’ Designer | Client
+  â†“
+  â”œâ”€â”€ Designer â†’ DesignerUpdateRouter
+  â”‚     â”œâ”€â”€ InboxController
+  â”‚     â”œâ”€â”€ LeadsController
+  â”‚     â”œâ”€â”€ ProjectsController
+  â”‚     â””â”€â”€ QuickActionController
+  â”‚
+  â””â”€â”€ Client â†’ ClientUpdateRouter
+        â”œâ”€â”€ StartHandler
+        â”œâ”€â”€ QuestionHandler (Claude)
+        â”œâ”€â”€ BriefFlowHandler (state machine)
+        â”œâ”€â”€ PriceHandler (Notion)
+        â”œâ”€â”€ PortfolioHandler (Notion)
+        â”œâ”€â”€ ContactHandler (Calendar)
+        â””â”€â”€ StatusHandler
 ```
 
 ---
 
-## База даних: BaguetteDbContext
+## Ð‘Ð°Ð·Ð° Ð´Ð°Ð½Ð¸Ñ…: BaguetteDbContext
 
-### Таблиці SharedBotKernel (успадковуються через KernelDbContext)
+### Ð¢Ð°Ð±Ð»Ð¸Ñ†Ñ– SharedBotKernel (ÑƒÑÐ¿Ð°Ð´ÐºÐ¾Ð²ÑƒÑŽÑ‚ÑŒÑÑ Ñ‡ÐµÑ€ÐµÐ· KernelDbContext)
 
-| Таблиця | Призначення |
+| Ð¢Ð°Ð±Ð»Ð¸Ñ†Ñ | ÐŸÑ€Ð¸Ð·Ð½Ð°Ñ‡ÐµÐ½Ð½Ñ |
 |---|---|
-| ConversationSessions | Одна сесія на scope (channel+userId+conversationId) |
-| ConversationHistoryEntries | Повна переписка сесії |
-| UserMemoryEntries | Key/Value пам'ять з Confidence |
-| SystemPromptEntries | Версіонований system prompt Claude |
-| SystemPromptProposals | Пропозиції змін промпту |
-| ConversationIntentMetrics | Аналітика по intent/agent |
-| TelegramProcessedUpdates | Дедуплікація webhook (UpdateId PK) |
+| ConversationSessions | ÐžÐ´Ð½Ð° ÑÐµÑÑ–Ñ Ð½Ð° scope (channel+userId+conversationId) |
+| ConversationHistoryEntries | ÐŸÐ¾Ð²Ð½Ð° Ð¿ÐµÑ€ÐµÐ¿Ð¸ÑÐºÐ° ÑÐµÑÑ–Ñ— |
+| UserMemoryEntries | Key/Value Ð¿Ð°Ð¼'ÑÑ‚ÑŒ Ð· Confidence |
+| SystemPromptEntries | Ð’ÐµÑ€ÑÑ–Ð¾Ð½Ð¾Ð²Ð°Ð½Ð¸Ð¹ system prompt Claude |
+| SystemPromptProposals | ÐŸÑ€Ð¾Ð¿Ð¾Ð·Ð¸Ñ†Ñ–Ñ— Ð·Ð¼Ñ–Ð½ Ð¿Ñ€Ð¾Ð¼Ð¿Ñ‚Ñƒ |
+| ConversationIntentMetrics | ÐÐ½Ð°Ð»Ñ–Ñ‚Ð¸ÐºÐ° Ð¿Ð¾ intent/agent |
+| TelegramProcessedUpdates | Ð”ÐµÐ´ÑƒÐ¿Ð»Ñ–ÐºÐ°Ñ†Ñ–Ñ webhook (UpdateId PK) |
 
-### Таблиці BaguetteDesign-specific
+### Ð¢Ð°Ð±Ð»Ð¸Ñ†Ñ– BaguetteDesign-specific
 
 #### tenants
 ```sql
 Id          UUID PK
-OwnerId     UUID FK → users (Telegram designer)
-Name        VARCHAR(256)      -- "Студія Lesia Design"
-InviteRef   VARCHAR(64) UNIQUE -- для t.me/bot?start=ref_xxx
+OwnerId     UUID FK â†’ users (Telegram designer)
+Name        VARCHAR(256)      -- "Ð¡Ñ‚ÑƒÐ´Ñ–Ñ Lesia Design"
+InviteRef   VARCHAR(64) UNIQUE -- Ð´Ð»Ñ t.me/bot?start=ref_xxx
 CreatedAt   TIMESTAMPTZ
 ```
 
 #### designer_clients
 ```sql
 Id          UUID PK
-TenantId    UUID              -- ЗАВЖДИ присутній (ADR-004)
+TenantId    UUID              -- Ð—ÐÐ’Ð–Ð”Ð˜ Ð¿Ñ€Ð¸ÑÑƒÑ‚Ð½Ñ–Ð¹ (ADR-004)
 TgId        BIGINT            -- Telegram user_id
 Name        VARCHAR(256)
 Contact     VARCHAR(256)
 Country     VARCHAR(64)
-Tags        TEXT[]            -- VIP, повторний, холодний
+Tags        TEXT[]            -- VIP, Ð¿Ð¾Ð²Ñ‚Ð¾Ñ€Ð½Ð¸Ð¹, Ñ…Ð¾Ð»Ð¾Ð´Ð½Ð¸Ð¹
 Source      VARCHAR(64)       -- telegram | referral | manual
 CreatedAt   TIMESTAMPTZ
 UpdatedAt   TIMESTAMPTZ
@@ -179,7 +179,7 @@ UpdatedAt   TIMESTAMPTZ
 ```sql
 Id           UUID PK
 TenantId     UUID
-ClientId     UUID FK → designer_clients
+ClientId     UUID FK â†’ designer_clients
 ServiceType  VARCHAR(128)     -- logo | identity | social | print | web
 BudgetRange  VARCHAR(64)      -- "<500" | "500-1000" | ">1000"
 Country      VARCHAR(64)
@@ -197,9 +197,9 @@ UpdatedAt    TIMESTAMPTZ
 ```sql
 Id              UUID PK
 TenantId        UUID
-LeadId          UUID FK → leads
-ClientId        UUID FK → designer_clients
-RawDialog       JSONB         -- весь діалог брифу [{role, content, timestamp}]
+LeadId          UUID FK â†’ leads
+ClientId        UUID FK â†’ designer_clients
+RawDialog       JSONB         -- Ð²ÐµÑÑŒ Ð´Ñ–Ð°Ð»Ð¾Ð³ Ð±Ñ€Ð¸Ñ„Ñƒ [{role, content, timestamp}]
 StructuredData  JSONB         -- {service_type, brand, audience, style, deadline, budget, country, ...}
 AiAnalysis      JSONB         -- {completeness_score, missing_fields[], recommendations[]}
 IsComplete      BOOLEAN
@@ -212,9 +212,9 @@ UpdatedAt       TIMESTAMPTZ
 ```sql
 Id              UUID PK
 TenantId        UUID
-ClientId        UUID FK → designer_clients
-LeadId          UUID FK → leads  NULLABLE
-BriefId         UUID FK → briefs NULLABLE
+ClientId        UUID FK â†’ designer_clients
+LeadId          UUID FK â†’ leads  NULLABLE
+BriefId         UUID FK â†’ briefs NULLABLE
 Title           VARCHAR(256)
 ServiceType     VARCHAR(128)
 Status          VARCHAR(32)   -- brief|contract|in_progress|review|final|done
@@ -233,11 +233,11 @@ UpdatedAt       TIMESTAMPTZ
 ```sql
 Id            UUID PK
 TenantId      UUID
-ClientId      UUID FK → designer_clients
-ProjectId     UUID FK → projects NULLABLE
+ClientId      UUID FK â†’ designer_clients
+ProjectId     UUID FK â†’ projects NULLABLE
 Role          VARCHAR(32)   -- client | bot | designer
 Content       TEXT
-TgMessageId   BIGINT        -- для reply/forward
+TgMessageId   BIGINT        -- Ð´Ð»Ñ reply/forward
 CreatedAt     TIMESTAMPTZ
 ```
 
@@ -247,13 +247,13 @@ CreatedAt     TIMESTAMPTZ
 ```sql
 Id              UUID PK
 TenantId        UUID
-ProjectId       UUID FK → projects NULLABLE
-ClientId        UUID FK → designer_clients
+ProjectId       UUID FK â†’ projects NULLABLE
+ClientId        UUID FK â†’ designer_clients
 FileType        VARCHAR(64)  -- logo | reference | brandbook | text | final
 OriginalName    VARCHAR(256)
 DriveFileId     VARCHAR(256) -- Google Drive file ID
-TgFileId        VARCHAR(256) -- Telegram file_id для download
-Url             TEXT         -- прямий Google Drive link
+TgFileId        VARCHAR(256) -- Telegram file_id Ð´Ð»Ñ download
+Url             TEXT         -- Ð¿Ñ€ÑÐ¼Ð¸Ð¹ Google Drive link
 UploadedAt      TIMESTAMPTZ
 ```
 
@@ -261,8 +261,8 @@ UploadedAt      TIMESTAMPTZ
 ```sql
 Id              UUID PK
 TenantId        UUID
-ClientId        UUID FK → designer_clients
-ProjectId       UUID FK → projects NULLABLE
+ClientId        UUID FK â†’ designer_clients
+ProjectId       UUID FK â†’ projects NULLABLE
 Type            VARCHAR(64)  -- call | deadline | reminder
 GoogleCalId     VARCHAR(256)
 ScheduledAt     TIMESTAMPTZ
@@ -276,7 +276,7 @@ CreatedAt       TIMESTAMPTZ
 Id            UUID PK
 TenantId      UUID
 TargetRole    VARCHAR(32)  -- designer | client
-TargetTgId    BIGINT       -- кому відправити
+TargetTgId    BIGINT       -- ÐºÐ¾Ð¼Ñƒ Ð²Ñ–Ð´Ð¿Ñ€Ð°Ð²Ð¸Ñ‚Ð¸
 Type          VARCHAR(64)  -- follow_up | deadline | overdue | reminder | digest
 Payload       JSONB        -- {message, project_id, client_name, ...}
 Status        VARCHAR(32)  -- pending | sent | failed | skipped
@@ -287,9 +287,9 @@ LastError     VARCHAR(2000) NULLABLE
 CreatedAt     TIMESTAMPTZ
 ```
 
-**Index:** (Status, SendAfter) — для ReminderWorker
+**Index:** (Status, SendAfter) â€” Ð´Ð»Ñ ReminderWorker
 
-#### price_items (cache з Notion)
+#### price_items (cache Ð· Notion)
 ```sql
 Id            UUID PK
 TenantId      UUID
@@ -304,7 +304,7 @@ NotionPageId  VARCHAR(128)
 SyncedAt      TIMESTAMPTZ
 ```
 
-#### portfolio_cases (cache з Notion)
+#### portfolio_cases (cache Ð· Notion)
 ```sql
 Id            UUID PK
 TenantId      UUID
@@ -321,7 +321,7 @@ SyncedAt      TIMESTAMPTZ
 
 ---
 
-## Конфігурація (appsettings.json)
+## ÐšÐ¾Ð½Ñ„Ñ–Ð³ÑƒÑ€Ð°Ñ†Ñ–Ñ (appsettings.json)
 
 ```json
 {
@@ -387,7 +387,7 @@ SyncedAt      TIMESTAMPTZ
   1. user taps `Settings`
   2. bot sends a launch-entry message
   3. launch-entry uses `Telegram__MiniAppSettingsDirectUrl` if configured
-  4. otherwise it falls back to `https://t.me/<bot>?startapp=settings&mode=fullscreen` derived from `Telegram__BotUsername`
+  4. otherwise it falls back to `https://t.me/<bot>?startapp=settings&mode=compact` derived from `Telegram__BotUsername`
   5. legacy inline settings remain available only as a fallback
 - Bootstrap for `/miniapp/settings` should come from `POST /api/session/bootstrap` so the screen can render without extra blocking round-trips for locale, AI provider, or integration status.
 
@@ -401,13 +401,13 @@ SyncedAt      TIMESTAMPTZ
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /repo
 
-# Копіюємо весь src/ — потрібен SharedBotKernel
+# ÐšÐ¾Ð¿Ñ–ÑŽÑ”Ð¼Ð¾ Ð²ÐµÑÑŒ src/ â€” Ð¿Ð¾Ñ‚Ñ€Ñ–Ð±ÐµÐ½ SharedBotKernel
 COPY src/ ./src/
 
-# Відновлюємо залежності тільки для цього бота
+# Ð’Ñ–Ð´Ð½Ð¾Ð²Ð»ÑŽÑ”Ð¼Ð¾ Ð·Ð°Ð»ÐµÐ¶Ð½Ð¾ÑÑ‚Ñ– Ñ‚Ñ–Ð»ÑŒÐºÐ¸ Ð´Ð»Ñ Ñ†ÑŒÐ¾Ð³Ð¾ Ð±Ð¾Ñ‚Ð°
 RUN dotnet restore src/bots/BaguetteDesign/BaguetteDesign.Api/BaguetteDesign.Api.csproj
 
-# Публікуємо тільки BaguetteDesign
+# ÐŸÑƒÐ±Ð»Ñ–ÐºÑƒÑ”Ð¼Ð¾ Ñ‚Ñ–Ð»ÑŒÐºÐ¸ BaguetteDesign
 RUN dotnet publish src/bots/BaguetteDesign/BaguetteDesign.Api/BaguetteDesign.Api.csproj \
     -c Release -o /app --no-restore
 
@@ -431,7 +431,7 @@ builder.Services.AddKernelServices(builder.Configuration);
 
 // BaguetteDesign specific
 builder.Services.AddBaguetteServices(builder.Configuration);
-// Реєструє: BaguetteDbContext, GoogleDriveClient, GoogleCalendarClient,
+// Ð ÐµÑ”ÑÑ‚Ñ€ÑƒÑ”: BaguetteDbContext, GoogleDriveClient, GoogleCalendarClient,
 //           NotionBriefClient, NotionPriceClient, ReminderWorker,
 //           BriefFlowService, InboxService, LeadService, ProjectService,
 //           FileService, PriceService, PortfolioService, CalendarService,
@@ -441,10 +441,10 @@ builder.Services.AddControllers();
 
 var app = builder.Build();
 
-// Авто-міграція при старті
+// ÐÐ²Ñ‚Ð¾-Ð¼Ñ–Ð³Ñ€Ð°Ñ†Ñ–Ñ Ð¿Ñ€Ð¸ ÑÑ‚Ð°Ñ€Ñ‚Ñ–
 await app.Services.GetRequiredService<BaguetteDbContext>().Database.MigrateAsync();
 
-// Реєстрація Telegram Webhook
+// Ð ÐµÑ”ÑÑ‚Ñ€Ð°Ñ†Ñ–Ñ Telegram Webhook
 app.MapPost("/api/telegram/webhook", async (TelegramController ctrl, Update update)
     => await ctrl.Handle(update));
 
@@ -452,3 +452,4 @@ app.MapGet("/health", () => new { status = "healthy" });
 
 app.Run();
 ```
+

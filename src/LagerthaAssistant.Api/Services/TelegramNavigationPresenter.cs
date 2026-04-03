@@ -176,7 +176,7 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             rows.Add([
                 UrlButton(
                     locale,
-                    "settings.launch_open_fullscreen",
+                    "settings.launch_open",
                     _miniAppSettingsDirectUrl)
             ]);
         }

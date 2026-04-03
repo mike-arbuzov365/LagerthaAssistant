@@ -7,6 +7,7 @@ import type {
   GraphRebuildIndexResponse,
   GraphSyncNowResponse,
   IntegrationNotionHubStatusResponse,
+  MiniAppDiagnosticRequest,
   MiniAppPolicyResponse,
   MiniAppSettingsCommitRequest,
   MiniAppSettingsCommitResponse,
@@ -88,6 +89,19 @@ export async function commitMiniAppSettings(
   }
 
   return response.json() as Promise<MiniAppSettingsCommitResponse>
+}
+
+export async function postMiniAppDiagnostic(request: MiniAppDiagnosticRequest): Promise<void> {
+  const response = await fetch('/api/miniapp/diagnostics', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(request),
+    keepalive: true,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Mini App diagnostics failed: ${response.status}`)
+  }
 }
 
 export async function getLocale(

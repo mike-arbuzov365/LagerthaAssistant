@@ -3,6 +3,7 @@ import type { HostContext } from './types'
 export function createBrowserHost(): HostContext {
   return {
     isTelegram: false,
+    source: 'browser',
     theme: 'light',
     platform: 'desktop',
     safeAreaTop: 0,

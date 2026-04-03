@@ -106,12 +106,12 @@ export function buildLanguageChoices(locale: AppLocale): SettingChoiceOption[] {
       {
         value: 'uk',
         title: 'Українська',
-        icon: '🇺🇦',
+        icon: 'flag-uk',
       },
       {
         value: 'en',
         title: 'English',
-        icon: '🇬🇧',
+        icon: 'flag-gb',
       },
     ]
   }
@@ -120,12 +120,12 @@ export function buildLanguageChoices(locale: AppLocale): SettingChoiceOption[] {
     {
       value: 'uk',
       title: 'Ukrainian',
-      icon: '🇺🇦',
+      icon: 'flag-uk',
     },
     {
       value: 'en',
       title: 'English',
-      icon: '🇬🇧',
+      icon: 'flag-gb',
     },
   ]
 }
@@ -135,18 +135,18 @@ export function buildThemeChoices(locale: AppLocale): SettingChoiceOption[] {
     return [
       {
         value: 'system',
-        title: 'Як у Telegram',
-        icon: '✳',
+        title: 'Системна',
+        icon: 'theme-system',
       },
       {
         value: 'light',
         title: 'Світла',
-        icon: '☀',
+        icon: 'theme-light',
       },
       {
         value: 'dark',
         title: 'Темна',
-        icon: '☾',
+        icon: 'theme-dark',
       },
     ]
   }
@@ -154,18 +154,18 @@ export function buildThemeChoices(locale: AppLocale): SettingChoiceOption[] {
   return [
     {
       value: 'system',
-      title: 'Match Telegram',
-      icon: '✳',
+      title: 'System',
+      icon: 'theme-system',
     },
     {
       value: 'light',
       title: 'Light',
-      icon: '☀',
+      icon: 'theme-light',
     },
     {
       value: 'dark',
       title: 'Dark',
-      icon: '☾',
+      icon: 'theme-dark',
     },
   ]
 }

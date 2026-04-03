@@ -30,6 +30,16 @@ declare global {
   }
 }
 
+interface TelegramLaunchParams {
+  initData: string
+  platform: HostPlatform
+  theme: HostTheme
+  userId: string | null
+  userLanguageCode: string | null
+}
+
+type TelegramWebApp = NonNullable<NonNullable<typeof window.Telegram>['WebApp']>
+
 function resolveTheme(value: string | undefined): HostTheme {
   return value === 'dark' ? 'dark' : 'light'
 }
@@ -78,10 +88,105 @@ function parseInitDataUser(
   }
 }
 
-function requestPreferredViewport(
-  webApp: NonNullable<NonNullable<typeof window.Telegram>['WebApp']>,
-  platform: HostPlatform,
-) {
+function collectTelegramLaunchSearchParams(): URLSearchParams[] {
+  const groups: URLSearchParams[] = []
+
+  const pushSegment = (raw: string | undefined) => {
+    const trimmed = raw?.trim()
+    if (!trimmed) {
+      return
+    }
+
+    const normalized = trimmed.startsWith('?') || trimmed.startsWith('#')
+      ? trimmed.slice(1)
+      : trimmed
+
+    if (normalized.length === 0) {
+      return
+    }
+
+    groups.push(new URLSearchParams(normalized))
+  }
+
+  pushSegment(window.location.search)
+  pushSegment(window.location.hash)
+
+  const hash = window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : window.location.hash
+  const hashQueryIndex = hash.indexOf('?')
+  if (hashQueryIndex >= 0) {
+    pushSegment(hash.slice(hashQueryIndex + 1))
+  }
+
+  return groups
+}
+
+function tryParseThemeFromLaunchParams(raw: string | null): HostTheme | null {
+  if (!raw) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { bg_color?: string; secondary_bg_color?: string }
+    const color = parsed.bg_color ?? parsed.secondary_bg_color
+    if (!color) {
+      return null
+    }
+
+    const normalized = color.trim().toLowerCase()
+    if (!/^#?[0-9a-f]{6}$/i.test(normalized)) {
+      return null
+    }
+
+    const hex = normalized.startsWith('#') ? normalized.slice(1) : normalized
+    const red = Number.parseInt(hex.slice(0, 2), 16)
+    const green = Number.parseInt(hex.slice(2, 4), 16)
+    const blue = Number.parseInt(hex.slice(4, 6), 16)
+    const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255
+    return luminance < 0.45 ? 'dark' : 'light'
+  } catch {
+    return null
+  }
+}
+
+function readTelegramLaunchParams(): TelegramLaunchParams | null {
+  const parameterGroups = collectTelegramLaunchSearchParams()
+  let initData = ''
+  let platform = 'unknown'
+  let theme: HostTheme | null = null
+
+  for (const parameters of parameterGroups) {
+    const candidateInitData = parameters.get('tgWebAppData')?.trim()
+    if (!initData && candidateInitData) {
+      initData = candidateInitData
+    }
+
+    const candidatePlatform = parameters.get('tgWebAppPlatform')
+    if (platform === 'unknown' && candidatePlatform) {
+      platform = candidatePlatform
+    }
+
+    if (!theme) {
+      theme = tryParseThemeFromLaunchParams(parameters.get('tgWebAppThemeParams'))
+    }
+  }
+
+  if (initData.length === 0) {
+    return null
+  }
+
+  const parsedUser = parseInitDataUser(initData)
+  return {
+    initData,
+    platform: resolvePlatform(platform),
+    theme: theme ?? 'light',
+    userId: parsedUser.id,
+    userLanguageCode: parsedUser.languageCode,
+  }
+}
+
+function requestPreferredViewport(webApp: TelegramWebApp, platform: HostPlatform) {
   webApp.expand()
 
   if (platform === 'android' || platform === 'ios') {
@@ -93,36 +198,68 @@ function requestPreferredViewport(
   }
 }
 
+function scheduleTelegramReady(platform: HostPlatform) {
+  const retryDelaysMs = [0, 50, 120, 240, 420]
+
+  for (const delayMs of retryDelaysMs) {
+    window.setTimeout(() => {
+      const webApp = window.Telegram?.WebApp
+      if (!webApp) {
+        return
+      }
+
+      try {
+        webApp.ready()
+        requestPreferredViewport(webApp, platform)
+      } catch {
+        // Best-effort only.
+      }
+    }, delayMs)
+  }
+}
+
 export function createTelegramHost(): HostContext | null {
   const webApp = window.Telegram?.WebApp
-  if (!webApp) {
+  const launchParams = readTelegramLaunchParams()
+
+  if (!webApp && !launchParams) {
     return null
   }
 
-  const user = webApp.initDataUnsafe?.user
-  const parsedInitDataUser = parseInitDataUser(webApp.initData)
-  const userId = typeof user?.id === 'number' ? String(user.id) : parsedInitDataUser.id
-  const userLanguageCode = user?.language_code ?? parsedInitDataUser.languageCode
-  const initData = webApp.initData?.trim() ?? ''
+  const initData = webApp?.initData?.trim() || launchParams?.initData || ''
+  const unsafeUser = webApp?.initDataUnsafe?.user
+  const parsedInitDataUser = parseInitDataUser(initData)
+  const userId = typeof unsafeUser?.id === 'number'
+    ? String(unsafeUser.id)
+    : (launchParams?.userId ?? parsedInitDataUser.id)
+  const userLanguageCode = unsafeUser?.language_code
+    ?? launchParams?.userLanguageCode
+    ?? parsedInitDataUser.languageCode
 
   if (!userId || initData.length === 0) {
     return null
   }
 
-  const platform = resolvePlatform(webApp.platform)
+  const platform = resolvePlatform(webApp?.platform) !== 'unknown'
+    ? resolvePlatform(webApp?.platform)
+    : (launchParams?.platform ?? 'unknown')
+
+  const theme = webApp?.colorScheme
+    ? resolveTheme(webApp.colorScheme)
+    : (launchParams?.theme ?? 'light')
 
   return {
     isTelegram: true,
-    theme: resolveTheme(webApp.colorScheme),
+    source: webApp?.initData?.trim().length ? 'telegram-webapp' : 'telegram-launch-params',
+    theme,
     platform,
-    safeAreaTop: Math.max(0, webApp.contentSafeAreaInsets?.top ?? 0),
+    safeAreaTop: Math.max(0, webApp?.contentSafeAreaInsets?.top ?? 0),
     initData,
     userLanguageCode,
     userId,
     conversationId: userId,
     ready() {
-      webApp.ready()
-      requestPreferredViewport(webApp, platform)
+      scheduleTelegramReady(platform)
     },
   }
 }

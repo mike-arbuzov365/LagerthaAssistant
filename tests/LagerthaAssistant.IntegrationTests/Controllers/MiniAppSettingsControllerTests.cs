@@ -13,6 +13,7 @@ using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Navigation;
 using LagerthaAssistant.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using SharedBotKernel.Abstractions;
 using SharedBotKernel.Infrastructure.AI;
@@ -271,7 +272,7 @@ public sealed class MiniAppSettingsControllerTests
             BotToken = botToken
         });
 
-        return new MiniAppSettingsController(scopeAccessor, commitService, navigationState, presenter, sender, options);
+        return new MiniAppSettingsController(scopeAccessor, commitService, navigationState, presenter, sender, NullLogger<MiniAppSettingsController>.Instance, options);
     }
 
     private static string BuildInitData(

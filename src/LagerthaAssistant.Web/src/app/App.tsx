@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { getSessionBootstrap } from '../api/client'
 import { resolveHostContext } from '../host/createHost'
+import { emitMiniAppDiagnostic } from '../lib/miniAppDiagnostics'
 import { resolvePreferredLocale } from '../lib/locale'
 import { resolveAppliedTheme, type HostTheme } from '../lib/theme'
 import { DashboardPage } from '../pages/DashboardPage'
@@ -85,9 +86,39 @@ export function App() {
           return
         }
 
+        emitMiniAppDiagnostic({
+          eventType: 'host.resolved',
+          severity: host.isTelegram ? 'info' : 'warn',
+          message: host.isTelegram ? 'Resolved Telegram host context.' : 'Fell back to browser host context.',
+          isTelegram: host.isTelegram,
+          hostSource: host.source,
+          platform: host.platform,
+          userId: host.userId,
+          conversationId: host.conversationId,
+          hasInitData: host.initData.length > 0,
+          hasWebApp: Boolean(window.Telegram?.WebApp),
+          details: {
+            safeAreaTop: host.safeAreaTop,
+          },
+        })
+
         setHostTheme(host.theme)
         host.ready()
         document.documentElement.style.setProperty('--safe-top', `${host.safeAreaTop}px`)
+
+        emitMiniAppDiagnostic({
+          eventType: 'bootstrap.request',
+          severity: 'info',
+          message: 'Requesting Mini App bootstrap payload.',
+          isTelegram: host.isTelegram,
+          hostSource: host.source,
+          platform: host.platform,
+          channel: host.isTelegram ? 'telegram' : 'api',
+          userId: host.userId,
+          conversationId: host.conversationId,
+          hasInitData: host.initData.length > 0,
+          hasWebApp: Boolean(window.Telegram?.WebApp),
+        })
 
         const bootstrap = await getSessionBootstrap({
           channel: host.isTelegram ? 'telegram' : 'api',
@@ -105,13 +136,54 @@ export function App() {
           host.userLanguageCode,
         )
 
-        setReady({ locale: normalizedLocale, bootstrap, policy: bootstrap.policy })
+        emitMiniAppDiagnostic({
+          eventType: 'bootstrap.success',
+          severity: 'info',
+          message: 'Mini App bootstrap loaded.',
+          isTelegram: host.isTelegram,
+          hostSource: host.source,
+          platform: host.platform,
+          channel: bootstrap.scope.channel,
+          userId: bootstrap.scope.userId,
+          conversationId: bootstrap.scope.conversationId,
+          hasInitData: host.initData.length > 0,
+          hasWebApp: Boolean(window.Telegram?.WebApp),
+          locale: normalizedLocale,
+          details: {
+            bootstrapLocale: bootstrap.locale.locale,
+            defaultLocale: bootstrap.policy.defaultLocale,
+          },
+        })
+
+        setReady({
+          locale: normalizedLocale,
+          bootstrap,
+          policy: bootstrap.policy,
+          host: {
+            isTelegram: host.isTelegram,
+            source: host.source,
+            platform: host.platform,
+            initData: host.initData,
+            userId: host.userId,
+            conversationId: host.conversationId,
+          },
+        })
       } catch (e) {
         if (cancelled) {
           return
         }
 
         const message = e instanceof Error ? e.message : 'Помилка ініціалізації'
+        emitMiniAppDiagnostic({
+          eventType: 'bootstrap.failure',
+          severity: 'error',
+          message,
+          isTelegram: Boolean(window.Telegram?.WebApp),
+          hostSource: window.Telegram?.WebApp ? 'telegram-webapp' : 'browser',
+          platform: window.Telegram?.WebApp?.platform ?? 'unknown',
+          hasInitData: Boolean(window.Telegram?.WebApp?.initData),
+          hasWebApp: Boolean(window.Telegram?.WebApp),
+        })
         setError(message)
       }
     })()

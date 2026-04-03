@@ -1,9 +1,19 @@
 import { create } from 'zustand'
 import type { MiniAppPolicyResponse, PreferenceSessionResponse, SessionBootstrapResponse } from '../api/contracts'
+import type { HostPlatform, HostSource } from '../host/types'
 import type { AppLocale } from '../lib/locale'
 import { normalizeThemeMode, type AppThemeMode } from '../lib/theme'
 
 type AppStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+interface AppHostState {
+  isTelegram: boolean
+  source: HostSource
+  platform: HostPlatform
+  initData: string
+  userId: string | null
+  conversationId: string | null
+}
 
 interface AppStore {
   status: AppStatus
@@ -11,9 +21,15 @@ interface AppStore {
   themeMode: AppThemeMode
   bootstrap: SessionBootstrapResponse | null
   policy: MiniAppPolicyResponse | null
+  host: AppHostState | null
   error: string | null
   setLoading(): void
-  setReady(payload: { locale: AppLocale; bootstrap: SessionBootstrapResponse; policy: MiniAppPolicyResponse }): void
+  setReady(payload: {
+    locale: AppLocale
+    bootstrap: SessionBootstrapResponse
+    policy: MiniAppPolicyResponse
+    host: AppHostState
+  }): void
   setLocale(locale: AppLocale): void
   setThemeMode(themeMode: AppThemeMode): void
   setBootstrapPreferences(preferences: PreferenceSessionResponse): void
@@ -27,6 +43,7 @@ export const useAppStore = create<AppStore>((set) => ({
   themeMode: 'system',
   bootstrap: null,
   policy: null,
+  host: null,
   error: null,
   setLoading() {
     set({ status: 'loading', error: null })
@@ -38,6 +55,7 @@ export const useAppStore = create<AppStore>((set) => ({
         themeMode: normalizeThemeMode(payload.bootstrap.settings.themeMode),
         bootstrap: payload.bootstrap,
         policy: payload.policy,
+        host: payload.host,
         error: null,
       })
   },

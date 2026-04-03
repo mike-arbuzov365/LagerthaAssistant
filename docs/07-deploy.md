@@ -1,4 +1,4 @@
-# 07 — Deploy
+﻿# 07 â€” Deploy
 
 > Target: Railway. Two separate services from one monorepo. PostgreSQL shared.
 
@@ -8,30 +8,30 @@
 
 | Bot | Status | URL |
 |---|---|---|
-| **LagerthaAssistant** | Production on Railway | — |
-| **BaguetteDesign** | Ready to deploy (M1+M2 merged, runbook ready) | — |
+| **LagerthaAssistant** | Production on Railway | â€” |
+| **BaguetteDesign** | Ready to deploy (M1+M2 merged, runbook ready) | â€” |
 
-CI/CD pipeline: **configured** — `.github/workflows/ci.yml` (PR checks) + `.github/workflows/deploy-baguette.yml` (manual, currently paused by guard variable)
+CI/CD pipeline: **configured** â€” `.github/workflows/ci.yml` (PR checks) + `.github/workflows/deploy-baguette.yml` (manual, currently paused by guard variable)
 
-> Детальна покрокова інструкція деплою BaguetteDesign: `docs/21-baguette-deploy-runbook.md`
+> Ð”ÐµÑ‚Ð°Ð»ÑŒÐ½Ð° Ð¿Ð¾ÐºÑ€Ð¾ÐºÐ¾Ð²Ð° Ñ–Ð½ÑÑ‚Ñ€ÑƒÐºÑ†Ñ–Ñ Ð´ÐµÐ¿Ð»Ð¾ÑŽ BaguetteDesign: `docs/21-baguette-deploy-runbook.md`
 
 ---
 
 ## Infrastructure Overview
 
 ```
-GitHub (dev → master)
-        │
-        ▼
+GitHub (dev â†’ master)
+        â”‚
+        â–¼
   Railway Platform
-  ┌─────────────────┐  ┌─────────────────────┐
-  │  lagertha        │  │  baguette-design     │
-  │  LagerthaAssistant│  │  BaguetteDesign.Api  │
-  │  .Api            │  │                     │
-  └─────────┬───────┘  └──────────┬──────────┘
-            │                     │
-            └──────────┬──────────┘
-                       ▼
+  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  â”‚  lagertha        â”‚  â”‚  baguette-design     â”‚
+  â”‚  LagerthaAssistantâ”‚  â”‚  BaguetteDesign.Api  â”‚
+  â”‚  .Api            â”‚  â”‚                     â”‚
+  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+            â”‚                     â”‚
+            â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                       â–¼
               PostgreSQL (shared)
               baguette_design DB (separate)
 ```
@@ -87,7 +87,7 @@ Graph__TenantId=...
 Lagertha__AdminUserId=...
 ```
 
-For fullscreen-capable Telegram `Settings` in Lagertha, configure either `Telegram__MiniAppSettingsDirectUrl` or `Telegram__BotUsername`. The derived main Mini App link now uses `?startapp=settings&mode=fullscreen`, so the bot should also have its Main Mini App configured in BotFather.
+For direct Mini App Telegram `Settings` in Lagertha, configure either `Telegram__MiniAppSettingsDirectUrl` or `Telegram__BotUsername`. The derived main Mini App link now uses `?startapp=settings&mode=compact`, so the bot should also have its Main Mini App configured in BotFather.
 
 **BaguetteDesign (Railway):**
 ```
@@ -104,7 +104,7 @@ Baguette__AdminUserId=...
 
 ## BotFather Main Mini App Setup (Lagertha)
 
-For Lagertha `Settings`, a regular reply-keyboard `web_app` button is not enough to guarantee fullscreen-capable launch behavior. The bot should also have its **Main Mini App** configured in BotFather.
+For Lagertha `Settings`, a regular reply-keyboard `web_app` button is not enough to guarantee direct Mini App launch behavior. The bot should also have its **Main Mini App** configured in BotFather.
 
 ### Preconditions
 
@@ -112,7 +112,7 @@ Before opening BotFather, make sure:
 
 1. Railway variables are configured:
    - `Telegram__BotUsername=LagerthaAssistantBot`
-   - optionally `Telegram__MiniAppSettingsDirectUrl=https://t.me/LagerthaAssistantBot?startapp=settings&mode=fullscreen`
+   - optionally `Telegram__MiniAppSettingsDirectUrl=https://t.me/LagerthaAssistantBot?startapp=settings&mode=compact`
 2. The public Mini App URL opens successfully:
    - `https://lagertha-prod.up.railway.app/miniapp/settings`
 3. The service has been redeployed after env var changes.
@@ -132,17 +132,17 @@ Before opening BotFather, make sure:
 ### Post-config Verification
 
 1. Open the bot chat and run `/start`
-2. Trigger `Налаштування`
+2. Trigger `ÐÐ°Ð»Ð°ÑˆÑ‚ÑƒÐ²Ð°Ð½Ð½Ñ`
 3. Confirm that the launch-entry message appears
-4. Confirm that the launch-entry prefers the fullscreen-capable direct flow instead of the old fallback button
+4. Confirm that the launch-entry prefers the direct Mini App direct flow instead of the old fallback button
 5. Test the direct link manually:
-   - `https://t.me/LagerthaAssistantBot?startapp=settings&mode=fullscreen`
+   - `https://t.me/LagerthaAssistantBot?startapp=settings&mode=compact`
 
 ### Expected Result
 
 - the bot can build a direct Mini App entry link
 - Telegram has Main Mini App configuration for the bot
-- `Settings` can use the fullscreen-capable launch path
+- `Settings` can use the direct Mini App launch path
 
 ### If It Still Does Not Work
 
@@ -164,14 +164,14 @@ Both bots expose `GET /health`:
 
 ```
 GET /health
-→ 200 OK
+â†’ 200 OK
 {
   "status": "healthy",
   "db": "connected"   // or "unavailable" if DB is down
 }
 ```
 
-Railway uses this as a liveness probe. If it returns non-200 — deploy is rolled back.
+Railway uses this as a liveness probe. If it returns non-200 â€” deploy is rolled back.
 
 ---
 
@@ -210,22 +210,23 @@ dotnet ef database update \
 
 ## GitHub Actions CI/CD
 
-Workflows у `.github/workflows/`:
+Workflows Ñƒ `.github/workflows/`:
 
-- **`ci.yml`** — запускається на кожен PR у master і push у dev: restore → build → test
-- **`deploy-baguette.yml`** — запускається вручну (`workflow_dispatch`), і додатково має guard `if: vars.ENABLE_BAGUETTE_DEPLOY == 'true'`.
-  Поточне правило: **Baguette deploy pause** (поки тестуємо Lagertha, деплой Baguette вимкнений).
+- **`ci.yml`** â€” Ð·Ð°Ð¿ÑƒÑÐºÐ°Ñ”Ñ‚ÑŒÑÑ Ð½Ð° ÐºÐ¾Ð¶ÐµÐ½ PR Ñƒ master Ñ– push Ñƒ dev: restore â†’ build â†’ test
+- **`deploy-baguette.yml`** â€” Ð·Ð°Ð¿ÑƒÑÐºÐ°Ñ”Ñ‚ÑŒÑÑ Ð²Ñ€ÑƒÑ‡Ð½Ñƒ (`workflow_dispatch`), Ñ– Ð´Ð¾Ð´Ð°Ñ‚ÐºÐ¾Ð²Ð¾ Ð¼Ð°Ñ” guard `if: vars.ENABLE_BAGUETTE_DEPLOY == 'true'`.
+  ÐŸÐ¾Ñ‚Ð¾Ñ‡Ð½Ðµ Ð¿Ñ€Ð°Ð²Ð¸Ð»Ð¾: **Baguette deploy pause** (Ð¿Ð¾ÐºÐ¸ Ñ‚ÐµÑÑ‚ÑƒÑ”Ð¼Ð¾ Lagertha, Ð´ÐµÐ¿Ð»Ð¾Ð¹ Baguette Ð²Ð¸Ð¼ÐºÐ½ÐµÐ½Ð¸Ð¹).
 
-Потрібний secret у GitHub: `RAILWAY_TOKEN` (Railway → Account Settings → Tokens).
+ÐŸÐ¾Ñ‚Ñ€Ñ–Ð±Ð½Ð¸Ð¹ secret Ñƒ GitHub: `RAILWAY_TOKEN` (Railway â†’ Account Settings â†’ Tokens).
 
 ---
 
 ## Pre-deploy Checklist
 
-- [ ] `dotnet test LagerthaAssistant.sln` — all green (945/945)
-- [ ] Migrations applied to target DB (8 міграцій BaguetteDesign)
-- [ ] `GET /health` → `{"status":"healthy","db":"connected"}`
+- [ ] `dotnet test LagerthaAssistant.sln` â€” all green (945/945)
+- [ ] Migrations applied to target DB (8 Ð¼Ñ–Ð³Ñ€Ð°Ñ†Ñ–Ð¹ BaguetteDesign)
+- [ ] `GET /health` â†’ `{"status":"healthy","db":"connected"}`
 - [ ] Telegram webhook registered and verified (`setWebhook` + `secret_token`)
 - [ ] No secrets hardcoded in appsettings.json
-- [ ] `Telegram__WebhookSecret` встановлено на Railway
+- [ ] `Telegram__WebhookSecret` Ð²ÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½Ð¾ Ð½Ð° Railway
 - [ ] Tested manually in Telegram: /start as client + as designer
+
