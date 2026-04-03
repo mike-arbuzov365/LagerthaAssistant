@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using LagerthaAssistant.Api.Contracts;
 using LagerthaAssistant.Api.Options;
@@ -133,6 +135,7 @@ public sealed class SessionController : ControllerBase
         bool includeDecks,
         CancellationToken cancellationToken)
     {
+        var totalStopwatch = Stopwatch.StartNew();
         var options = new ConversationBootstrapOptions(
             IncludeCommandGroups: includeCommands,
             IncludePartOfSpeechOptions: includePartOfSpeechOptions,
@@ -149,27 +152,51 @@ public sealed class SessionController : ControllerBase
 
         // Keep these reads sequential. In production both operations can traverse the same
         // scoped persistence graph, and parallelizing them risks transient EF/db re-entrancy.
+        var conversationBootstrapStopwatch = Stopwatch.StartNew();
         var bootstrap = await _conversationBootstrapService.BuildAsync(scope, options, cancellationToken);
+        conversationBootstrapStopwatch.Stop();
+
+        var localeStopwatch = Stopwatch.StartNew();
         var storedLocale = await _localeStateService.GetStoredLocaleAsync(scope.Channel, scope.UserId, cancellationToken);
         var locale = string.IsNullOrWhiteSpace(storedLocale)
             ? LocalizationConstants.UkrainianLocale
             : LocalizationConstants.NormalizeLocaleCode(storedLocale);
+        localeStopwatch.Stop();
+
         var preferences = new PreferenceSessionResponse(
             bootstrap.SaveMode,
             bootstrap.AvailableSaveModes,
             bootstrap.StorageMode,
             bootstrap.AvailableStorageModes);
 
+        var settingsStopwatch = Stopwatch.StartNew();
         var settings = await BuildSettingsBootstrapAsync(scope, cancellationToken);
+        settingsStopwatch.Stop();
+        totalStopwatch.Stop();
+
+        if (ControllerContext.HttpContext is { Response.Headers: { } headers })
+        {
+            headers["Server-Timing"] = string.Join(", ",
+            [
+                FormatServerTimingMetric("conversation-bootstrap", conversationBootstrapStopwatch.Elapsed),
+                FormatServerTimingMetric("locale", localeStopwatch.Elapsed),
+                FormatServerTimingMetric("settings", settingsStopwatch.Elapsed),
+                FormatServerTimingMetric("total", totalStopwatch.Elapsed)
+            ]);
+        }
 
         _logger.LogInformation(
-            "Mini App bootstrap completed. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, Locale={Locale}, ThemeMode={ThemeMode}, AiProvider={AiProvider}",
+            "Mini App bootstrap completed. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, Locale={Locale}, ThemeMode={ThemeMode}, AiProvider={AiProvider}, ConversationBootstrapMs={ConversationBootstrapMs}, LocaleMs={LocaleMs}, SettingsMs={SettingsMs}, TotalMs={TotalMs}",
             scope.Channel,
             scope.UserId,
             scope.ConversationId,
             locale,
             settings.ThemeMode,
-            settings.AiProvider);
+            settings.AiProvider,
+            conversationBootstrapStopwatch.ElapsedMilliseconds,
+            localeStopwatch.ElapsedMilliseconds,
+            settingsStopwatch.ElapsedMilliseconds,
+            totalStopwatch.ElapsedMilliseconds);
 
         return Ok(new SessionBootstrapResponse(
             new SessionScopeResponse(bootstrap.Scope.Channel, bootstrap.Scope.UserId, bootstrap.Scope.ConversationId),
@@ -193,12 +220,14 @@ public sealed class SessionController : ControllerBase
         ConversationScope scope,
         CancellationToken cancellationToken)
     {
+        var totalStopwatch = Stopwatch.StartNew();
         var availableProviders = _aiRuntimeSettingsService.SupportedProviders;
         var provider = availableProviders.FirstOrDefault(static x => !string.IsNullOrWhiteSpace(x)) ?? "openai";
         var hasStoredKey = false;
         var apiKeySource = "missing";
         var themeMode = AppearanceConstants.ThemeModeSystem;
 
+        var aiStopwatch = Stopwatch.StartNew();
         try
         {
             provider = await _aiRuntimeSettingsService.GetProviderAsync(scope, cancellationToken);
@@ -211,6 +240,7 @@ public sealed class SessionController : ControllerBase
             // Best-effort bootstrap enrichment only. The settings screen can still load
             // and recover by refreshing provider-specific state later.
         }
+        aiStopwatch.Stop();
 
         var availableModels = _aiRuntimeSettingsService.GetSupportedModels(provider);
         var model = availableModels.FirstOrDefault(static x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
@@ -225,6 +255,7 @@ public sealed class SessionController : ControllerBase
         }
 
         var notionStatus = BuildFallbackNotionStatus();
+        var notionStopwatch = Stopwatch.StartNew();
         try
         {
             notionStatus = await BuildNotionStatusAsync(cancellationToken);
@@ -233,6 +264,19 @@ public sealed class SessionController : ControllerBase
         {
             // Best-effort bootstrap enrichment only.
         }
+        notionStopwatch.Stop();
+        totalStopwatch.Stop();
+
+        _logger.LogInformation(
+            "Mini App settings bootstrap prepared. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, AiMs={AiMs}, NotionMs={NotionMs}, TotalMs={TotalMs}, AiProvider={AiProvider}, ThemeMode={ThemeMode}",
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
+            aiStopwatch.ElapsedMilliseconds,
+            notionStopwatch.ElapsedMilliseconds,
+            totalStopwatch.ElapsedMilliseconds,
+            provider,
+            themeMode);
 
         return new MiniAppSettingsBootstrapResponse(
             provider,
@@ -245,6 +289,9 @@ public sealed class SessionController : ControllerBase
             AppearanceConstants.SupportedThemeModes,
             notionStatus);
     }
+
+    private static string FormatServerTimingMetric(string name, TimeSpan elapsed)
+        => $"{name};dur={elapsed.TotalMilliseconds.ToString("0.##", CultureInfo.InvariantCulture)}";
 
     private async Task<IntegrationNotionHubStatusResponse> BuildNotionStatusAsync(CancellationToken cancellationToken)
     {

@@ -5,6 +5,7 @@ using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Agents;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -166,6 +167,28 @@ public sealed class ConversationBootstrapServiceTests
         Assert.True(snapshot.Graph.IsConfigured);
         Assert.False(snapshot.Graph.IsAuthenticated);
         Assert.Equal("Graph status unavailable. Retry later.", snapshot.Graph.Message);
+    }
+
+    [Fact]
+    public async Task BuildAsync_ShouldReturnTimeoutFallback_WhenGraphStatusIsSlow()
+    {
+        var sut = new ConversationBootstrapService(
+            new FakeSessionPreferenceService(),
+            new FakeSaveModePreferenceService(),
+            new FakeStorageModeProvider(),
+            new FakeDeckService(),
+            new SlowGraphAuthService(),
+            new ConversationCommandCatalogService(),
+            NullLogger<ConversationBootstrapService>.Instance);
+
+        var stopwatch = Stopwatch.StartNew();
+        var snapshot = await sut.BuildAsync(ConversationScope.Default, cancellationToken: CancellationToken.None);
+        stopwatch.Stop();
+
+        Assert.True(snapshot.Graph.IsConfigured);
+        Assert.False(snapshot.Graph.IsAuthenticated);
+        Assert.Equal("Graph status is loading. Refresh in a moment.", snapshot.Graph.Message);
+        Assert.InRange(stopwatch.ElapsedMilliseconds, 0, 900);
     }
     private sealed class FakeSessionPreferenceService : IVocabularySessionPreferenceService
     {
@@ -407,6 +430,37 @@ public sealed class ConversationBootstrapServiceTests
     {
         public Task<GraphAuthStatus> GetStatusAsync(CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("temporary Graph failure");
+
+        public Task<GraphLoginResult> LoginAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphLoginResult(false, "Not implemented."));
+
+        public Task<GraphLoginResult> LoginAsync(
+            Func<GraphDeviceCodePrompt, CancellationToken, Task> onDeviceCodeReceived,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphLoginResult(false, "Not implemented."));
+
+        public Task<GraphDeviceLoginStartResult> StartLoginAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphDeviceLoginStartResult(false, "Not implemented.", null));
+
+        public Task<GraphLoginResult> CompleteLoginAsync(
+            GraphDeviceLoginChallenge challenge,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new GraphLoginResult(false, "Not implemented."));
+
+        public Task LogoutAsync(CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<string?>(null);
+    }
+
+    private sealed class SlowGraphAuthService : IGraphAuthService
+    {
+        public async Task<GraphAuthStatus> GetStatusAsync(CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            return new GraphAuthStatus(true, true, "Authenticated.", DateTimeOffset.UtcNow.AddHours(1));
+        }
 
         public Task<GraphLoginResult> LoginAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(new GraphLoginResult(false, "Not implemented."));

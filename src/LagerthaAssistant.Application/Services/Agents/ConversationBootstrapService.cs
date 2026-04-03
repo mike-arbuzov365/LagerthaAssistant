@@ -6,10 +6,13 @@ using LagerthaAssistant.Application.Interfaces.Vocabulary;
 using LagerthaAssistant.Application.Models.Agents;
 using LagerthaAssistant.Application.Models.Vocabulary;
 using LagerthaAssistant.Application.Services.Vocabulary;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 
 public sealed class ConversationBootstrapService : IConversationBootstrapService
 {
+    private static readonly TimeSpan GraphBootstrapTimeout = TimeSpan.FromMilliseconds(250);
+
     private readonly IVocabularySessionPreferenceService _sessionPreferenceService;
     private readonly IVocabularySaveModePreferenceService _saveModePreferenceService;
     private readonly IVocabularyStorageModeProvider _storageModeProvider;
@@ -42,11 +45,17 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
         CancellationToken cancellationToken = default)
     {
         options ??= ConversationBootstrapOptions.Default;
+        var totalStopwatch = Stopwatch.StartNew();
 
         // Keep these calls sequential. In production they can share the same scoped persistence
         // graph, and running them concurrently risks EF Core "second operation started" failures.
+        var sessionStopwatch = Stopwatch.StartNew();
         var session = await _sessionPreferenceService.GetAsync(scope, cancellationToken);
+        sessionStopwatch.Stop();
+
+        var graphStopwatch = Stopwatch.StartNew();
         var graph = await TryGetGraphStatusAsync(cancellationToken);
+        graphStopwatch.Stop();
 
         var saveMode = _saveModePreferenceService.ToText(session.SaveMode);
         var storageMode = _storageModeProvider.ToText(session.StorageMode);
@@ -67,6 +76,17 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
             writableDecks = await _deckService.GetWritableDeckFilesAsync(cancellationToken);
         }
 
+        totalStopwatch.Stop();
+        _logger.LogInformation(
+            "Conversation bootstrap snapshot prepared. Channel={Channel}, UserId={UserId}, ConversationId={ConversationId}, SessionMs={SessionMs}, GraphMs={GraphMs}, TotalMs={TotalMs}, IncludeDecks={IncludeDecks}",
+            scope.Channel,
+            scope.UserId,
+            scope.ConversationId,
+            sessionStopwatch.ElapsedMilliseconds,
+            graphStopwatch.ElapsedMilliseconds,
+            totalStopwatch.ElapsedMilliseconds,
+            options.IncludeWritableDecks);
+
         return new ConversationBootstrapSnapshot(
             scope,
             saveMode,
@@ -81,9 +101,22 @@ public sealed class ConversationBootstrapService : IConversationBootstrapService
 
     private async Task<GraphAuthStatus> TryGetGraphStatusAsync(CancellationToken cancellationToken)
     {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(GraphBootstrapTimeout);
+
         try
         {
-            return await _graphAuthService.GetStatusAsync(cancellationToken);
+            return await _graphAuthService.GetStatusAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogInformation(
+                "Conversation bootstrap: Graph status check exceeded {TimeoutMs} ms. Returning lightweight fallback state.",
+                GraphBootstrapTimeout.TotalMilliseconds);
+            return new GraphAuthStatus(
+                IsConfigured: true,
+                IsAuthenticated: false,
+                Message: "Graph status is loading. Refresh in a moment.");
         }
         catch (Exception ex)
         {
