@@ -30,6 +30,10 @@ describe('createTelegramHost', () => {
     const ready = vi.fn()
     const expand = vi.fn()
     const requestFullscreen = vi.fn()
+    const hideBackButton = vi.fn()
+    const hideMainButton = vi.fn()
+    const hideSecondaryButton = vi.fn()
+    const hideSettingsButton = vi.fn()
 
     window.Telegram = {
       WebApp: {
@@ -42,10 +46,15 @@ describe('createTelegramHost', () => {
         },
         colorScheme: 'dark',
         platform: 'tdesktop',
-        contentSafeAreaInsets: { top: 8 },
+        safeAreaInset: { top: 12, bottom: 10 },
+        contentSafeAreaInset: { top: 28, bottom: 16 },
         ready,
         expand,
         requestFullscreen,
+        BackButton: { hide: hideBackButton },
+        MainButton: { hide: hideMainButton },
+        SecondaryButton: { hide: hideSecondaryButton },
+        SettingsButton: { hide: hideSettingsButton },
       },
     }
 
@@ -57,6 +66,7 @@ describe('createTelegramHost', () => {
     expect(host?.userLanguageCode).toBe('uk')
     expect(host?.theme).toBe('dark')
     expect(host?.platform).toBe('desktop')
+    expect(host?.safeAreaTop).toBe(28)
 
     host?.ready()
     vi.runAllTimers()
@@ -64,6 +74,10 @@ describe('createTelegramHost', () => {
     expect(ready).toHaveBeenCalled()
     expect(expand).not.toHaveBeenCalled()
     expect(requestFullscreen).not.toHaveBeenCalled()
+    expect(hideBackButton).toHaveBeenCalled()
+    expect(hideMainButton).toHaveBeenCalled()
+    expect(hideSecondaryButton).toHaveBeenCalled()
+    expect(hideSettingsButton).toHaveBeenCalled()
   })
 
   it('falls back to parsing initData user payload when initDataUnsafe user is missing', () => {
@@ -75,7 +89,7 @@ describe('createTelegramHost', () => {
         initDataUnsafe: {},
         colorScheme: 'light',
         platform: 'android',
-        contentSafeAreaInsets: { top: 0 },
+        contentSafeAreaInset: { top: 22, bottom: 12 },
         ready: vi.fn(),
         expand: vi.fn(),
         requestFullscreen: vi.fn(),
@@ -89,6 +103,7 @@ describe('createTelegramHost', () => {
     expect(host?.userLanguageCode).toBe('en')
     expect(host?.theme).toBe('light')
     expect(host?.platform).toBe('android')
+    expect(host?.safeAreaTop).toBe(22)
   })
 
   it('uses Telegram launch params when the bridge is not ready yet', () => {
@@ -131,6 +146,10 @@ describe('createTelegramHost', () => {
     const ready = vi.fn()
     const expand = vi.fn()
     const requestFullscreen = vi.fn()
+    const hideBackButton = vi.fn()
+    const hideMainButton = vi.fn()
+    const hideSecondaryButton = vi.fn()
+    const hideSettingsButton = vi.fn()
 
     window.Telegram = {
       WebApp: {
@@ -143,19 +162,28 @@ describe('createTelegramHost', () => {
         },
         colorScheme: 'light',
         platform: 'ios',
-        contentSafeAreaInsets: { top: 0 },
+        contentSafeAreaInset: { top: 24, bottom: 18 },
         ready,
         expand,
         requestFullscreen,
+        BackButton: { hide: hideBackButton },
+        MainButton: { hide: hideMainButton },
+        SecondaryButton: { hide: hideSecondaryButton },
+        SettingsButton: { hide: hideSettingsButton },
       },
     }
 
     const host = createTelegramHost()
+    expect(host?.safeAreaTop).toBe(24)
     host?.ready()
     vi.runAllTimers()
 
     expect(ready).toHaveBeenCalled()
     expect(expand).toHaveBeenCalled()
     expect(requestFullscreen).toHaveBeenCalled()
+    expect(hideBackButton).toHaveBeenCalled()
+    expect(hideMainButton).toHaveBeenCalled()
+    expect(hideSecondaryButton).toHaveBeenCalled()
+    expect(hideSettingsButton).toHaveBeenCalled()
   })
 })

@@ -1,6 +1,18 @@
 ﻿:root {
   --safe-top: 0px;
   --safe-bottom: 0px;
+  --safe-top-effective: max(
+    var(--safe-top),
+    var(--tg-content-safe-area-inset-top, 0px),
+    var(--tg-safe-area-inset-top, 0px),
+    env(safe-area-inset-top, 0px)
+  );
+  --safe-bottom-effective: max(
+    var(--safe-bottom),
+    var(--tg-content-safe-area-inset-bottom, 0px),
+    var(--tg-safe-area-inset-bottom, 0px),
+    env(safe-area-inset-bottom, 0px)
+  );
 
   --bg-page: #edf4fb;
   --bg-page-accent: rgba(51, 144, 236, 0.16);
@@ -53,12 +65,12 @@ body {
 .shell {
   max-width: 480px;
   margin: 0 auto;
-  padding: calc(12px + var(--safe-top)) 12px calc(120px + var(--safe-bottom));
+  padding: calc(12px + var(--safe-top-effective)) 12px calc(120px + var(--safe-bottom-effective));
 }
 
 .shell-header {
   position: sticky;
-  top: calc(var(--safe-top) + 4px);
+  top: calc(var(--safe-top-effective) + 4px);
   z-index: 20;
   margin-bottom: 12px;
   border: 1px solid var(--border-default);
@@ -109,7 +121,7 @@ body {
 
 .settings-hero {
   position: sticky;
-  top: calc(var(--safe-top) + 4px);
+  top: calc(var(--safe-top-effective) + 4px);
   z-index: 24;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(240, 247, 255, 0.92)),
@@ -1279,3 +1291,4 @@ summary:focus-visible {
     background-position: -100% 0;
   }
 }
+

@@ -6,7 +6,20 @@ export type TelegramBridgeLike = {
   colorScheme?: 'light' | 'dark'
   isExpanded?: boolean
   isFullscreen?: boolean
+  safeAreaInset?: {
+    top?: number
+    bottom?: number
+    left?: number
+    right?: number
+  }
+  contentSafeAreaInset?: {
+    top?: number
+    bottom?: number
+    left?: number
+    right?: number
+  }
   contentSafeAreaInsets?: { top?: number }
+  safeAreaInsets?: { top?: number }
   ready?: () => void
   expand?: () => void
   requestFullscreen?: () => void
@@ -14,6 +27,18 @@ export type TelegramBridgeLike = {
   enableClosingConfirmation?: () => void
   disableClosingConfirmation?: () => void
   isClosingConfirmationEnabled?: boolean
+  BackButton?: {
+    hide?: () => void
+  }
+  MainButton?: {
+    hide?: () => void
+  }
+  SecondaryButton?: {
+    hide?: () => void
+  }
+  SettingsButton?: {
+    hide?: () => void
+  }
 }
 
 function hasTelegramContext(bridge: TelegramBridgeLike | undefined): boolean {

@@ -18,12 +18,19 @@ declare global {
         }
         colorScheme?: 'light' | 'dark'
         platform?: string
+        safeAreaInset?: { top?: number; bottom?: number; left?: number; right?: number }
+        contentSafeAreaInset?: { top?: number; bottom?: number; left?: number; right?: number }
         contentSafeAreaInsets?: { top?: number }
+        safeAreaInsets?: { top?: number }
         isExpanded?: boolean
         isFullscreen?: boolean
         ready(): void
         expand(): void
         requestFullscreen?: () => void
+        BackButton?: { hide?: () => void }
+        MainButton?: { hide?: () => void }
+        SecondaryButton?: { hide?: () => void }
+        SettingsButton?: { hide?: () => void }
         onEvent?: (eventType: string, handler: (payload?: unknown) => void) => void
         offEvent?: (eventType: string, handler: (payload?: unknown) => void) => void
       }
@@ -40,6 +47,41 @@ interface TelegramLaunchParams {
 }
 
 type TelegramWebApp = TelegramBridgeLike & NonNullable<NonNullable<typeof window.Telegram>['WebApp']>
+
+function resolveInsetValue(primary: number | undefined, legacy: number | undefined): number {
+  return Math.max(0, primary ?? legacy ?? 0)
+}
+
+function resolveSafeAreaTop(webApp: TelegramWebApp | undefined): number {
+  return Math.max(
+    resolveInsetValue(webApp?.contentSafeAreaInset?.top, webApp?.contentSafeAreaInsets?.top),
+    resolveInsetValue(webApp?.safeAreaInset?.top, webApp?.safeAreaInsets?.top),
+  )
+}
+
+function resolveSafeAreaBottom(webApp: TelegramWebApp | undefined): number {
+  return Math.max(
+    resolveInsetValue(webApp?.contentSafeAreaInset?.bottom, undefined),
+    resolveInsetValue(webApp?.safeAreaInset?.bottom, undefined),
+  )
+}
+
+function syncTelegramSafeAreaCss(webApp: TelegramWebApp | undefined) {
+  const rootStyle = document.documentElement.style
+  rootStyle.setProperty('--safe-top', `${resolveSafeAreaTop(webApp)}px`)
+  rootStyle.setProperty('--safe-bottom', `${resolveSafeAreaBottom(webApp)}px`)
+}
+
+function hideTelegramChrome(webApp: TelegramWebApp | undefined) {
+  try {
+    webApp?.BackButton?.hide?.()
+    webApp?.MainButton?.hide?.()
+    webApp?.SecondaryButton?.hide?.()
+    webApp?.SettingsButton?.hide?.()
+  } catch {
+    // Best-effort only.
+  }
+}
 
 function resolveTheme(value: string | undefined): HostTheme {
   return value === 'dark' ? 'dark' : 'light'
@@ -200,7 +242,7 @@ function requestPreferredViewport(webApp: TelegramWebApp, platform: HostPlatform
 }
 
 function scheduleTelegramReady(platform: HostPlatform) {
-  const retryDelaysMs = [0, 50, 120, 240, 420]
+  const retryDelaysMs = [0, 50, 120, 240, 420, 800]
 
   for (const delayMs of retryDelaysMs) {
     window.setTimeout(() => {
@@ -212,6 +254,8 @@ function scheduleTelegramReady(platform: HostPlatform) {
       try {
         webApp.ready()
         requestPreferredViewport(webApp, platform)
+        hideTelegramChrome(webApp)
+        syncTelegramSafeAreaCss(webApp)
       } catch {
         // Best-effort only.
       }
@@ -254,7 +298,7 @@ export function createTelegramHost(): HostContext | null {
     source: webApp?.initData?.trim().length ? 'telegram-webapp' : 'telegram-launch-params',
     theme,
     platform,
-    safeAreaTop: Math.max(0, webApp?.contentSafeAreaInsets?.top ?? 0),
+    safeAreaTop: resolveSafeAreaTop(webApp),
     initData,
     userLanguageCode,
     userId,
