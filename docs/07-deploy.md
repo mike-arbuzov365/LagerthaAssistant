@@ -102,6 +102,62 @@ Baguette__AdminUserId=...
 
 ---
 
+## BotFather Main Mini App Setup (Lagertha)
+
+For Lagertha `Settings`, a regular reply-keyboard `web_app` button is not enough to guarantee fullscreen-capable launch behavior. The bot should also have its **Main Mini App** configured in BotFather.
+
+### Preconditions
+
+Before opening BotFather, make sure:
+
+1. Railway variables are configured:
+   - `Telegram__BotUsername=LagerthaAssistantBot`
+   - optionally `Telegram__MiniAppSettingsDirectUrl=https://t.me/LagerthaAssistantBot?startapp=settings&mode=fullscreen`
+2. The public Mini App URL opens successfully:
+   - `https://lagertha-prod.up.railway.app/miniapp/settings`
+3. The service has been redeployed after env var changes.
+
+### BotFather Steps
+
+1. Open [@BotFather](https://t.me/BotFather)
+2. Run `/mybots`
+3. Select `@LagerthaAssistantBot`
+4. Open `Bot Settings`
+5. Open `Configure Mini App`
+6. Enable Mini App if it is not enabled yet
+7. When BotFather asks for the Mini App URL, provide:
+   - `https://lagertha-prod.up.railway.app/miniapp/settings`
+8. Save the configuration
+
+### Post-config Verification
+
+1. Open the bot chat and run `/start`
+2. Trigger `Налаштування`
+3. Confirm that the launch-entry message appears
+4. Confirm that the launch-entry prefers the fullscreen-capable direct flow instead of the old fallback button
+5. Test the direct link manually:
+   - `https://t.me/LagerthaAssistantBot?startapp=settings&mode=fullscreen`
+
+### Expected Result
+
+- the bot can build a direct Mini App entry link
+- Telegram has Main Mini App configuration for the bot
+- `Settings` can use the fullscreen-capable launch path
+
+### If It Still Does Not Work
+
+Check these in order:
+
+1. `Telegram__BotUsername` is set correctly on Railway
+2. `Telegram__MiniAppSettingsDirectUrl` is correct if set explicitly
+3. BotFather Main Mini App URL matches the production `/miniapp/settings` URL
+4. The latest `master` deploy is active on Railway
+5. Telegram client cache was refreshed by reopening the chat or running `/start`
+
+If all five are correct and fullscreen still does not happen, investigate Telegram client/version behavior next rather than changing CSS or frontend layout first.
+
+---
+
 ## Health Check
 
 Both bots expose `GET /health`:
