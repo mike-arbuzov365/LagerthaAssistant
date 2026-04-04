@@ -382,7 +382,7 @@ SyncedAt      TIMESTAMPTZ
 ### Telegram Mini App Settings Launch
 
 - The main `Settings` reply-keyboard button must stay a plain Telegram button.
-- Do not rely on reply-keyboard `web_app` launch for fullscreen behavior.
+- Do not rely on reply-keyboard `web_app` launch for viewport control.
 - Preferred flow:
   1. user taps `Settings`
   2. bot sends a launch-entry message

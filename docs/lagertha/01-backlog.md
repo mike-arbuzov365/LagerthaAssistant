@@ -2,6 +2,20 @@
 
 ## UX / Mini App
 
+### Mini App Performance & Diagnostics
+
+Status: Backlog, not started.
+
+Context:
+- Startup still performs heavier integration checks than needed.
+- We need clearer diagnostics for where time is spent during bootstrap.
+
+Planned work:
+- Remove Microsoft Graph token refresh from the critical bootstrap path.
+- Defer integration status collection to background refresh after first render.
+- Add structured telemetry for bootstrap timing (server timing, client first paint, status refresh latency).
+- Capture bootstrap error categories (auth, integration, network) for faster triage.
+
 ### Theme Presets for Settings
 
 Status: Backlog, not started.
@@ -28,4 +42,3 @@ UX notes:
 - Reuse one visual language for theme cards and integration cards.
 - Prefer real flag/icon assets and consistent icon style across mobile and desktop.
 - Theme names should follow common product language; keep `System` as the default system-following option.
-

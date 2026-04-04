@@ -87,7 +87,7 @@ Graph__TenantId=...
 Lagertha__AdminUserId=...
 ```
 
-For direct Mini App Telegram `Settings` in Lagertha, configure either `Telegram__MiniAppSettingsDirectUrl` or `Telegram__BotUsername`. The derived main Mini App link now uses `?startapp=settings&mode=compact`, while the app itself requests fullscreen only on mobile clients after launch. This keeps desktop launch compact while preserving the mobile fullscreen path, so the bot should also have its Main Mini App configured in BotFather.
+For direct Mini App Telegram `Settings` in Lagertha, configure either `Telegram__MiniAppSettingsDirectUrl` or `Telegram__BotUsername`. The derived main Mini App link uses `?startapp=settings&mode=compact` to keep the standard Telegram surface across clients. The bot should also have its Main Mini App configured in BotFather.
 
 **BaguetteDesign (Railway):**
 ```
@@ -154,7 +154,7 @@ Check these in order:
 4. The latest `master` deploy is active on Railway
 5. Telegram client cache was refreshed by reopening the chat or running `/start`
 
-If all five are correct and the desktop client still opens in a larger-than-expected surface, investigate Telegram client/version behavior next rather than changing CSS or frontend layout first. The app now intentionally uses `mode=compact` for direct launch and relies on the mobile Telegram bridge to request fullscreen only on handheld clients.
+If all five are correct and the desktop client still opens in a larger-than-expected surface, investigate Telegram client/version behavior next rather than changing CSS or frontend layout first. The app uses the standard Telegram launch surface and does not request special viewport modes.
 
 ---
 

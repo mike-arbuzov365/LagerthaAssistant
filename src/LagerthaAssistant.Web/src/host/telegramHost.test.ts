@@ -28,8 +28,6 @@ describe('createTelegramHost', () => {
   it('uses initDataUnsafe user when present and keeps desktop launch compact on ready', () => {
     vi.useFakeTimers()
     const ready = vi.fn()
-    const expand = vi.fn()
-    const requestFullscreen = vi.fn()
     const hideBackButton = vi.fn()
     const hideMainButton = vi.fn()
     const hideSecondaryButton = vi.fn()
@@ -49,8 +47,6 @@ describe('createTelegramHost', () => {
         safeAreaInset: { top: 12, bottom: 10 },
         contentSafeAreaInset: { top: 28, bottom: 16 },
         ready,
-        expand,
-        requestFullscreen,
         BackButton: { hide: hideBackButton },
         MainButton: { hide: hideMainButton },
         SecondaryButton: { hide: hideSecondaryButton },
@@ -72,8 +68,6 @@ describe('createTelegramHost', () => {
     vi.runAllTimers()
 
     expect(ready).toHaveBeenCalled()
-    expect(expand).not.toHaveBeenCalled()
-    expect(requestFullscreen).not.toHaveBeenCalled()
     expect(hideBackButton).toHaveBeenCalled()
     expect(hideMainButton).toHaveBeenCalled()
     expect(hideSecondaryButton).toHaveBeenCalled()
@@ -91,8 +85,6 @@ describe('createTelegramHost', () => {
         platform: 'android',
         contentSafeAreaInset: { top: 22, bottom: 12 },
         ready: vi.fn(),
-        expand: vi.fn(),
-        requestFullscreen: vi.fn(),
       },
     }
 
@@ -134,56 +126,9 @@ describe('createTelegramHost', () => {
           },
         },
         ready: vi.fn(),
-        expand: vi.fn(),
       },
     }
 
     expect(createTelegramHost()).toBeNull()
-  })
-
-  it('requests fullscreen for mobile platforms during ready', () => {
-    vi.useFakeTimers()
-    const ready = vi.fn()
-    const expand = vi.fn()
-    const requestFullscreen = vi.fn()
-    const hideBackButton = vi.fn()
-    const hideMainButton = vi.fn()
-    const hideSecondaryButton = vi.fn()
-    const hideSettingsButton = vi.fn()
-
-    window.Telegram = {
-      WebApp: {
-        initData: 'auth_date=1&hash=h',
-        initDataUnsafe: {
-          user: {
-            id: 123456,
-            language_code: 'uk',
-          },
-        },
-        colorScheme: 'light',
-        platform: 'ios',
-        contentSafeAreaInset: { top: 24, bottom: 18 },
-        ready,
-        expand,
-        requestFullscreen,
-        BackButton: { hide: hideBackButton },
-        MainButton: { hide: hideMainButton },
-        SecondaryButton: { hide: hideSecondaryButton },
-        SettingsButton: { hide: hideSettingsButton },
-      },
-    }
-
-    const host = createTelegramHost()
-    expect(host?.safeAreaTop).toBe(24)
-    host?.ready()
-    vi.runAllTimers()
-
-    expect(ready).toHaveBeenCalled()
-    expect(expand).toHaveBeenCalled()
-    expect(requestFullscreen).toHaveBeenCalled()
-    expect(hideBackButton).toHaveBeenCalled()
-    expect(hideMainButton).toHaveBeenCalled()
-    expect(hideSecondaryButton).toHaveBeenCalled()
-    expect(hideSettingsButton).toHaveBeenCalled()
   })
 })
