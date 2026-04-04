@@ -25,8 +25,6 @@ declare global {
         isExpanded?: boolean
         isFullscreen?: boolean
         ready(): void
-        expand(): void
-        requestFullscreen?: () => void
         BackButton?: { hide?: () => void }
         MainButton?: { hide?: () => void }
         SecondaryButton?: { hide?: () => void }
@@ -229,19 +227,7 @@ function readTelegramLaunchParams(): TelegramLaunchParams | null {
   }
 }
 
-function requestPreferredViewport(webApp: TelegramWebApp, platform: HostPlatform) {
-  if (platform === 'android' || platform === 'ios') {
-    webApp.expand()
-
-    try {
-      webApp.requestFullscreen?.()
-    } catch {
-      // Best-effort only.
-    }
-  }
-}
-
-function scheduleTelegramReady(platform: HostPlatform) {
+function scheduleTelegramReady() {
   const retryDelaysMs = [0, 50, 120, 240, 420, 800]
 
   for (const delayMs of retryDelaysMs) {
@@ -253,7 +239,6 @@ function scheduleTelegramReady(platform: HostPlatform) {
 
       try {
         webApp.ready()
-        requestPreferredViewport(webApp, platform)
         hideTelegramChrome(webApp)
         syncTelegramSafeAreaCss(webApp)
       } catch {
@@ -304,7 +289,7 @@ export function createTelegramHost(): HostContext | null {
     userId,
     conversationId: userId,
     ready() {
-      scheduleTelegramReady(platform)
+      scheduleTelegramReady()
     },
   }
 }

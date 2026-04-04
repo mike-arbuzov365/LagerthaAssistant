@@ -21,8 +21,6 @@ export type TelegramBridgeLike = {
   contentSafeAreaInsets?: { top?: number }
   safeAreaInsets?: { top?: number }
   ready?: () => void
-  expand?: () => void
-  requestFullscreen?: () => void
   close?: (options?: { return_back?: boolean }) => void
   enableClosingConfirmation?: () => void
   disableClosingConfirmation?: () => void
