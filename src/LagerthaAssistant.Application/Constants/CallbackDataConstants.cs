@@ -6,7 +6,7 @@ public static class CallbackDataConstants
     {
         public const string Main = "nav:main";
         public const string Weekly = "nav:weekly";
-        public const string Vocab = "assistant.vocabulary.open";
+        public const string Vocab = "nav:vocab";
     }
 
     public static class Lang
