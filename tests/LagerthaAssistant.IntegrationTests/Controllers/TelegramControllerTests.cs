@@ -5879,7 +5879,7 @@ public sealed class TelegramControllerTests
     {
         var foodService = new FakeFoodTrackingService
         {
-            Meals = [new MealDto(1, "Soup", 300, null, null, null, 20, 2, [])]
+            Meals = [new MealDto(1, "Soup", 300, null, null, null, 20, 2, null, null, [])]
         };
         var sender = new FakeTelegramBotSender();
         var navigationState = new FakeNavigationStateService { CurrentSection = NavigationSections.WeeklyMenu };
@@ -6138,7 +6138,7 @@ public sealed class TelegramControllerTests
             => Task.FromResult(CalorieSummary);
 
         public Task<MealDto> CreateMealAsync(string name, int? caloriesPerServing, decimal? proteinGrams, decimal? carbsGrams, decimal? fatGrams, int? prepTimeMinutes, int defaultServings, IReadOnlyList<(string Name, string? Quantity)> ingredients, CancellationToken cancellationToken = default)
-            => Task.FromResult(new MealDto(99, name, caloriesPerServing, proteinGrams, carbsGrams, fatGrams, prepTimeMinutes, defaultServings, []));
+            => Task.FromResult(new MealDto(99, name, caloriesPerServing, proteinGrams, carbsGrams, fatGrams, prepTimeMinutes, defaultServings, null, null, []));
 
         public int LastQuickLogCalories { get; private set; }
         public string? LastQuickLogName { get; private set; }

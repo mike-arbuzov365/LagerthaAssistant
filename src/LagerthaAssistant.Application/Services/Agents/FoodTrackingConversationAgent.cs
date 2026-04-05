@@ -152,19 +152,25 @@ public sealed class FoodTrackingConversationAgent : IConversationAgent, IConvers
 
         var sb = new StringBuilder();
         sb.AppendLine(string.Format(_loc.Get("food.weekly.view.title", locale), meals.Count));
-        sb.AppendLine();
 
-        foreach (var meal in meals)
+        var grouped = meals
+            .GroupBy(m => m.Category ?? string.Empty)
+            .OrderBy(g => string.IsNullOrEmpty(g.Key) ? 1 : 0)
+            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in grouped)
         {
-            var calories = meal.CaloriesPerServing.HasValue ? $" — {meal.CaloriesPerServing} kcal/serving" : string.Empty;
-            var prep = meal.PrepTimeMinutes.HasValue ? $" ({meal.PrepTimeMinutes} min)" : string.Empty;
-            sb.AppendLine($"🍽 {meal.Name}{calories}{prep}");
-
-            if (meal.Ingredients.Count > 0)
+            sb.AppendLine();
+            if (!string.IsNullOrEmpty(group.Key))
             {
-                var ingredientNames = meal.Ingredients.Take(5).Select(i => i.Name);
-                var more = meal.Ingredients.Count > 5 ? "..." : string.Empty;
-                sb.AppendLine(string.Format(_loc.Get("food.weekly.view.ingredients", locale), string.Join(", ", ingredientNames), more));
+                sb.AppendLine(group.Key);
+            }
+
+            foreach (var meal in group)
+            {
+                var icon = string.IsNullOrWhiteSpace(meal.IconEmoji) ? "🍽" : meal.IconEmoji;
+                var calories = meal.CaloriesPerServing.HasValue ? $" — {meal.CaloriesPerServing} kcal" : string.Empty;
+                sb.AppendLine($"• {icon} {meal.Name}{calories}");
             }
         }
 

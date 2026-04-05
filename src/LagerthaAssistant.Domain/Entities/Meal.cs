@@ -11,6 +11,10 @@ public sealed class Meal : AuditableEntity
 
     public string Name { get; set; } = string.Empty;
 
+    public string? IconEmoji { get; set; }
+
+    public string? Category { get; set; }
+
     /// <summary>Estimated calories per serving. Null until LLM evaluates the recipe.</summary>
     public int? CaloriesPerServing { get; set; }
 

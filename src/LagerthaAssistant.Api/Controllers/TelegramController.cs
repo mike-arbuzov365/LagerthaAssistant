@@ -5622,11 +5622,26 @@ public sealed class TelegramController : ControllerBase
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine(_navigationPresenter.GetText("food.weekly.view.title", locale, meals.Count));
-        sb.AppendLine();
-        foreach (var meal in meals)
+
+        var grouped = meals
+            .GroupBy(m => m.Category ?? string.Empty)
+            .OrderBy(g => string.IsNullOrEmpty(g.Key) ? 1 : 0)
+            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in grouped)
         {
-            var calories = BuildCaloriesPerServingSuffix(meal.CaloriesPerServing, locale);
-            sb.AppendLine(_navigationPresenter.GetText("food.weekly.view.line", locale, meal.Id, meal.Name, calories));
+            sb.AppendLine();
+            if (!string.IsNullOrEmpty(group.Key))
+            {
+                sb.AppendLine(group.Key);
+            }
+
+            foreach (var meal in group)
+            {
+                var icon = string.IsNullOrWhiteSpace(meal.IconEmoji) ? "🍽" : meal.IconEmoji;
+                var calories = BuildCaloriesPerServingSuffix(meal.CaloriesPerServing, locale);
+                sb.AppendLine(_navigationPresenter.GetText("food.weekly.view.line", locale, meal.Id, icon, meal.Name, calories));
+            }
         }
 
         return new TelegramRouteResponse(
