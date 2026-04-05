@@ -137,8 +137,8 @@ public sealed class FoodTrackingConversationAgentTests
         {
             Meals =
             [
-                new MealDto(1, "Borsch", 350, null, null, null, 45, 4, []),
-                new MealDto(2, "Olivier", 450, null, null, null, null, 6, [])
+                new MealDto(1, "Borsch", 350, null, null, null, 45, 4, null, null, []),
+                new MealDto(2, "Olivier", 450, null, null, null, null, 6, null, null, [])
             ]
         };
         var sut = CreateSut(service);
@@ -168,7 +168,7 @@ public sealed class FoodTrackingConversationAgentTests
     {
         var service = new FakeFoodTrackingService
         {
-            CookableMeals = [new MealDto(1, "Pasta", 600, null, null, null, 20, 2, [])]
+            CookableMeals = [new MealDto(1, "Pasta", 600, null, null, null, 20, 2, null, null, [])]
         };
         var sut = CreateSut(service);
 
@@ -268,8 +268,8 @@ public sealed class FoodTrackingConversationAgentTests
         {
             Meals =
             [
-                new MealDto(5, "Borsch", 350, null, null, null, 45, 2, []),
-                new MealDto(12, "Pasta", 600, null, null, null, 20, 1, [])
+                new MealDto(5, "Borsch", 350, null, null, null, 45, 2, null, null, []),
+                new MealDto(12, "Pasta", 600, null, null, null, 20, 1, null, null, [])
             ]
         };
         var sut = CreateSut(service);
@@ -815,7 +815,7 @@ public sealed class FoodTrackingConversationAgentTests
             => Task.FromResult(CalorieSummary);
 
         public Task<MealDto> CreateMealAsync(string name, int? caloriesPerServing, decimal? proteinGrams, decimal? carbsGrams, decimal? fatGrams, int? prepTimeMinutes, int defaultServings, IReadOnlyList<(string Name, string? Quantity)> ingredients, CancellationToken cancellationToken = default)
-            => Task.FromResult(new MealDto(99, name, caloriesPerServing, proteinGrams, carbsGrams, fatGrams, prepTimeMinutes, defaultServings, []));
+            => Task.FromResult(new MealDto(99, name, caloriesPerServing, proteinGrams, carbsGrams, fatGrams, prepTimeMinutes, defaultServings, null, null, []));
 
         public Task<int> LogQuickMealAsync(string name, int calories, decimal servings, CancellationToken cancellationToken = default)
             => Task.FromResult(1);

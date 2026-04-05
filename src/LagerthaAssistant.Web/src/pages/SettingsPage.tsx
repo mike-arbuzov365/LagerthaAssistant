@@ -127,6 +127,9 @@ interface CopyPack {
   syncNowHint: string
   rebuildIndexHint: string
   clearCacheHint: string
+  discardChanges: string
+  stayInSettings: string
+  unsavedDialogMessage: string
 }
 
 const copyByLocale: Record<AppLocale, CopyPack> = {
@@ -209,6 +212,9 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     syncNowHint: 'Форсувати синхронізацію без очікування воркера.',
     rebuildIndexHint: 'Повністю перебудувати індекс OneDrive-даних.',
     clearCacheHint: 'Скинути локальний кеш сервісу й перечитати стан заново.',
+    discardChanges: 'Закрити без збереження',
+    stayInSettings: 'Залишитись у налаштуваннях',
+    unsavedDialogMessage: 'Є незбережені зміни. Зберегти їх перед виходом?',
   },
   en: {
     screenTitle: 'Lagertha Settings',
@@ -289,6 +295,9 @@ const copyByLocale: Record<AppLocale, CopyPack> = {
     syncNowHint: 'Force sync immediately instead of waiting for the worker.',
     rebuildIndexHint: 'Fully rebuild the OneDrive data index.',
     clearCacheHint: 'Reset the local service cache and fetch fresh state again.',
+    discardChanges: 'Discard changes',
+    stayInSettings: 'Stay in settings',
+    unsavedDialogMessage: 'You have unsaved changes. Save them before leaving?',
   },
 }
 
@@ -665,6 +674,7 @@ export function SettingsPage() {
   const skipInitialProviderRefreshRef = useRef(true)
   const [bridgeReadyVersion, setBridgeReadyVersion] = useState(0)
   const missingBridgeLoggedRef = useRef(false)
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false)
 
   useEffect(() => {
     setLocaleDraft(locale)
@@ -1247,6 +1257,19 @@ export function SettingsPage() {
     }
   }
 
+  async function handleDiscardAndClose() {
+    setShowDiscardDialog(false)
+    const webApp = await waitForTelegramMiniAppBridge()
+    applyTelegramClosingConfirmation(webApp, false)
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 32))
+    closeTelegramMiniApp(webApp)
+  }
+
+  async function handleSaveAndClose() {
+    setShowDiscardDialog(false)
+    await handleSaveAll()
+  }
+
   async function handleRefreshStatus() {
     if (!isOnline) {
       setSaveStatus(copy.offlineError)
@@ -1677,7 +1700,57 @@ export function SettingsPage() {
         >
           {saving ? copy.saving : copy.saveChanges}
         </button>
+        {hasUnsavedChanges && (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setShowDiscardDialog(true)}
+            disabled={saving}
+          >
+            {copy.discardChanges}
+          </button>
+        )}
       </div>
+
+      {showDiscardDialog && (
+        <div
+          className="unsaved-dialog-backdrop"
+          onClick={() => setShowDiscardDialog(false)}
+        >
+          <div
+            className="unsaved-dialog"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="unsaved-dialog__message">{copy.unsavedDialogMessage}</p>
+            <div className="unsaved-dialog__actions">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void handleSaveAndClose()}
+                disabled={saving || !isOnline}
+              >
+                {copy.saveChanges}
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={() => void handleDiscardAndClose()}
+              >
+                {copy.discardChanges}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowDiscardDialog(false)}
+              >
+                {copy.stayInSettings}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

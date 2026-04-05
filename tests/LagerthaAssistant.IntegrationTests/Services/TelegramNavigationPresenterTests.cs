@@ -20,11 +20,27 @@ public sealed class TelegramNavigationPresenterTests
     }
 
     [Fact]
-    public void BuildMainReplyKeyboard_ShouldKeepSettingsAsPlainText_WhenMiniAppUrlConfigured()
+    public void BuildMainReplyKeyboard_ShouldUseWebAppButton_WhenMiniAppUrlConfigured()
     {
         var sut = new TelegramNavigationPresenter(
             new LocalizationService(),
             "https://lagertha.example.com/miniapp/settings");
+
+        var keyboard = sut.BuildMainReplyKeyboard("uk");
+        var settingsButton = keyboard.Keyboard[2][0];
+
+        Assert.NotNull(settingsButton.WebApp);
+        Assert.Equal("https://lagertha.example.com/miniapp/settings", settingsButton.WebApp!.Url);
+        Assert.Equal("⚙️ Налаштування", settingsButton.Text);
+    }
+
+    [Fact]
+    public void BuildMainReplyKeyboard_ShouldUsePlainTextButton_WhenOnlyDirectUrlConfigured()
+    {
+        var sut = new TelegramNavigationPresenter(
+            new LocalizationService(),
+            miniAppSettingsUrl: null,
+            miniAppSettingsDirectUrl: "https://t.me/LagerthaAssistantBot?startapp=settings&mode=compact");
 
         var keyboard = sut.BuildMainReplyKeyboard("uk");
         var settingsButton = keyboard.Keyboard[2][0];
@@ -239,6 +255,32 @@ public sealed class TelegramNavigationPresenterTests
 
         Assert.Contains(CallbackDataConstants.Inventory.ResetStockConfirm, callbacks);
         Assert.Contains(CallbackDataConstants.Food.Inventory, callbacks);
+    }
+
+    [Fact]
+    public void BuildInputOnlyBackKeyboard_ShouldReturnSingleBackButton()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildInputOnlyBackKeyboard("uk", "vocab:add");
+
+        Assert.Single(keyboard.InlineKeyboard);
+        Assert.Single(keyboard.InlineKeyboard[0]);
+        Assert.Equal("vocab:add", keyboard.InlineKeyboard[0][0].CallbackData);
+        Assert.Contains("Назад", keyboard.InlineKeyboard[0][0].Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildVocabularyKeyboard_ShouldStillContainAllNavigationButtons()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildVocabularyKeyboard("en");
+        var callbacks = keyboard.InlineKeyboard.SelectMany(r => r).Select(b => b.CallbackData).ToList();
+
+        Assert.Contains(CallbackDataConstants.Vocab.Add, callbacks);
+        Assert.Contains(CallbackDataConstants.Vocab.Batch, callbacks);
+        Assert.Contains(CallbackDataConstants.Nav.Main, callbacks);
     }
 
     [Fact]

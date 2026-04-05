@@ -742,6 +742,8 @@ public sealed class FoodTrackingService : IFoodTrackingService
             meal.FatGrams,
             meal.PrepTimeMinutes,
             meal.DefaultServings,
+            meal.IconEmoji,
+            meal.Category,
             meal.Ingredients.Select(i => new IngredientDto(
                 i.FoodItemId,
                 i.FoodItem?.Name ?? string.Empty,

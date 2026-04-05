@@ -57,12 +57,16 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
     public TelegramReplyKeyboardMarkup BuildMainReplyKeyboard(string locale)
     {
         var labels = GetMainMenuLabels(locale);
+        var settingsButton = !string.IsNullOrWhiteSpace(_miniAppSettingsUrl)
+            ? new TelegramKeyboardButton(labels.Settings, WebApp: new TelegramWebAppInfo(_miniAppSettingsUrl))
+            : new TelegramKeyboardButton(labels.Settings);
+
         return new TelegramReplyKeyboardMarkup(
             Keyboard:
             [
                 [new TelegramKeyboardButton(labels.Chat), new TelegramKeyboardButton(labels.Vocabulary)],
                 [new TelegramKeyboardButton(labels.Shopping), new TelegramKeyboardButton(labels.WeeklyMenu)],
-                [new TelegramKeyboardButton(labels.Settings)]
+                [settingsButton]
             ],
             ResizeKeyboard: true,
             IsPersistent: true);
@@ -345,6 +349,15 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
                     Button("inventory.photo.unknown.link", locale, CallbackDataConstants.Inventory.PhotoUnknownLink)
                 ],
                 [Button("inventory.photo.unknown.skip", locale, CallbackDataConstants.Inventory.PhotoUnknownSkip)]
+            ]);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildInputOnlyBackKeyboard(string locale, string callbackData)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("back", locale, callbackData)]
             ]);
     }
 

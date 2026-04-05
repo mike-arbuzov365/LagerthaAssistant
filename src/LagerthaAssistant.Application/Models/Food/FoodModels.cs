@@ -37,6 +37,8 @@ public sealed record MealDto(
     decimal? FatGrams,
     int? PrepTimeMinutes,
     int DefaultServings,
+    string? IconEmoji,
+    string? Category,
     IReadOnlyList<IngredientDto> Ingredients);
 
 public sealed record IngredientDto(

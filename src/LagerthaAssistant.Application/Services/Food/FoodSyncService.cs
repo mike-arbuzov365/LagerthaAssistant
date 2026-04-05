@@ -607,6 +607,8 @@ public sealed class FoodSyncService : IFoodSyncService
         {
             NotionPageId = page.Id,
             Name = GetTitle(page, "Meal Name"),
+            IconEmoji = page.IconEmoji,
+            Category = GetSelect(page, "Category"),
             NotionUpdatedAt = notionUpdatedAt,
             NotionSyncStatus = FoodSyncStatus.Synced
         };
@@ -615,6 +617,8 @@ public sealed class FoodSyncService : IFoodSyncService
     private static void UpdateMeal(Meal meal, NotionPage page, DateTime notionUpdatedAt)
     {
         meal.Name = GetTitle(page, "Meal Name");
+        meal.IconEmoji = page.IconEmoji;
+        meal.Category = GetSelect(page, "Category");
         meal.NotionUpdatedAt = notionUpdatedAt;
     }
 
