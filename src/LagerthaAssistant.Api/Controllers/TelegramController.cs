@@ -566,6 +566,12 @@ public sealed class TelegramController : ControllerBase
                         }
                     }
 
+                    if (string.Equals(inbound.Text?.Trim(), ConversationSlashCommands.Legacy, StringComparison.OrdinalIgnoreCase))
+                    {
+                        await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
+                        return await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken);
+                    }
+
                     await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
                     return await BuildSettingsEntryResponseAsync(scope, locale, cancellationToken);
                 }
@@ -1888,6 +1894,11 @@ public sealed class TelegramController : ControllerBase
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var lookups = await _vocabularyIndexService.FindByInputsAsync(selectedWords, cancellationToken);
+        selectedWords = selectedWords
+            .Where(w => !lookups.TryGetValue(w, out var lookup) || !lookup.Found)
+            .ToList();
+
         return await ProcessVocabularyUrlSelectionAsync(selectedWords, scope, locale, cancellationToken);
     }
 
@@ -2007,21 +2018,38 @@ public sealed class TelegramController : ControllerBase
         }
 
         var orderedCandidates = OrderUrlCandidates(discovery.Candidates);
-        if (orderedCandidates.Count == 1)
+
+        var candidateWords = orderedCandidates.Select(c => c.Word).ToList();
+        var lookups = await _vocabularyIndexService.FindByInputsAsync(candidateWords, cancellationToken);
+        var newCandidates = orderedCandidates
+            .Where(c => !lookups.TryGetValue(c.Word, out var lookup) || !lookup.Found)
+            .Select((c, i) => new PendingVocabularyUrlCandidate(i + 1, c.Word, c.PartOfSpeech, c.Frequency))
+            .ToList();
+
+        if (newCandidates.Count == 0)
+        {
+            _pendingStateStore.VocabularyUrlSessions.TryRemove(pendingKey, out _);
+            return new TelegramRouteResponse(
+                "vocab.url.all_known",
+                _navigationPresenter.GetText("vocab.url.all_known", locale),
+                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+        }
+
+        if (newCandidates.Count == 1)
         {
             _pendingStateStore.VocabularyUrlSessions.TryRemove(pendingKey, out _);
             return await ProcessVocabularyUrlSelectionAsync(
-                [orderedCandidates[0].Word],
+                [newCandidates[0].Word],
                 scope,
                 locale,
                 cancellationToken);
         }
 
-        _pendingStateStore.VocabularyUrlSessions[pendingKey] = PendingVocabularyUrlSession.AwaitingSelection(orderedCandidates);
+        _pendingStateStore.VocabularyUrlSessions[pendingKey] = PendingVocabularyUrlSession.AwaitingSelection(newCandidates);
 
         return new TelegramRouteResponse(
             "vocab.url.suggestions",
-            BuildVocabularyUrlSuggestionsMessage(orderedCandidates, locale),
+            BuildVocabularyUrlSuggestionsMessage(newCandidates, locale),
             InlineKeyboard(_navigationPresenter.BuildVocabularyUrlSelectionKeyboard(locale)));
     }
 

@@ -23,7 +23,8 @@ public static class ConversationCommandCatalog
         new($"{ConversationSlashCommands.SyncRun} <n>", "Run up to <n> pending sync jobs.", ConversationCommandCategories.SyncQueue),
         new(ConversationSlashCommands.SyncRetryFailed, "Requeue failed sync jobs with default batch size.", ConversationCommandCategories.SyncQueue),
         new($"{ConversationSlashCommands.SyncRetryFailed} <n>", "Requeue up to <n> failed sync jobs.", ConversationCommandCategories.SyncQueue),
-        new(ConversationSlashCommands.Reset, "Reset conversation context.", ConversationCommandCategories.Session)
+        new(ConversationSlashCommands.Reset, "Reset conversation context.", ConversationCommandCategories.Session),
+        new(ConversationSlashCommands.Legacy, "Open legacy inline settings panel.", ConversationCommandCategories.General)
     ];
 
     public static IReadOnlyList<ConversationCommandCatalogGroup> SlashCommandGroups { get; } =

@@ -25,7 +25,8 @@ public sealed class ConversationCommandCatalogTests
             { $"{ConversationSlashCommands.SyncRun} <n>", ConversationCommandCategories.SyncQueue },
             { ConversationSlashCommands.SyncRetryFailed, ConversationCommandCategories.SyncQueue },
             { $"{ConversationSlashCommands.SyncRetryFailed} <n>", ConversationCommandCategories.SyncQueue },
-            { ConversationSlashCommands.Reset, ConversationCommandCategories.Session }
+            { ConversationSlashCommands.Reset, ConversationCommandCategories.Session },
+            { ConversationSlashCommands.Legacy, ConversationCommandCategories.General }
         };
 
     [Fact]
@@ -91,7 +92,8 @@ public sealed class ConversationCommandCatalogTests
             $"{ConversationSlashCommands.SyncRun} <n>",
             ConversationSlashCommands.SyncRetryFailed,
             $"{ConversationSlashCommands.SyncRetryFailed} <n>",
-            ConversationSlashCommands.Reset
+            ConversationSlashCommands.Reset,
+            ConversationSlashCommands.Legacy
         };
 
         foreach (var command in expectedCommands)

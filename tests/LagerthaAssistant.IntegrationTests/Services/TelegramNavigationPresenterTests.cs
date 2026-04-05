@@ -45,7 +45,7 @@ public sealed class TelegramNavigationPresenterTests
 
         Assert.Equal("https://t.me/LagerthaAssistantBot?startapp=settings&mode=compact", keyboard.InlineKeyboard[0][0].Url);
         Assert.Null(keyboard.InlineKeyboard[0][0].WebApp);
-        Assert.Equal(CallbackDataConstants.Settings.Legacy, keyboard.InlineKeyboard[1][0].CallbackData);
+        Assert.Equal(CallbackDataConstants.Nav.Main, keyboard.InlineKeyboard[1][0].CallbackData);
     }
 
     [Fact]
@@ -59,7 +59,25 @@ public sealed class TelegramNavigationPresenterTests
 
         Assert.NotNull(keyboard.InlineKeyboard[0][0].WebApp);
         Assert.Equal("https://lagertha.example.com/miniapp/settings", keyboard.InlineKeyboard[0][0].WebApp!.Url);
-        Assert.Equal(CallbackDataConstants.Settings.Legacy, keyboard.InlineKeyboard[1][0].CallbackData);
+        Assert.Equal(CallbackDataConstants.Nav.Main, keyboard.InlineKeyboard[1][0].CallbackData);
+    }
+
+    [Fact]
+    public void BuildSettingsLaunchKeyboard_ShouldNotContainLegacyButton()
+    {
+        var sut = new TelegramNavigationPresenter(
+            new LocalizationService(),
+            "https://lagertha.example.com/miniapp/settings",
+            "https://t.me/LagerthaAssistantBot?startapp=settings&mode=compact");
+
+        var keyboard = sut.BuildSettingsLaunchKeyboard("en");
+        var callbacks = keyboard.InlineKeyboard
+            .SelectMany(row => row)
+            .Select(b => b.CallbackData)
+            .ToList();
+
+        Assert.DoesNotContain(CallbackDataConstants.Settings.Legacy, callbacks);
+        Assert.Equal(2, keyboard.InlineKeyboard.Count);
     }
 
     [Fact]
