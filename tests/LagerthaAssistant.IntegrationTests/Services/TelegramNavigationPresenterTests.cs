@@ -258,6 +258,32 @@ public sealed class TelegramNavigationPresenterTests
     }
 
     [Fact]
+    public void BuildInputOnlyBackKeyboard_ShouldReturnSingleBackButton()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildInputOnlyBackKeyboard("uk", "vocab:add");
+
+        Assert.Single(keyboard.InlineKeyboard);
+        Assert.Single(keyboard.InlineKeyboard[0]);
+        Assert.Equal("vocab:add", keyboard.InlineKeyboard[0][0].CallbackData);
+        Assert.Contains("Назад", keyboard.InlineKeyboard[0][0].Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildVocabularyKeyboard_ShouldStillContainAllNavigationButtons()
+    {
+        var sut = new TelegramNavigationPresenter(new LocalizationService());
+
+        var keyboard = sut.BuildVocabularyKeyboard("en");
+        var callbacks = keyboard.InlineKeyboard.SelectMany(r => r).Select(b => b.CallbackData).ToList();
+
+        Assert.Contains(CallbackDataConstants.Vocab.Add, callbacks);
+        Assert.Contains(CallbackDataConstants.Vocab.Batch, callbacks);
+        Assert.Contains(CallbackDataConstants.Nav.Main, callbacks);
+    }
+
+    [Fact]
     public void BuildPhotoUnknownItemsKeyboard_ShouldContainLinkCallback()
     {
         var sut = new TelegramNavigationPresenter(new LocalizationService());

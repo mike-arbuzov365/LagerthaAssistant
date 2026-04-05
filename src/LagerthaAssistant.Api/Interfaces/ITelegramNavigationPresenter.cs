@@ -76,4 +76,6 @@ public interface ITelegramNavigationPresenter
     TelegramInlineKeyboardMarkup BuildPhotoStorePickExistingKeyboard(string locale, IReadOnlyList<string> stores);
 
     TelegramInlineKeyboardMarkup BuildPhotoUnknownItemsKeyboard(string locale);
+
+    TelegramInlineKeyboardMarkup BuildInputOnlyBackKeyboard(string locale, string callbackData);
 }

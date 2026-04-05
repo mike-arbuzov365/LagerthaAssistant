@@ -1317,7 +1317,7 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "settings.ai.key.awaiting",
                 EnsureQuestionMarker(_navigationPresenter.GetText("ai.key.prompt", locale)),
-                InlineKeyboard(_navigationPresenter.BuildAiSettingsKeyboard(locale)));
+                InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Ai.Back)));
         }
 
         if (string.Equals(callbackData, CallbackDataConstants.Ai.KeyRemove, StringComparison.Ordinal))
@@ -1825,7 +1825,7 @@ public sealed class TelegramController : ControllerBase
         return new TelegramRouteResponse(
             "vocab.add",
             _navigationPresenter.GetText("vocab.add.prompt", locale),
-            InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+            InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Nav.Vocab)));
     }
 
     private TelegramRouteResponse HandleVocabularyImportStartCallback(
@@ -1858,7 +1858,7 @@ public sealed class TelegramController : ControllerBase
         return new TelegramRouteResponse(
             "vocab.import.source",
             _navigationPresenter.GetText(promptKey, locale),
-            InlineKeyboard(_navigationPresenter.BuildVocabularyImportSourceKeyboard(locale)));
+            InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Vocab.Url)));
     }
 
     private TelegramRouteResponse HandleVocabularyUrlCancelCallback(
@@ -3142,7 +3142,7 @@ public sealed class TelegramController : ControllerBase
         return new TelegramRouteResponse(
             "vocab.batch",
             _navigationPresenter.GetText("vocab.batch.prompt", locale),
-            InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+            InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Nav.Vocab)));
     }
 
     private async Task<TelegramRouteResponse> BuildSettingsSectionResponseAsync(
@@ -4155,7 +4155,7 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "inventory.search.prompt",
                 $"{QuestionMarker} {_navigationPresenter.GetText("inventory.search.prompt", locale)}",
-                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+                InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Food.Inventory)));
         }
 
         if (string.Equals(callbackData, CallbackDataConstants.Inventory.Manage, StringComparison.Ordinal))
@@ -4212,7 +4212,7 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "inventory.adjust.prompt",
                 prompt,
-                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+                InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Inventory.Manage)));
         }
 
         if (string.Equals(callbackData, CallbackDataConstants.Inventory.Min, StringComparison.Ordinal))
@@ -4227,7 +4227,7 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "inventory.min.prompt",
                 prompt,
-                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+                InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Inventory.Manage)));
         }
 
         if (string.Equals(callbackData, CallbackDataConstants.Inventory.ResetStock, StringComparison.Ordinal))
@@ -5209,7 +5209,9 @@ public sealed class TelegramController : ControllerBase
 
         var keyboard = callbackData.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal)
             ? InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale))
-            : InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale));
+            : string.Equals(callbackData, CallbackDataConstants.Weekly.Create, StringComparison.Ordinal)
+                ? InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Nav.Weekly))
+                : InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale));
         return new TelegramRouteResponse(result.Intent, result.Message ?? string.Empty, keyboard);
     }
 

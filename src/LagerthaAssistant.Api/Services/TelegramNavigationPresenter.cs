@@ -352,6 +352,15 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             ]);
     }
 
+    public TelegramInlineKeyboardMarkup BuildInputOnlyBackKeyboard(string locale, string callbackData)
+    {
+        return new TelegramInlineKeyboardMarkup(
+            InlineKeyboard:
+            [
+                [Button("back", locale, callbackData)]
+            ]);
+    }
+
     public TelegramInlineKeyboardMarkup BuildAiSettingsKeyboard(string locale)
     {
         return new TelegramInlineKeyboardMarkup(

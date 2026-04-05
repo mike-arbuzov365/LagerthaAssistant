@@ -4228,6 +4228,9 @@ public sealed class TelegramControllerTests
 
         public TelegramInlineKeyboardMarkup BuildPhotoUnknownItemsKeyboard(string locale)
             => new([[new TelegramInlineKeyboardButton("Add all", CallbackDataConstants.Inventory.PhotoUnknownAddAll)]]);
+
+        public TelegramInlineKeyboardMarkup BuildInputOnlyBackKeyboard(string locale, string callbackData)
+            => new([[new TelegramInlineKeyboardButton("🔙 Back", callbackData)]]);
     }
     private sealed class FakeTelegramFormatter : ITelegramConversationResponseFormatter
     {
