@@ -20,11 +20,27 @@ public sealed class TelegramNavigationPresenterTests
     }
 
     [Fact]
-    public void BuildMainReplyKeyboard_ShouldKeepSettingsAsPlainText_WhenMiniAppUrlConfigured()
+    public void BuildMainReplyKeyboard_ShouldUseWebAppButton_WhenMiniAppUrlConfigured()
     {
         var sut = new TelegramNavigationPresenter(
             new LocalizationService(),
             "https://lagertha.example.com/miniapp/settings");
+
+        var keyboard = sut.BuildMainReplyKeyboard("uk");
+        var settingsButton = keyboard.Keyboard[2][0];
+
+        Assert.NotNull(settingsButton.WebApp);
+        Assert.Equal("https://lagertha.example.com/miniapp/settings", settingsButton.WebApp!.Url);
+        Assert.Equal("⚙️ Налаштування", settingsButton.Text);
+    }
+
+    [Fact]
+    public void BuildMainReplyKeyboard_ShouldUsePlainTextButton_WhenOnlyDirectUrlConfigured()
+    {
+        var sut = new TelegramNavigationPresenter(
+            new LocalizationService(),
+            miniAppSettingsUrl: null,
+            miniAppSettingsDirectUrl: "https://t.me/LagerthaAssistantBot?startapp=settings&mode=compact");
 
         var keyboard = sut.BuildMainReplyKeyboard("uk");
         var settingsButton = keyboard.Keyboard[2][0];
