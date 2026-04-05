@@ -190,7 +190,6 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             ]);
         }
 
-        rows.Add([Button("settings.launch_legacy", locale, CallbackDataConstants.Settings.Legacy)]);
         rows.Add([Button("settings.back", locale, CallbackDataConstants.Nav.Main)]);
 
         return new TelegramInlineKeyboardMarkup(rows);

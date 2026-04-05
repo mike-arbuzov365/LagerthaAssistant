@@ -19,6 +19,8 @@ public static class ConversationSlashCommands
 
     public const string Reset = "/reset";
 
+    public const string Legacy = "/legacy";
+
     public const string Index = "/index";
     public const string IndexClear = "/index clear";
     public const string IndexRebuild = "/index rebuild";

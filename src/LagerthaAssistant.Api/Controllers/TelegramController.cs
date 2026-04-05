@@ -566,6 +566,12 @@ public sealed class TelegramController : ControllerBase
                         }
                     }
 
+                    if (string.Equals(inbound.Text?.Trim(), ConversationSlashCommands.Legacy, StringComparison.OrdinalIgnoreCase))
+                    {
+                        await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
+                        return await BuildSettingsSectionResponseAsync(scope, locale, cancellationToken);
+                    }
+
                     await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Settings, cancellationToken);
                     return await BuildSettingsEntryResponseAsync(scope, locale, cancellationToken);
                 }
