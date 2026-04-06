@@ -78,4 +78,6 @@ public interface ITelegramNavigationPresenter
     TelegramInlineKeyboardMarkup BuildPhotoUnknownItemsKeyboard(string locale);
 
     TelegramInlineKeyboardMarkup BuildInputOnlyBackKeyboard(string locale, string callbackData);
+
+    TelegramInlineKeyboardMarkup BuildMediaIntentKeyboard(string locale, IReadOnlyList<TelegramMediaCapability> capabilities, string backCallbackData);
 }
