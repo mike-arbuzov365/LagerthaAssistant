@@ -3524,6 +3524,7 @@ public sealed class TelegramController : ControllerBase
         return provider switch
         {
             AiProviderConstants.Claude => "Claude",
+            AiProviderConstants.Gemini => "Gemini",
             _ => "OpenAI"
         };
     }

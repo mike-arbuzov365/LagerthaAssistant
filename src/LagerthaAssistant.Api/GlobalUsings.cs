@@ -21,4 +21,7 @@ global using AiApiKeySource = SharedBotKernel.Models.AI.AiApiKeySource;
 global using ConversationScope = SharedBotKernel.Models.Agents.ConversationScope;
 global using OpenAiOptions = SharedBotKernel.Options.OpenAiOptions;
 global using OpenAiConstants = SharedBotKernel.Constants.OpenAiConstants;
+global using GeminiOptions = SharedBotKernel.Options.GeminiOptions;
+global using GeminiConstants = SharedBotKernel.Constants.GeminiConstants;
+global using AiProviderConstants = SharedBotKernel.Constants.AiProviderConstants;
 global using ConversationMessage = SharedBotKernel.Domain.AI.ConversationMessage;
