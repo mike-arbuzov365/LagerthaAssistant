@@ -81,6 +81,24 @@ public enum TelegramImportSourceType
     Photo = 3
 }
 
+public enum TelegramMediaKind
+{
+    Photo = 0,
+    ImageDocument = 1,
+    TextDocument = 2,
+    PdfDocument = 3,
+    Spreadsheet = 4,
+    Unknown = 5
+}
+
+public enum TelegramMediaCapability
+{
+    VocabImport = 0,
+    InventoryRestock = 1,
+    InventoryConsume = 2,
+    FoodPhoto = 3
+}
+
 public enum TelegramImportSourceReadStatus
 {
     Success = 0,

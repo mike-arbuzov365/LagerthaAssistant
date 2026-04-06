@@ -394,6 +394,18 @@ public sealed class TelegramController : ControllerBase
         bool hasStoredLocale,
         CancellationToken cancellationToken)
     {
+        // Intercept inbound media that has no existing pending flow.
+        // Skip if it's a callback (user is selecting from a keyboard) or if an import flow is already active.
+        if (!inbound.IsCallback
+            && (!string.IsNullOrWhiteSpace(inbound.PhotoFileId) || !string.IsNullOrWhiteSpace(inbound.DocumentFileId)))
+        {
+            var mediaResponse = TryHandleMediaIntentAsync(inbound, scope, locale);
+            if (mediaResponse is not null)
+            {
+                return mediaResponse;
+            }
+        }
+
         switch (route.Kind)
         {
             case NavigationRouteKind.Start:
@@ -1199,6 +1211,11 @@ public sealed class TelegramController : ControllerBase
             return await HandleFoodCallbackAsync(callbackData, locale, scope, cancellationToken);
         }
 
+        if (callbackData.StartsWith(CallbackDataConstants.Media.Prefix, StringComparison.Ordinal))
+        {
+            return await HandleMediaIntentCallbackAsync(callbackData, scope, locale, cancellationToken);
+        }
+
         return new TelegramRouteResponse("nav.unknown", _navigationPresenter.GetText("stub.wip", locale));
     }
 
@@ -1908,6 +1925,152 @@ public sealed class TelegramController : ControllerBase
             .ToList();
 
         return await ProcessVocabularyUrlSelectionAsync(selectedWords, scope, locale, cancellationToken);
+    }
+
+    // ── Media intent selection flow ───────────────────────────────────────────
+
+    /// <summary>
+    /// Intercepts inbound media when no pending vocabulary import session is active.
+    /// Returns null if the media should be handled by the existing section-specific flow.
+    /// </summary>
+    private TelegramRouteResponse? TryHandleMediaIntentAsync(
+        TelegramInboundMessage inbound,
+        ConversationScope scope,
+        string locale)
+    {
+        // If a vocabulary import session is already active, let the import flow handle it.
+        var urlSessionKey = BuildPendingUrlSessionKey(scope);
+        if (_pendingStateStore.VocabularyUrlSessions.ContainsKey(urlSessionKey))
+        {
+            return null;
+        }
+
+        // If an inventory photo session is active, let the inventory flow handle it.
+        var chatActionKey = BuildPendingChatActionKey(scope);
+        if (_pendingStateStore.ChatActions.TryGetValue(chatActionKey, out var pendingAction)
+            && pendingAction is PendingChatActionKind.InventoryPhotoAwaitingImage
+                or PendingChatActionKind.InventoryPhotoAwaitingSelection
+                or PendingChatActionKind.FoodPhotoLog)
+        {
+            return null;
+        }
+
+        var kind = TelegramMediaIntentResolver.ClassifyMedia(
+            inbound.PhotoFileId,
+            inbound.DocumentMimeType,
+            inbound.DocumentFileName);
+
+        var capabilities = TelegramMediaIntentResolver.ResolveCapabilities(kind);
+        if (capabilities.Count == 0)
+        {
+            return new TelegramRouteResponse(
+                "media.unsupported",
+                _navigationPresenter.GetText("media.unsupported", locale),
+                InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Nav.Main)));
+        }
+
+        // Store the media so we can use the file IDs when the user picks a capability.
+        var mediaKey = BuildPendingChatActionKey(scope);
+        _pendingStateStore.MediaIntentSessions[mediaKey] = new PendingMediaIntentSession(
+            kind,
+            inbound.PhotoFileId,
+            inbound.DocumentFileId,
+            inbound.DocumentFileName,
+            inbound.DocumentMimeType);
+
+        var currentSection = NavigationSections.Main;
+        var backCallback = currentSection switch
+        {
+            NavigationSections.Vocabulary => CallbackDataConstants.Nav.Vocab,
+            NavigationSections.Inventory => CallbackDataConstants.Food.Inventory,
+            NavigationSections.WeeklyMenu => CallbackDataConstants.Nav.Weekly,
+            _ => CallbackDataConstants.Nav.Main
+        };
+
+        return new TelegramRouteResponse(
+            "media.intent.prompt",
+            _navigationPresenter.GetText("media.intent.prompt", locale),
+            InlineKeyboard(_navigationPresenter.BuildMediaIntentKeyboard(locale, capabilities, backCallback)));
+    }
+
+    private async Task<TelegramRouteResponse> HandleMediaIntentCallbackAsync(
+        string callbackData,
+        ConversationScope scope,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(callbackData, CallbackDataConstants.Media.Cancel, StringComparison.Ordinal))
+        {
+            _pendingStateStore.MediaIntentSessions.TryRemove(BuildPendingChatActionKey(scope), out _);
+            return new TelegramRouteResponse(
+                "media.cancelled",
+                _navigationPresenter.GetText("media.cancelled", locale),
+                ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
+        }
+
+        var mediaKey = BuildPendingChatActionKey(scope);
+        if (!_pendingStateStore.MediaIntentSessions.TryRemove(mediaKey, out var session))
+        {
+            return new TelegramRouteResponse(
+                "media.expired",
+                _navigationPresenter.GetText("media.expired", locale),
+                ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Media.VocabImport, StringComparison.Ordinal))
+        {
+            await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Vocabulary, cancellationToken);
+            var sourceType = session.MediaKind is TelegramMediaKind.Photo or TelegramMediaKind.ImageDocument
+                ? TelegramImportSourceType.Photo
+                : TelegramImportSourceType.File;
+            var importSession = PendingVocabularyUrlSession.AwaitingSourceInput(sourceType);
+            _pendingStateStore.VocabularyUrlSessions[BuildPendingUrlSessionKey(scope)] = importSession;
+            // Synthesise a minimal inbound so TryHandleVocabularyImportFlowAsync can read the file IDs.
+            var importInbound = new TelegramInboundMessage(
+                ChatId: 0,
+                UserId: scope.UserId,
+                ConversationId: scope.ConversationId,
+                Text: string.Empty,
+                MessageThreadId: null,
+                LanguageCode: null,
+                CallbackData: null,
+                CallbackQueryId: null,
+                DocumentFileId: session.DocumentFileId,
+                DocumentFileName: session.DocumentFileName,
+                DocumentMimeType: session.DocumentMimeType,
+                PhotoFileId: session.PhotoFileId,
+                WebAppData: null,
+                IsCallback: false);
+            return await TryHandleVocabularyImportFlowAsync(importInbound, scope, locale, cancellationToken)
+                ?? new TelegramRouteResponse(
+                    "vocab.import.start",
+                    _navigationPresenter.GetText("vocab.url.prompt", locale),
+                    InlineKeyboard(_navigationPresenter.BuildVocabularyImportSourceKeyboard(locale)));
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Media.InventoryRestock, StringComparison.Ordinal)
+            || string.Equals(callbackData, CallbackDataConstants.Media.InventoryConsume, StringComparison.Ordinal))
+        {
+            await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Inventory, cancellationToken);
+            var mode = string.Equals(callbackData, CallbackDataConstants.Media.InventoryRestock, StringComparison.Ordinal)
+                ? TelegramInventoryPhotoMode.Restock
+                : TelegramInventoryPhotoMode.Consumption;
+            var inventoryPendingKey = BuildPendingChatActionKey(scope);
+            _pendingStateStore.InventoryPhotoSessions[inventoryPendingKey] = new PendingInventoryPhotoSession(mode, [], []);
+            return await AnalyzeInventoryPhotoAndBuildResponseAsync(session.PhotoFileId ?? session.DocumentFileId!, mode, inventoryPendingKey, locale, cancellationToken);
+        }
+
+        if (string.Equals(callbackData, CallbackDataConstants.Media.FoodPhoto, StringComparison.Ordinal))
+        {
+            await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.WeeklyMenu, cancellationToken);
+            var photoId = session.PhotoFileId ?? session.DocumentFileId!;
+            return await HandleWeeklyMenuPhotoAsync(photoId, locale, scope, cancellationToken);
+        }
+
+        return new TelegramRouteResponse(
+            "media.unknown",
+            _navigationPresenter.GetText("stub.wip", locale),
+            ReplyKeyboard(_navigationPresenter.BuildMainReplyKeyboard(locale)));
     }
 
     private async Task<TelegramRouteResponse?> TryHandleVocabularyImportFlowAsync(
@@ -4557,136 +4720,7 @@ public sealed class TelegramController : ControllerBase
                     InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
             }
 
-            var allInventory = await _foodTrackingService.GetAllInventoryAsync(0, cancellationToken);
-            var inventoryById = allInventory.ToDictionary(item => item.Id);
-            var hints = allInventory
-                .Select(item => new TelegramInventoryItemHint(item.Id, item.Name))
-                .ToList();
-
-            var analysis = await _importSourceReader.AnalyzeInventoryPhotoAsync(
-                inbound.PhotoFileId!,
-                pendingSession.Mode,
-                hints,
-                cancellationToken);
-
-            if (!analysis.Success)
-            {
-                var errorMessage = analysis.Error;
-                if (!string.IsNullOrWhiteSpace(errorMessage)
-                    && errorMessage.StartsWith("inventory.", StringComparison.Ordinal))
-                {
-                    errorMessage = _navigationPresenter.GetText(errorMessage, locale);
-                }
-
-                return new TelegramRouteResponse(
-                    "inventory.photo.failed",
-                    EnsureWarningMarker(errorMessage ?? _navigationPresenter.GetText("inventory.photo.failed", locale)),
-                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
-            }
-
-            var candidates = analysis.Candidates
-                .OrderByDescending(candidate => candidate.Confidence)
-                .ThenBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
-                .Select((candidate, index) =>
-                {
-                    inventoryById.TryGetValue(candidate.ItemId, out var matchedInventoryItem);
-                    return new PendingInventoryPhotoCandidate(
-                        Number: index + 1,
-                        candidate.ItemId,
-                        candidate.Name,
-                        candidate.Quantity,
-                        candidate.Unit,
-                        candidate.Confidence,
-                        matchedInventoryItem?.IconEmoji,
-                        matchedInventoryItem?.Category,
-                        candidate.PriceTotal,
-                        candidate.PricePerUnit);
-                })
-                .ToList();
-
-            var unknown = analysis.Unknown
-                .Where(entry => entry.NameEn is not null || entry.Name is not null)
-                .OrderByDescending(entry => entry.Confidence)
-                .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
-                .Select((entry, index) => new PendingInventoryPhotoUnknown(
-                    Number: index + 1,
-                    entry.Name,
-                    entry.NameEn,
-                    entry.Quantity,
-                    entry.Unit,
-                    entry.Confidence,
-                    entry.PriceTotal,
-                    entry.PricePerUnit,
-                    entry.IsNonProduct,
-                    Category: DefaultUnknownInventoryCategory))
-                .ToList();
-
-            var aliasPromotedCandidates = new List<PendingInventoryPhotoCandidate>();
-            var unresolvedUnknown = new List<PendingInventoryPhotoUnknown>();
-            foreach (var unknownEntry in unknown)
-            {
-                var aliasItemId = string.IsNullOrWhiteSpace(unknownEntry.NameEn)
-                    ? null
-                    : await _foodTrackingService.ResolveItemAliasAsync(unknownEntry.NameEn, cancellationToken);
-
-                if (aliasItemId.HasValue && inventoryById.TryGetValue(aliasItemId.Value, out var aliasedItem))
-                {
-                    aliasPromotedCandidates.Add(new PendingInventoryPhotoCandidate(
-                        Number: 0,
-                        ItemId: aliasedItem.Id,
-                        Name: aliasedItem.Name,
-                        Quantity: unknownEntry.Quantity,
-                        Unit: unknownEntry.Unit,
-                        Confidence: unknownEntry.Confidence,
-                        IconEmoji: aliasedItem.IconEmoji,
-                        Category: aliasedItem.Category,
-                        PriceTotal: unknownEntry.PriceTotal,
-                        PricePerUnit: unknownEntry.PricePerUnit));
-                    continue;
-                }
-
-                unresolvedUnknown.Add(unknownEntry);
-            }
-
-            candidates = candidates
-                .Concat(aliasPromotedCandidates)
-                .OrderByDescending(candidate => candidate.Confidence)
-                .ThenBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
-                .Select((candidate, index) => candidate with { Number = index + 1 })
-                .ToList();
-
-            unknown = unresolvedUnknown
-                .OrderByDescending(entry => entry.Confidence)
-                .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
-                .Select((entry, index) => entry with { Number = index + 1 })
-                .ToList();
-
-            if (candidates.Count == 0 && unknown.Count == 0)
-            {
-                _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
-                _pendingStateStore.InventoryPhotoSessions.TryRemove(pendingKey, out _);
-                return new TelegramRouteResponse(
-                    "inventory.photo.empty",
-                    EnsureInfoMarker(_navigationPresenter.GetText("inventory.photo.empty", locale)),
-                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
-            }
-
-            var updatedSession = pendingSession with
-            {
-                Candidates = candidates,
-                Unknown = unknown,
-                NonProducts = analysis.NonProducts,
-                DetectedStoreName = analysis.DetectedStore?.Name,
-                DetectedStoreNameEn = analysis.DetectedStore?.NameEn,
-                StoreConfidence = analysis.DetectedStore?.Confidence
-            };
-            _pendingStateStore.InventoryPhotoSessions[pendingKey] = updatedSession;
-            _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventoryPhotoAwaitingSelection;
-
-            return new TelegramRouteResponse(
-                "inventory.photo.preview",
-                BuildInventoryPhotoPreviewText(locale, pendingSession.Mode, candidates, unknown, updatedSession),
-                InlineKeyboard(_navigationPresenter.BuildInventoryPhotoConfirmKeyboard(locale)));
+            return await AnalyzeInventoryPhotoAndBuildResponseAsync(inbound.PhotoFileId!, pendingSession.Mode, pendingKey, locale, cancellationToken);
         }
 
         if (_pendingStateStore.ChatActions.TryGetValue(pendingKey, out var selectionPendingAction)
@@ -5127,6 +5161,144 @@ public sealed class TelegramController : ControllerBase
             "inventory.search.results",
             resultSb.ToString().TrimEnd(),
             InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+    }
+
+    private async Task<TelegramRouteResponse> AnalyzeInventoryPhotoAndBuildResponseAsync(
+        string photoFileId,
+        TelegramInventoryPhotoMode mode,
+        string pendingKey,
+        string locale,
+        CancellationToken cancellationToken)
+    {
+        var allInventory = await _foodTrackingService.GetAllInventoryAsync(0, cancellationToken);
+        var inventoryById = allInventory.ToDictionary(item => item.Id);
+        var hints = allInventory
+            .Select(item => new TelegramInventoryItemHint(item.Id, item.Name))
+            .ToList();
+
+        var analysis = await _importSourceReader.AnalyzeInventoryPhotoAsync(
+            photoFileId,
+            mode,
+            hints,
+            cancellationToken);
+
+        if (!analysis.Success)
+        {
+            var errorMessage = analysis.Error;
+            if (!string.IsNullOrWhiteSpace(errorMessage)
+                && errorMessage.StartsWith("inventory.", StringComparison.Ordinal))
+            {
+                errorMessage = _navigationPresenter.GetText(errorMessage, locale);
+            }
+
+            return new TelegramRouteResponse(
+                "inventory.photo.failed",
+                EnsureWarningMarker(errorMessage ?? _navigationPresenter.GetText("inventory.photo.failed", locale)),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        var candidates = analysis.Candidates
+            .OrderByDescending(candidate => candidate.Confidence)
+            .ThenBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
+            .Select((candidate, index) =>
+            {
+                inventoryById.TryGetValue(candidate.ItemId, out var matchedInventoryItem);
+                return new PendingInventoryPhotoCandidate(
+                    Number: index + 1,
+                    candidate.ItemId,
+                    candidate.Name,
+                    candidate.Quantity,
+                    candidate.Unit,
+                    candidate.Confidence,
+                    matchedInventoryItem?.IconEmoji,
+                    matchedInventoryItem?.Category,
+                    candidate.PriceTotal,
+                    candidate.PricePerUnit);
+            })
+            .ToList();
+
+        var unknown = analysis.Unknown
+            .Where(entry => entry.NameEn is not null || entry.Name is not null)
+            .OrderByDescending(entry => entry.Confidence)
+            .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            .Select((entry, index) => new PendingInventoryPhotoUnknown(
+                Number: index + 1,
+                entry.Name,
+                entry.NameEn,
+                entry.Quantity,
+                entry.Unit,
+                entry.Confidence,
+                entry.PriceTotal,
+                entry.PricePerUnit,
+                entry.IsNonProduct,
+                Category: DefaultUnknownInventoryCategory))
+            .ToList();
+
+        var aliasPromotedCandidates = new List<PendingInventoryPhotoCandidate>();
+        var unresolvedUnknown = new List<PendingInventoryPhotoUnknown>();
+        foreach (var unknownEntry in unknown)
+        {
+            var aliasItemId = string.IsNullOrWhiteSpace(unknownEntry.NameEn)
+                ? null
+                : await _foodTrackingService.ResolveItemAliasAsync(unknownEntry.NameEn, cancellationToken);
+
+            if (aliasItemId.HasValue && inventoryById.TryGetValue(aliasItemId.Value, out var aliasedItem))
+            {
+                aliasPromotedCandidates.Add(new PendingInventoryPhotoCandidate(
+                    Number: 0,
+                    ItemId: aliasedItem.Id,
+                    Name: aliasedItem.Name,
+                    Quantity: unknownEntry.Quantity,
+                    Unit: unknownEntry.Unit,
+                    Confidence: unknownEntry.Confidence,
+                    IconEmoji: aliasedItem.IconEmoji,
+                    Category: aliasedItem.Category,
+                    PriceTotal: unknownEntry.PriceTotal,
+                    PricePerUnit: unknownEntry.PricePerUnit));
+                continue;
+            }
+
+            unresolvedUnknown.Add(unknownEntry);
+        }
+
+        candidates = candidates
+            .Concat(aliasPromotedCandidates)
+            .OrderByDescending(candidate => candidate.Confidence)
+            .ThenBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
+            .Select((candidate, index) => candidate with { Number = index + 1 })
+            .ToList();
+
+        unknown = unresolvedUnknown
+            .OrderByDescending(entry => entry.Confidence)
+            .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            .Select((entry, index) => entry with { Number = index + 1 })
+            .ToList();
+
+        if (candidates.Count == 0 && unknown.Count == 0)
+        {
+            _pendingStateStore.ChatActions.TryRemove(pendingKey, out _);
+            _pendingStateStore.InventoryPhotoSessions.TryRemove(pendingKey, out _);
+            return new TelegramRouteResponse(
+                "inventory.photo.empty",
+                EnsureInfoMarker(_navigationPresenter.GetText("inventory.photo.empty", locale)),
+                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+        }
+
+        var photoSession = new PendingInventoryPhotoSession(
+            mode,
+            candidates,
+            unknown,
+            NonProducts: analysis.NonProducts,
+            DetectedStoreName: analysis.DetectedStore?.Name,
+            DetectedStoreNameEn: analysis.DetectedStore?.NameEn,
+            StoreConfidence: analysis.DetectedStore?.Confidence);
+        _pendingStateStore.InventoryPhotoSessions[pendingKey] = photoSession;
+        _pendingStateStore.ChatActions[pendingKey] = PendingChatActionKind.InventoryPhotoAwaitingSelection;
+
+        return new TelegramRouteResponse(
+            "inventory.photo.preview",
+            BuildInventoryPhotoPreviewText(locale, mode, candidates, unknown, photoSession),
+            InlineKeyboard(_navigationPresenter.BuildInventoryPhotoConfirmKeyboard(locale)));
     }
 
     private async Task<TelegramRouteResponse> HandleFoodCallbackAsync(

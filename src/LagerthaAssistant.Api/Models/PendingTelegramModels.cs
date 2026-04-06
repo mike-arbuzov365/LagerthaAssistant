@@ -2,6 +2,13 @@ namespace LagerthaAssistant.Api.Models;
 
 using LagerthaAssistant.Api.Interfaces;
 
+internal sealed record PendingMediaIntentSession(
+    TelegramMediaKind MediaKind,
+    string? PhotoFileId,
+    string? DocumentFileId,
+    string? DocumentFileName,
+    string? DocumentMimeType);
+
 internal sealed record PendingVocabularySaveRequest(
     string RequestedWord,
     string AssistantReply,

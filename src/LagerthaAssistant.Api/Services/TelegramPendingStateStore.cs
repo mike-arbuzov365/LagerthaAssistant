@@ -38,6 +38,9 @@ public sealed class TelegramPendingStateStore
     internal ConcurrentDictionary<string, PendingShoppingDeleteSession> ShoppingDeleteSessions { get; }
         = new(StringComparer.Ordinal);
 
+    internal ConcurrentDictionary<string, PendingMediaIntentSession> MediaIntentSessions { get; }
+        = new(StringComparer.Ordinal);
+
     /// <summary>Safety valve: prevents unbounded memory growth if users abandon flows.</summary>
     internal void CleanupIfOversized(int threshold = 100)
     {
@@ -49,6 +52,7 @@ public sealed class TelegramPendingStateStore
         CleanupDict(FoodPhotoLogs, threshold);
         CleanupDict(InventoryPhotoSessions, threshold);
         CleanupDict(ShoppingDeleteSessions, threshold);
+        CleanupDict(MediaIntentSessions, threshold);
         // GraphChallenges excluded — they have their own TTL via OAuth flow
     }
 

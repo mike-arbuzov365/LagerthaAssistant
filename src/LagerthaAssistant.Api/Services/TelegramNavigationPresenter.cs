@@ -3,6 +3,7 @@ using LagerthaAssistant.Api.Interfaces;
 using LagerthaAssistant.Application.Constants;
 using LagerthaAssistant.Application.Interfaces;
 using LagerthaAssistant.Application.Navigation;
+using TelegramMediaCapability = LagerthaAssistant.Api.Interfaces.TelegramMediaCapability;
 
 namespace LagerthaAssistant.Api.Services;
 
@@ -359,6 +360,31 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             [
                 [Button("back", locale, callbackData)]
             ]);
+    }
+
+    public TelegramInlineKeyboardMarkup BuildMediaIntentKeyboard(
+        string locale,
+        IReadOnlyList<TelegramMediaCapability> capabilities,
+        string backCallbackData)
+    {
+        var rows = new List<IReadOnlyList<TelegramInlineKeyboardButton>>();
+        foreach (var cap in capabilities)
+        {
+            var (key, callback) = cap switch
+            {
+                TelegramMediaCapability.VocabImport => ("media.intent.vocab_import", CallbackDataConstants.Media.VocabImport),
+                TelegramMediaCapability.InventoryRestock => ("media.intent.inventory_restock", CallbackDataConstants.Media.InventoryRestock),
+                TelegramMediaCapability.InventoryConsume => ("media.intent.inventory_consume", CallbackDataConstants.Media.InventoryConsume),
+                TelegramMediaCapability.FoodPhoto => ("media.intent.food_photo", CallbackDataConstants.Media.FoodPhoto),
+                _ => (null, null)
+            };
+            if (key is not null && callback is not null)
+            {
+                rows.Add([Button(key, locale, callback)]);
+            }
+        }
+        rows.Add([Button("back", locale, backCallbackData)]);
+        return new TelegramInlineKeyboardMarkup(rows);
     }
 
     public TelegramInlineKeyboardMarkup BuildAiSettingsKeyboard(string locale)

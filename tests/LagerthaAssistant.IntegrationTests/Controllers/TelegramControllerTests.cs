@@ -4231,6 +4231,9 @@ public sealed class TelegramControllerTests
 
         public TelegramInlineKeyboardMarkup BuildInputOnlyBackKeyboard(string locale, string callbackData)
             => new([[new TelegramInlineKeyboardButton("🔙 Back", callbackData)]]);
+
+        public TelegramInlineKeyboardMarkup BuildMediaIntentKeyboard(string locale, IReadOnlyList<TelegramMediaCapability> capabilities, string backCallbackData)
+            => new([[new TelegramInlineKeyboardButton("Media action", CallbackDataConstants.Media.VocabImport)]]);
     }
     private sealed class FakeTelegramFormatter : ITelegramConversationResponseFormatter
     {
@@ -5238,7 +5241,7 @@ public sealed class TelegramControllerTests
     }
 
     [Fact]
-    public async Task Webhook_ShouldRequireInventoryPhotoMode_WhenPhotoSentWithoutPendingMode()
+    public async Task Webhook_ShouldShowMediaIntentPicker_WhenPhotoSentWithoutPendingMode()
     {
         var foodService = new FakeFoodTrackingService
         {
@@ -5268,8 +5271,7 @@ public sealed class TelegramControllerTests
 
         var ok = Assert.IsType<OkObjectResult>(response.Result);
         var payload = Assert.IsType<TelegramWebhookResponse>(ok.Value);
-        Assert.Equal("inventory.photo.mode_required", payload.Intent);
-        Assert.Contains("Choose photo mode", sender.LastText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("media.intent.prompt", payload.Intent);
     }
 
     [Fact]

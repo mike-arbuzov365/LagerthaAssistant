@@ -138,6 +138,16 @@ public static class CallbackDataConstants
         public const string Delete = "shop:delete";
     }
 
+    public static class Media
+    {
+        public const string Prefix = "media:";
+        public const string VocabImport = "media:vocab_import";
+        public const string InventoryRestock = "media:inventory_restock";
+        public const string InventoryConsume = "media:inventory_consume";
+        public const string FoodPhoto = "media:food_photo";
+        public const string Cancel = "media:cancel";
+    }
+
     public static class Weekly
     {
         public const string Prefix = "weekly:";
