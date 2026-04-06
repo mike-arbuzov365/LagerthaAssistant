@@ -15,7 +15,8 @@ public sealed class AiRuntimeSettingsService : IAiRuntimeSettingsService
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> ModelMap = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
     {
         [AiProviderConstants.OpenAi] = ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
-        [AiProviderConstants.Claude] = ["claude-3-5-haiku-latest", "claude-3-5-sonnet-latest", "claude-3-7-sonnet-latest"]
+        [AiProviderConstants.Claude] = ["claude-3-5-haiku-latest", "claude-3-5-sonnet-latest", "claude-3-7-sonnet-latest"],
+        [AiProviderConstants.Gemini] = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
     };
 
     private readonly IUserMemoryRepository _userMemoryRepository;
@@ -24,6 +25,7 @@ public sealed class AiRuntimeSettingsService : IAiRuntimeSettingsService
     private readonly IUnitOfWork _unitOfWork;
     private readonly OpenAiOptions _openAiOptions;
     private readonly ClaudeOptions _claudeOptions;
+    private readonly GeminiOptions _geminiOptions;
     private readonly ILogger<AiRuntimeSettingsService> _logger;
 
     public AiRuntimeSettingsService(
@@ -33,6 +35,7 @@ public sealed class AiRuntimeSettingsService : IAiRuntimeSettingsService
         IUnitOfWork unitOfWork,
         OpenAiOptions openAiOptions,
         ClaudeOptions claudeOptions,
+        GeminiOptions geminiOptions,
         ILogger<AiRuntimeSettingsService> logger)
     {
         _userMemoryRepository = userMemoryRepository;
@@ -41,6 +44,7 @@ public sealed class AiRuntimeSettingsService : IAiRuntimeSettingsService
         _unitOfWork = unitOfWork;
         _openAiOptions = openAiOptions;
         _claudeOptions = claudeOptions;
+        _geminiOptions = geminiOptions;
         _logger = logger;
     }
 
@@ -62,6 +66,10 @@ public sealed class AiRuntimeSettingsService : IAiRuntimeSettingsService
         else if (normalized is "anthropic")
         {
             normalized = AiProviderConstants.Claude;
+        }
+        else if (normalized is "google" or "google gemini")
+        {
+            normalized = AiProviderConstants.Gemini;
         }
 
         if (AiProviderConstants.SupportedProviders.Contains(normalized, StringComparer.Ordinal))
@@ -352,6 +360,7 @@ public sealed class AiRuntimeSettingsService : IAiRuntimeSettingsService
         return provider switch
         {
             AiProviderConstants.Claude => _claudeOptions.Model,
+            AiProviderConstants.Gemini => _geminiOptions.Model,
             _ => _openAiOptions.Model
         };
     }
@@ -361,6 +370,7 @@ public sealed class AiRuntimeSettingsService : IAiRuntimeSettingsService
         return provider switch
         {
             AiProviderConstants.Claude => UserPreferenceMemoryKeys.AiModelClaude,
+            AiProviderConstants.Gemini => UserPreferenceMemoryKeys.AiModelGemini,
             _ => UserPreferenceMemoryKeys.AiModelOpenAi
         };
     }
@@ -370,6 +380,7 @@ public sealed class AiRuntimeSettingsService : IAiRuntimeSettingsService
         return provider switch
         {
             AiProviderConstants.Claude => _claudeOptions.ApiKey,
+            AiProviderConstants.Gemini => _geminiOptions.ApiKey,
             _ => _openAiOptions.ApiKey
         };
     }

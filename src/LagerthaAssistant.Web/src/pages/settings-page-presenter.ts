@@ -195,11 +195,19 @@ export function buildStorageModeChoices(
 export function formatProviderLabel(provider: string): string {
   const normalized = provider.trim().toLowerCase()
 
-  return normalized === 'openai'
-    ? 'OpenAI'
-    : normalized === 'claude'
-      ? 'Claude'
-      : provider
+  if (normalized === 'openai') return 'OpenAI'
+  if (normalized === 'claude') return 'Claude'
+  if (normalized === 'gemini') return 'Gemini'
+  return provider
+}
+
+export function getProviderIcon(provider: string): string {
+  const normalized = provider.trim().toLowerCase()
+
+  if (normalized === 'openai') return 'provider-openai'
+  if (normalized === 'claude') return 'provider-claude'
+  if (normalized === 'gemini') return 'provider-gemini'
+  return 'provider-unknown'
 }
 
 export function formatModelLabel(model: string): string {
@@ -214,6 +222,10 @@ export function formatModelLabel(model: string): string {
 
   if (/^claude-/i.test(normalized)) {
     return `Claude ${normalized.slice(7).replace(/-/g, ' ').replace(/\s+/g, ' ').trim()}`
+  }
+
+  if (/^gemini-/i.test(normalized)) {
+    return `Gemini ${normalized.slice(7).replace(/-/g, ' ').replace(/\s+/g, ' ').trim()}`
   }
 
   return normalized.replace(/-/g, ' ').replace(/\s+/g, ' ').trim()

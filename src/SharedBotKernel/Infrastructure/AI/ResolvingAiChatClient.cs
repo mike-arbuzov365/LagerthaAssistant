@@ -12,6 +12,7 @@ public sealed class ResolvingAiChatClient : IAiChatClient
     private readonly IAiRuntimeSettingsService _runtimeSettingsService;
     private readonly OpenAiChatClient _openAiChatClient;
     private readonly ClaudeChatClient _claudeChatClient;
+    private readonly GeminiChatClient _geminiChatClient;
     private readonly ILogger<ResolvingAiChatClient> _logger;
 
     public ResolvingAiChatClient(
@@ -19,12 +20,14 @@ public sealed class ResolvingAiChatClient : IAiChatClient
         IAiRuntimeSettingsService runtimeSettingsService,
         OpenAiChatClient openAiChatClient,
         ClaudeChatClient claudeChatClient,
+        GeminiChatClient geminiChatClient,
         ILogger<ResolvingAiChatClient> logger)
     {
         _scopeAccessor = scopeAccessor;
         _runtimeSettingsService = runtimeSettingsService;
         _openAiChatClient = openAiChatClient;
         _claudeChatClient = claudeChatClient;
+        _geminiChatClient = geminiChatClient;
         _logger = logger;
     }
 
@@ -52,6 +55,11 @@ public sealed class ResolvingAiChatClient : IAiChatClient
         return settings.Provider switch
         {
             AiProviderConstants.Claude => await _claudeChatClient.CompleteAsync(
+                messages,
+                settings.Model,
+                settings.ApiKey,
+                cancellationToken),
+            AiProviderConstants.Gemini => await _geminiChatClient.CompleteAsync(
                 messages,
                 settings.Model,
                 settings.ApiKey,

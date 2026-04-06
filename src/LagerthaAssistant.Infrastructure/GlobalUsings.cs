@@ -25,7 +25,10 @@ global using ConversationMessage = SharedBotKernel.Domain.AI.ConversationMessage
 // AI options/constants → SharedBotKernel (duplicates removed)
 global using ClaudeOptions = SharedBotKernel.Options.ClaudeOptions;
 global using OpenAiOptions = SharedBotKernel.Options.OpenAiOptions;
+global using GeminiOptions = SharedBotKernel.Options.GeminiOptions;
 global using AiCredentialProtectionOptions = SharedBotKernel.Options.AiCredentialProtectionOptions;
 global using ClaudeConstants = SharedBotKernel.Constants.ClaudeConstants;
 global using OpenAiConstants = SharedBotKernel.Constants.OpenAiConstants;
+global using GeminiConstants = SharedBotKernel.Constants.GeminiConstants;
 global using AiCredentialProtectionConstants = SharedBotKernel.Constants.AiCredentialProtectionConstants;
+global using AiProviderConstants = SharedBotKernel.Constants.AiProviderConstants;

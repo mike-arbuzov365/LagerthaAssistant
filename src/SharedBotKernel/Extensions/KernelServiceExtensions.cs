@@ -42,6 +42,21 @@ public static class KernelServiceExtensions
             claudeOptions.ApiKey = envClaudeKey;
         }
 
+        var geminiSection = configuration.GetSection(GeminiConstants.SectionName);
+        var geminiOptions = new GeminiOptions
+        {
+            BaseUrl = geminiSection[GeminiConstants.BaseUrlKey] ?? GeminiConstants.DefaultBaseUrl,
+            Model = geminiSection[GeminiConstants.ModelKey] ?? GeminiConstants.DefaultModel,
+            ApiKey = geminiSection[GeminiConstants.ApiKeyKey],
+            Temperature = ParseDouble(geminiSection[GeminiConstants.TemperatureKey], GeminiConstants.DefaultTemperature),
+            MaxTokens = ParseInt(geminiSection[GeminiConstants.MaxTokensKey], GeminiConstants.DefaultMaxTokens)
+        };
+        var envGeminiKey = Environment.GetEnvironmentVariable(GeminiConstants.ApiKeyEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(envGeminiKey))
+        {
+            geminiOptions.ApiKey = envGeminiKey;
+        }
+
         var protectionSection = configuration.GetSection(AiCredentialProtectionConstants.SectionName);
         var aiCredentialProtectionOptions = new AiCredentialProtectionOptions
         {
@@ -55,11 +70,13 @@ public static class KernelServiceExtensions
 
         services.AddSingleton(openAiOptions);
         services.AddSingleton(claudeOptions);
+        services.AddSingleton(geminiOptions);
         services.AddSingleton(aiCredentialProtectionOptions);
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<OpenAiChatClient>();
         services.AddSingleton<ClaudeChatClient>();
+        services.AddSingleton<GeminiChatClient>();
         services.AddSingleton<IAiSecretProtector, AiSecretProtector>();
 
         return services;
