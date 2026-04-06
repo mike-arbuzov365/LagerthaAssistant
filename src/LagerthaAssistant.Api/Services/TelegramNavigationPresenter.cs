@@ -435,7 +435,7 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             [
                 [Button("vocab.import.source.photo", locale, CallbackDataConstants.Vocab.ImportSourcePhoto), Button("vocab.import.source.file", locale, CallbackDataConstants.Vocab.ImportSourceFile)],
                 [Button("vocab.import.source.url", locale, CallbackDataConstants.Vocab.ImportSourceUrl), Button("vocab.import.source.text", locale, CallbackDataConstants.Vocab.ImportSourceText)],
-                [Button("menu.vocabulary.back", locale, CallbackDataConstants.Nav.Main)]
+                [Button("back", locale, CallbackDataConstants.Nav.Vocab)]
             ]);
     }
 
@@ -446,7 +446,7 @@ public sealed class TelegramNavigationPresenter : ITelegramNavigationPresenter
             [
                 [Button("vocab.url.select_all", locale, CallbackDataConstants.Vocab.UrlSelectAll)],
                 [Button("vocab.url.cancel", locale, CallbackDataConstants.Vocab.UrlCancel)],
-                [Button("menu.vocabulary.back", locale, CallbackDataConstants.Nav.Main)]
+                [Button("back", locale, CallbackDataConstants.Nav.Vocab)]
             ]);
     }
 

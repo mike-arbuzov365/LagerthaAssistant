@@ -1115,6 +1115,14 @@ public sealed class TelegramController : ControllerBase
                 InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
         }
 
+        if (string.Equals(callbackData, CallbackDataConstants.Nav.Vocab, StringComparison.Ordinal))
+        {
+            await _navigationStateService.SetCurrentSectionAsync(scope.Channel, scope.UserId, scope.ConversationId, NavigationSections.Vocabulary, cancellationToken);
+            _pendingStateStore.ChatActions.TryRemove(BuildPendingChatActionKey(scope), out _);
+            _pendingStateStore.VocabularyUrlSessions.TryRemove(BuildPendingUrlSessionKey(scope), out _);
+            return await BuildVocabularySectionResponseAsync(locale, cancellationToken);
+        }
+
         if (callbackData.StartsWith(CallbackDataConstants.Lang.Prefix, StringComparison.Ordinal))
         {
             return await HandleLanguageCallbackAsync(callbackData, scope, locale, currentSection, cancellationToken);
@@ -2909,7 +2917,7 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "vocab.stats",
                 _navigationPresenter.GetText("vocab.stats.empty", locale),
-                InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+                InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Nav.Vocab)));
         }
 
         var markerStats = await _vocabularyCardRepository.GetPartOfSpeechStatsAsync(cancellationToken);
@@ -2996,7 +3004,7 @@ public sealed class TelegramController : ControllerBase
         return new TelegramRouteResponse(
             "vocab.stats",
             string.Join(Environment.NewLine, lines),
-            InlineKeyboard(_navigationPresenter.BuildVocabularyKeyboard(locale)));
+            InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Nav.Vocab)));
     }
 
     private async Task<TelegramRouteResponse> HandleVocabularyBatchSaveConfirmationAsync(
@@ -4197,7 +4205,7 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "inventory.stats",
                 statsSb.ToString().TrimEnd(),
-                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+                InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Food.Inventory)));
         }
 
         if (string.Equals(callbackData, CallbackDataConstants.Inventory.Adjust, StringComparison.Ordinal))
@@ -4331,7 +4339,7 @@ public sealed class TelegramController : ControllerBase
                     return new TelegramRouteResponse(
                         "inventory.suggest.empty",
                         EnsureInfoMarker(_navigationPresenter.GetText("inventory.suggest.empty", locale)),
-                        InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+                        InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Food.Inventory)));
                 }
 
                 var withoutCurrentQuantity = withMinQuantity.Count(item => !item.CurrentQuantity.HasValue);
@@ -4342,7 +4350,7 @@ public sealed class TelegramController : ControllerBase
                 return new TelegramRouteResponse(
                     "inventory.suggest.empty",
                     EnsureInfoMarker(_navigationPresenter.GetText(messageKey, locale, withoutCurrentQuantity)),
-                    InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+                    InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Food.Inventory)));
             }
 
             var sb = new StringBuilder();
@@ -4356,7 +4364,7 @@ public sealed class TelegramController : ControllerBase
             return new TelegramRouteResponse(
                 "inventory.suggest",
                 sb.ToString().TrimEnd(),
-                InlineKeyboard(_navigationPresenter.BuildInventoryKeyboard(locale)));
+                InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Food.Inventory)));
         }
 
         // ── Photo: store resolution callbacks ─────────────────────────────────
@@ -5209,7 +5217,7 @@ public sealed class TelegramController : ControllerBase
 
         var keyboard = callbackData.StartsWith(CallbackDataConstants.Shop.Prefix, StringComparison.Ordinal)
             ? InlineKeyboard(_navigationPresenter.BuildShoppingKeyboard(locale))
-            : string.Equals(callbackData, CallbackDataConstants.Weekly.Create, StringComparison.Ordinal)
+            : callbackData.StartsWith(CallbackDataConstants.Weekly.Prefix, StringComparison.Ordinal)
                 ? InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Nav.Weekly))
                 : InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale));
         return new TelegramRouteResponse(result.Intent, result.Message ?? string.Empty, keyboard);
@@ -5599,14 +5607,14 @@ public sealed class TelegramController : ControllerBase
                 return new TelegramRouteResponse(
                     "food.weekly.logged",
                     _navigationPresenter.GetText("food.weekly.logged", locale, mealId, servings),
-                    InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+                    InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Nav.Weekly)));
             }
             catch (InvalidOperationException)
             {
                 return new TelegramRouteResponse(
                     "food.weekly.log.not_found",
                     _navigationPresenter.GetText("food.weekly.log.not_found", locale, mealId),
-                    InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+                    InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Nav.Weekly)));
             }
         }
 
@@ -5647,7 +5655,7 @@ public sealed class TelegramController : ControllerBase
         return new TelegramRouteResponse(
             "food.weekly.view",
             sb.ToString().TrimEnd(),
-            InlineKeyboard(_navigationPresenter.BuildWeeklyMenuKeyboard(locale)));
+            InlineKeyboard(_navigationPresenter.BuildInputOnlyBackKeyboard(locale, CallbackDataConstants.Nav.Weekly)));
     }
 
     private async Task<TelegramRouteResponse> HandleMealCreationTextAsync(
